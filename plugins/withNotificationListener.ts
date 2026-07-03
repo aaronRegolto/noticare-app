@@ -256,7 +256,7 @@ class WarningOverlayActivity : Activity() {
     }
 
     val content = TextView(this).apply {
-      text = "$threatLevel\n\n$message"
+      text = "$threatLevel\\n\\n$message"
       setTextColor(Color.WHITE)
       textSize = 22f
       setPadding(48, 120, 48, 48)
