@@ -170,7 +170,7 @@ class NotificationListenerModule(reactContext: ReactApplicationContext) : ReactC
   fun requestOverlayPermission() {
     val currentActivity: Activity? = currentActivity
     if (currentActivity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${reactApplicationContext.packageName}"))
+      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:\${getReactApplicationContext().packageName}"))
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       currentActivity.startActivity(intent)
     }
@@ -178,12 +178,12 @@ class NotificationListenerModule(reactContext: ReactApplicationContext) : ReactC
 
   @ReactMethod
   fun showThreatOverlay(message: String, threatLevel: String) {
-    val intent = Intent(reactApplicationContext, WarningOverlayActivity::class.java).apply {
+    val intent = Intent(getReactApplicationContext(), WarningOverlayActivity::class.java).apply {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       putExtra("message", message)
       putExtra("threatLevel", threatLevel)
     }
-    reactApplicationContext.startActivity(intent)
+    getReactApplicationContext().startActivity(intent)
   }
 }
 `;
