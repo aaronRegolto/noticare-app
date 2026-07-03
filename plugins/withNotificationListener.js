@@ -127,6 +127,7 @@ class NotificationCaptureService : NotificationListenerService() {
 import android.content.Intent
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.modules.core.HeadlessJsTaskConfig
 
 class NotificationCaptureTaskService : HeadlessJsTaskService() {
   companion object {
@@ -135,13 +136,13 @@ class NotificationCaptureTaskService : HeadlessJsTaskService() {
     const val TASK_EVENT_NAME = "NotificationCapture"
   }
 
-  override fun getTaskConfig(intent: Intent?): TaskConfig? {
+  override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
     val params = Arguments.createMap().apply {
       putString("text", intent?.getStringExtra(EXTRA_MESSAGE_TEXT))
       putString("sourcePackage", intent?.getStringExtra(EXTRA_SOURCE_PACKAGE))
       putDouble("timestamp", System.currentTimeMillis().toDouble())
     }
-    return TaskConfig(TASK_EVENT_NAME, params, 5000, true)
+    return HeadlessJsTaskConfig(TASK_EVENT_NAME, params, 5000, true)
   }
 }
 `;
@@ -254,7 +255,7 @@ class WarningOverlayActivity : Activity() {
     }
 
     val content = TextView(this).apply {
-      text = "$threatLevel\n\n$message"
+      text = "$threatLevel\\n\\n$message"
       setTextColor(Color.WHITE)
       textSize = 22f
       setPadding(48, 120, 48, 48)
