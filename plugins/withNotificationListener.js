@@ -276,8 +276,9 @@ class WarningOverlayActivity : Activity() {
 
 const patchMainApplication = async (projectRoot, packageName) => {
   const mainApplicationPath = AndroidConfig.Paths.getProjectFilePath(projectRoot, 'MainApplication');
-  const javaPath = mainApplicationPath && mainApplicationPath.endsWith('.java') ? mainApplicationPath : path.join(AndroidConfig.Paths.getProjectPathOrThrow(projectRoot), 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.java');
-  const ktPath = mainApplicationPath && mainApplicationPath.endsWith('.kt') ? mainApplicationPath : path.join(AndroidConfig.Paths.getProjectPathOrThrow(projectRoot), 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.kt');
+  const androidDir = await AndroidConfig.Paths.getProjectPathOrThrowAsync(projectRoot);
+  const javaPath = mainApplicationPath && mainApplicationPath.endsWith('.java') ? mainApplicationPath : path.join(androidDir, 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.java');
+  const ktPath = mainApplicationPath && mainApplicationPath.endsWith('.kt') ? mainApplicationPath : path.join(androidDir, 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.kt');
 
   const patchJava = (content) => {
     if (!content.includes('NotificationListenerPackage')) {
