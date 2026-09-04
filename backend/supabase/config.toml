@@ -1,0 +1,4 @@
+# Supabase CLI project configuration.
+# This file is safe to commit: production credentials belong in Supabase secrets,
+# never in this config file or an EXPO_PUBLIC_ environment variable.
+project_id = "noticare"

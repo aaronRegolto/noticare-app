@@ -1,50 +1,96 @@
-# Welcome to your Expo app 👋
+# NotiCare
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+NotiCare is an Android-only, privacy-first anti-smishing application. It checks notifications from the device's current default Messages app, classifies them locally, and can warn about or suppress a dangerous notification when Android permits it. It never becomes the default SMS app, does not request `READ_SMS`, and does not delete messages from the Messages inbox.
 
-## Get started
+“Blocked” means a dangerous **notification** was successfully suppressed. The original SMS remains in the Messages inbox.
 
-1. Install dependencies
+## Privacy promise
 
-   ```bash
-   npm install
+- Non-SMS notifications are rejected before notification extras are read.
+- Full SMS text, complete sender numbers, raw URLs, notification titles, clipboard content, OTPs, and encryption keys stay off Supabase.
+- Only Dangerous real-time notifications that were successfully suppressed are saved in encrypted local History.
+- Community charts use anonymous, aggregate metadata only.
+- Manual Scan reads the clipboard only after the user taps Paste and never opens detected links.
+
+Read the details in [Architecture](docs/ARCHITECTURE.md), [Privacy and data handling](docs/PRIVACY.md), and [the backend data contract](backend/supabase/README.md).
+
+## Requirements
+
+- Node.js 20.19 or newer.
+- JDK 21.
+- Android Studio with Android SDK Platform 36, Build-Tools, platform-tools, and a physical Android device or emulator.
+- An Expo development build or Android release build. Real-time notification scanning is unavailable in Expo Go because it needs a custom native Android service.
+- A Supabase project with Phone OTP and an SMS provider configured for production and remote-data testing.
+
+Expo SDK 54 targets React Native 0.81 and Android compile/target SDK 36. See the [Expo SDK 54 reference](https://docs.expo.dev/versions/v54.0.0/).
+
+## Quick start
+
+1. Install JavaScript dependencies.
+
+   ```powershell
+   npm ci
    ```
 
-2. Start the app
+2. Copy `.env.example` to `.env`, add the Supabase URL and anon/publishable key, and make sure `.env` is not tracked by Git.
 
-   ```bash
-   npx expo start
+3. Configure Phone OTP and apply migrations as described in [Supabase setup](docs/SUPABASE_SETUP.md).
+
+4. Confirm the Android toolchain points to JDK 21 and your SDK directory. On Windows, a typical local configuration is:
+
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
+   $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+   $env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
    ```
 
-In the output, you'll find options to open the app in a
+5. Build and install a native development client on an Android device. The launcher regenerates Android code first, so native Expo modules such as SecureStore and Clipboard are included in the installed app.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+   ```powershell
+   npm run android -- --device
+   ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+6. Start Metro for later JavaScript-only changes.
 
-## Get a fresh project
+   ```powershell
+   npx expo start --dev-client
+   ```
 
-When you're ready, run:
+## Development phone sign-in
 
-```bash
-npm run reset-project
+When NotiCare runs from Metro in a JavaScript development bundle (`__DEV__`), entering a valid phone number creates a device-only development profile and skips SMS OTP. It is for local UI and scanner testing only: no SMS is sent, no Supabase user/session is created, and it must not be used to verify remote community features.
+
+Release bundles always use Supabase Phone OTP. Test the production login flow with a configured SMS provider before distributing an APK or App Bundle.
+
+When native Kotlin code, config plugins, Expo config, or a native dependency changes, rebuild with the launcher. It regenerates the Android project before installing:
+
+```powershell
+npm run android -- --device
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+If a non-clean prebuild is not enough, use `npx expo prebuild --clean` explicitly. It regenerates native folders, so commit or back up intentional native edits first. Expo documents this development-build workflow in its [SDK 54 documentation](https://docs.expo.dev/develop/development-builds/introduction/).
 
-## Learn more
+## Quality checks
 
-To learn more about developing your project with Expo, look at the following resources:
+Run these before opening a pull request:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```powershell
+npm run lint
+npm run typecheck
+npm test -- --runInBand
+npm run format:check
+```
 
-## Join the community
+See [Testing](docs/TESTING.md) for JavaScript, Android, Supabase/RLS, and physical-device test requirements. See [Release checklist](docs/RELEASE_CHECKLIST.md) before distributing an Android build.
 
-Join our community of developers creating universal apps.
+## Documentation
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Architecture and Android limitations](docs/ARCHITECTURE.md)
+- [Supabase setup and RPC security](docs/SUPABASE_SETUP.md)
+- [Privacy and data handling](docs/PRIVACY.md)
+- [Privacy-policy template](docs/PRIVACY_POLICY_TEMPLATE.md)
+- [User guide](docs/USER_GUIDE.md)
+- [Testing guide](docs/TESTING.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Google Play data safety and notification-listener disclosure](docs/PLAY_STORE_DATA_SAFETY.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)

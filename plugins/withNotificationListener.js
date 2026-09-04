@@ -1,336 +1,360 @@
-const { AndroidConfig, withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
+const {
+  AndroidConfig,
+  withAndroidManifest,
+  withAppBuildGradle,
+  withDangerousMod,
+  withMainApplication,
+} = require('@expo/config-plugins');
 
-const DEFAULT_PACKAGE_NAME = 'com.noticare.noticareapp';
-const TARGET_MESSAGING_PACKAGES = [
-  'com.google.android.apps.messaging',
-  'com.samsung.android.messaging',
-  'com.microsoft.android.smsorganizer',
-  'com.android.messaging'
-];
+const DEFAULT_ANDROID_PACKAGE = 'com.noticare.noticareapp';
+const DATASTORE_DEPENDENCY = 'androidx.datastore:datastore-preferences:1.1.7';
+const LITERT_DEPENDENCY = 'com.google.ai.edge.litert:litert:2.1.1';
+const JUNIT_DEPENDENCY = 'junit:junit:4.13.2';
+const TEMPLATE_ROOT = path.join(__dirname, 'android');
 
-const ANDROID_PERMISSIONS = [
-  'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
+// Components from the previous Headless-JS/accessibility implementation.
+const LEGACY_SERVICES = new Set([
+  '.NotificationCaptureService',
+  '.NotificationCaptureTaskService',
+  '.MessagingNotificationListener',
+  '.NotificationRelayService',
+  '.NotificationBridgeService',
+  '.realtime.MessagingNotificationListener',
+]);
+
+const LEGACY_ACTIVITIES = new Set([
+  '.WarningOverlayActivity',
+  '.ui.AlertActivity',
+  '.ui.ThreatDetailsActivity',
+]);
+
+// These APIs would either grant broad SMS access or support the removed overlay/
+// accessibility implementation. Keep the removal defensive so a dependency or a
+// stale generated manifest cannot accidentally expand the scanner's scope.
+const DISALLOWED_PERMISSIONS = [
   'android.permission.SYSTEM_ALERT_WINDOW',
-  'android.permission.FOREGROUND_SERVICE'
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.READ_SMS',
+  'android.permission.RECEIVE_SMS',
+  'android.permission.SEND_SMS',
+  'android.permission.BIND_ACCESSIBILITY_SERVICE',
+  // BIND_NOTIFICATION_LISTENER_SERVICE belongs on the service declaration; it
+  // is not an app-level permission request.
+  'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
 ];
+const DISALLOWED_PERMISSION_SET = new Set(DISALLOWED_PERMISSIONS);
+const TOOLS_NAMESPACE = 'http://schemas.android.com/tools';
 
-const addPermissionsToManifest = (manifest) => {
-  const usesPermissions = manifest.manifest['uses-permission'] || [];
-  ANDROID_PERMISSIONS.forEach((permissionName) => {
-    const exists = usesPermissions.some((entry) => entry['$']?.['android:name'] === permissionName);
-    if (!exists) {
-      usesPermissions.push({ $: { 'android:name': permissionName } });
-    }
+function asArray(owner, key) {
+  const value = owner[key];
+  if (!value) {
+    owner[key] = [];
+  } else if (!Array.isArray(value)) {
+    owner[key] = [value];
+  }
+  return owner[key];
+}
+
+function uniqueByAndroidName(entries) {
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const name = entry?.$?.['android:name'];
+    if (!name || seen.has(name)) return !name;
+    seen.add(name);
+    return true;
   });
-  manifest.manifest['uses-permission'] = usesPermissions;
-};
+}
 
-const addServiceAndActivityToManifest = (manifest) => {
+function updateManifest(manifest) {
+  // Removing a permission from the generated source manifest does not stop a
+  // dependency from adding it during Android manifest merging. Keep explicit
+  // removal markers in the app manifest so the packaged APK cannot inherit an
+  // overlay, broad-SMS, accessibility, foreground-service, or app-level
+  // notification-listener permission.
+  manifest.manifest.$ = {
+    ...manifest.manifest.$,
+    'xmlns:tools': manifest.manifest.$?.['xmlns:tools'] ?? TOOLS_NAMESPACE,
+  };
+  const permissions = asArray(manifest.manifest, 'uses-permission').filter(
+    (entry) => !DISALLOWED_PERMISSION_SET.has(entry?.$?.['android:name']),
+  );
+
+  if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
+    permissions.push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
+  }
+  for (const permission of DISALLOWED_PERMISSIONS) {
+    permissions.push({
+      $: {
+        'android:name': permission,
+        'tools:node': 'remove',
+      },
+    });
+  }
+  manifest.manifest['uses-permission'] = uniqueByAndroidName(permissions);
+  manifest.manifest.queries = [
+    {
+      intent: [
+        {
+          action: [{ $: { 'android:name': 'android.provider.Telephony.SMS_DELIVER' } }],
+        },
+        {
+          action: [{ $: { 'android:name': 'android.intent.action.SENDTO' } }],
+          data: [{ $: { 'android:scheme': 'smsto' } }],
+        },
+      ],
+    },
+  ];
   const application = manifest.manifest.application?.[0];
   if (!application) return manifest;
 
-  const services = application.service || [];
-  const activities = application.activity || [];
+  const services = asArray(application, 'service').filter((entry) => !LEGACY_SERVICES.has(entry?.$?.['android:name']));
+  const activities = asArray(application, 'activity').filter(
+    (entry) => !LEGACY_ACTIVITIES.has(entry?.$?.['android:name']),
+  );
 
-  const serviceExists = services.some((service) => service['$']?.['android:name'] === '.NotificationCaptureService');
-  if (!serviceExists) {
+  const listenerName = '.bridge.SmsNotificationListener';
+  const existingListener = services.find((entry) => entry?.$?.['android:name'] === listenerName);
+  if (!existingListener) {
     services.push({
       $: {
-        'android:name': '.NotificationCaptureService',
+        'android:name': listenerName,
+        'android:exported': 'true',
         'android:label': '@string/app_name',
         'android:permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
-        'android:exported': 'true'
       },
       'intent-filter': [
         {
-          action: [{ $: { 'android:name': 'android.service.notification.NotificationListenerService' } }]
-        }
-      ]
+          action: [{ $: { 'android:name': 'android.service.notification.NotificationListenerService' } }],
+        },
+      ],
     });
+  } else {
+    existingListener.$ = {
+      ...existingListener.$,
+      'android:exported': 'true',
+      'android:label': '@string/app_name',
+      'android:permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
+    };
   }
 
-  const activityExists = activities.some((activity) => activity['$']?.['android:name'] === '.WarningOverlayActivity');
-  if (!activityExists) {
+  application.service = uniqueByAndroidName(services);
+  const warningActivityName = '.bridge.ThreatWarningActivity';
+  if (!activities.some((entry) => entry?.$?.['android:name'] === warningActivityName)) {
     activities.push({
       $: {
-        'android:name': '.WarningOverlayActivity',
+        'android:name': warningActivityName,
         'android:exported': 'false',
         'android:excludeFromRecents': 'true',
-        'android:taskAffinity': '',
-        'android:showOnLockScreen': 'true',
+        'android:launchMode': 'singleTop',
+        'android:showWhenLocked': 'true',
         'android:turnScreenOn': 'true',
-        'android:theme': '@style/Theme.AppCompat.Light.NoActionBar'
-      }
+        'android:theme': '@style/AppTheme',
+      },
     });
   }
-
-  application.service = services;
-  application.activity = activities;
+  const receiverName = '.bridge.ThreatDecisionReceiver';
+  const receivers = asArray(application, 'receiver');
+  if (!receivers.some((entry) => entry?.$?.['android:name'] === receiverName)) {
+    receivers.push({ $: { 'android:name': receiverName, 'android:exported': 'false' } });
+  }
+  application.activity = uniqueByAndroidName(activities);
+  application.receiver = uniqueByAndroidName(receivers);
   return manifest;
-};
+}
 
-const writeNativeFiles = async (projectRoot, packageName) => {
-  const androidDir = await AndroidConfig.Paths.getProjectPathOrThrowAsync(projectRoot);
-  const packagePath = path.join(androidDir, 'app', 'src', 'main', 'java', ...packageName.split('.'));
-  if (!fs.existsSync(packagePath)) {
-    fs.mkdirSync(packagePath, { recursive: true });
+function addDataStoreDependency(contents) {
+  const missingLines = [];
+  if (!contents.includes(DATASTORE_DEPENDENCY)) {
+    missingLines.push(`    implementation(\"${DATASTORE_DEPENDENCY}\")`);
   }
+  if (!contents.includes(LITERT_DEPENDENCY)) {
+    missingLines.push(`    implementation(\"${LITERT_DEPENDENCY}\")`);
+  }
+  if (!contents.includes(JUNIT_DEPENDENCY)) {
+    missingLines.push(`    testImplementation(\"${JUNIT_DEPENDENCY}\")`);
+  }
+  if (missingLines.length === 0) return contents;
 
-  const serviceCode = `package ${packageName}
+  const dependenciesBlock = /dependencies\s*\{/;
+  if (!dependenciesBlock.test(contents)) {
+    throw new Error('Unable to add the NotiCare DataStore dependency: dependencies block was not found.');
+  }
+  return contents.replace(dependenciesBlock, (match) => `${match}\n${missingLines.join('\n')}`);
+}
 
-import android.app.Notification
-import android.content.Intent
-import android.os.Build
-import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
+function patchMainApplication(contents, language, packageName) {
+  const importLine = `import ${packageName}.NotificationListenerPackage`;
+  let updated = contents;
 
-class NotificationCaptureService : NotificationListenerService() {
-  override fun onNotificationPosted(sbn: StatusBarNotification) {
-    super.onNotificationPosted(sbn)
-
-    val packageName = sbn.packageName ?: return
-    if (!isTargetMessagingApp(packageName)) return
-
-    val notification = sbn.notification ?: return
-    val messageText = extractText(notification) ?: return
-
-    val intent = Intent(this, NotificationCaptureTaskService::class.java).apply {
-      putExtra(NotificationCaptureTaskService.EXTRA_MESSAGE_TEXT, messageText)
-      putExtra(NotificationCaptureTaskService.EXTRA_SOURCE_PACKAGE, packageName)
-    }
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      startForegroundService(intent)
+  if (!updated.includes(importLine)) {
+    if (language === 'kt') {
+      updated = updated.replace(
+        'import com.facebook.react.ReactApplication',
+        `import com.facebook.react.ReactApplication\n${importLine}`,
+      );
     } else {
-      startService(intent)
+      updated = updated.replace(
+        'import com.facebook.react.ReactApplication;',
+        `import com.facebook.react.ReactApplication;\n${importLine};`,
+      );
     }
   }
 
-  private fun isTargetMessagingApp(packageName: String): Boolean {
-    return listOf(${TARGET_MESSAGING_PACKAGES.map((pkg) => `"${pkg}"`).join(', ')}).contains(packageName)
+  if (updated.includes('add(NotificationListenerPackage())')) return updated;
+
+  if (language === 'kt') {
+    const marker = 'PackageList(this).packages.apply {';
+    if (!updated.includes(marker)) {
+      throw new Error('Unable to register NotificationListenerPackage: Kotlin package list was not found.');
+    }
+    return updated.replace(marker, `${marker}\n              add(NotificationListenerPackage())`);
   }
 
-  private fun extractText(notification: Notification): String? {
-    val extras = notification.extras ?: return null
-    val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-    if (!text.isNullOrBlank()) return text
-    val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-    return bigText?.takeIf { it.isNotBlank() }
+  const marker = 'List<ReactPackage> packages = new PackageList(this).getPackages();';
+  if (!updated.includes(marker)) {
+    throw new Error('Unable to register NotificationListenerPackage: Java package list was not found.');
+  }
+  return updated.replace(marker, `${marker}\n    packages.add(new NotificationListenerPackage());`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ensureToolsNamespace(contents) {
+  if (/\bxmlns:tools\s*=/.test(contents)) return contents;
+  return contents.replace(
+    /<manifest\b([^>]*)>/,
+    (match, attributes) => `<manifest${attributes} xmlns:tools="${TOOLS_NAMESPACE}">`,
+  );
+}
+
+function permissionRemovalDirective(permission) {
+  return `  <uses-permission android:name="${permission}" tools:node="remove"/>`;
+}
+
+/**
+ * Expo's development-client debug manifest has higher merge priority than the
+ * app's main manifest and contributes SYSTEM_ALERT_WINDOW by default. Put the
+ * same removals in src/debug so they win at that merge layer too. This keeps
+ * the development APK aligned with the release privacy boundary.
+ */
+function patchDebugManifest(androidRoot) {
+  const debugManifestPath = path.join(androidRoot, 'app', 'src', 'debug', 'AndroidManifest.xml');
+  let contents = fs.existsSync(debugManifestPath)
+    ? fs.readFileSync(debugManifestPath, 'utf8')
+    : `<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="${TOOLS_NAMESPACE}">\n</manifest>\n`;
+  contents = ensureToolsNamespace(contents);
+
+  // Normalize existing permission declarations first, then place a single
+  // ordered removal block before <application>. Non-clean prebuild preserves
+  // src/debug, so this also repairs an older plugin output on the next run.
+  for (const permission of DISALLOWED_PERMISSIONS) {
+    const permissionPattern = new RegExp(
+      `<uses-permission\\b(?=[^>]*\\bandroid:name\\s*=\\s*["']${escapeRegExp(permission)}["'])[^>]*\\/?\\s*>\\s*`,
+      'g',
+    );
+    contents = contents.replace(permissionPattern, '');
+  }
+
+  const applicationMatch = /<application\b/.exec(contents);
+  const closingManifest = '</manifest>';
+  const insertionAt = applicationMatch?.index ?? contents.lastIndexOf(closingManifest);
+  if (insertionAt < 0) {
+    throw new Error('Unable to add debug permission removals: manifest closing tag was not found.');
+  }
+  const removals = `${DISALLOWED_PERMISSIONS.map(permissionRemovalDirective).join('\n')}\n`;
+  contents = `${contents.slice(0, insertionAt)}${removals}${contents.slice(insertionAt)}`;
+
+  fs.mkdirSync(path.dirname(debugManifestPath), { recursive: true });
+  fs.writeFileSync(debugManifestPath, contents, 'utf8');
+}
+
+function writeGeneratedSources(androidRoot, packageName) {
+  const sourceRoot = path.join(androidRoot, 'app', 'src', 'main', 'java', ...packageName.split('.'));
+  const testSourceRoot = path.join(androidRoot, 'app', 'src', 'test', 'java', ...packageName.split('.'));
+  const mappings = [
+    ['NotificationListenerModule.kt', path.join(sourceRoot, 'NotificationListenerModule.kt')],
+    ['NotificationListenerPackage.kt', path.join(sourceRoot, 'NotificationListenerPackage.kt')],
+    ['EncryptedHistoryStore.kt', path.join(sourceRoot, 'bridge', 'EncryptedHistoryStore.kt')],
+    ['EncryptedTelemetryQueue.kt', path.join(sourceRoot, 'bridge', 'EncryptedTelemetryQueue.kt')],
+    ['NotiCareNotifications.kt', path.join(sourceRoot, 'bridge', 'NotiCareNotifications.kt')],
+    ['RealtimeScanPreferences.kt', path.join(sourceRoot, 'bridge', 'RealtimeScanPreferences.kt')],
+    ['ScanRuntime.kt', path.join(sourceRoot, 'bridge', 'ScanRuntime.kt')],
+    ['SmishingEvaluator.kt', path.join(sourceRoot, 'bridge', 'SmishingEvaluator.kt')],
+    ['V3RiskEvaluator.kt', path.join(sourceRoot, 'bridge', 'V3RiskEvaluator.kt')],
+    ['SmsNotificationListener.kt', path.join(sourceRoot, 'bridge', 'SmsNotificationListener.kt')],
+    ['ThreatDecisionReceiver.kt', path.join(sourceRoot, 'bridge', 'ThreatDecisionReceiver.kt')],
+    ['ThreatWarningActivity.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningActivity.kt')],
+    ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
+    ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
+    ['V3RiskEvaluatorTest.kt', path.join(testSourceRoot, 'bridge', 'V3RiskEvaluatorTest.kt')],
+  ];
+
+  for (const [templatePath, destinationPath] of mappings) {
+    const sourcePath = path.join(TEMPLATE_ROOT, templatePath);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`NotiCare native template is missing: ${templatePath}`);
+    }
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    const source = fs.readFileSync(sourcePath, 'utf8').replaceAll('__NOTICARE_PACKAGE__', packageName);
+    fs.writeFileSync(destinationPath, source, 'utf8');
+  }
+
+  const projectRoot = path.dirname(androidRoot);
+  const assetsRoot = path.join(androidRoot, 'app', 'src', 'main', 'assets');
+  for (const assetName of ['noticare_smishing_v3.tflite', 'model_metadata.json']) {
+    const sourcePath = path.join(projectRoot, 'assets', 'models', assetName);
+    const destinationPath = path.join(assetsRoot, assetName);
+    if (!fs.existsSync(sourcePath)) throw new Error(`NotiCare model asset is missing: ${sourcePath}`);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(sourcePath, destinationPath);
+  }
+
+  for (const legacyRelativePath of [
+    'NotificationCaptureService.kt',
+    'NotificationCaptureTaskService.kt',
+    'WarningOverlayActivity.kt',
+    'bridge/NotificationCaptureTaskService.kt',
+    'ui/ThreatDetailsActivity.kt',
+  ]) {
+    const legacyPath = path.join(sourceRoot, legacyRelativePath);
+    if (fs.existsSync(legacyPath)) fs.rmSync(legacyPath, { force: true });
   }
 }
-`;
-
-  const taskServiceCode = `package ${packageName}
-
-import android.content.Intent
-import com.facebook.react.HeadlessJsTaskService
-import com.facebook.react.bridge.Arguments
-import com.facebook.react.modules.core.HeadlessJsTaskConfig
-
-class NotificationCaptureTaskService : HeadlessJsTaskService() {
-  companion object {
-    const val EXTRA_MESSAGE_TEXT = "EXTRA_MESSAGE_TEXT"
-    const val EXTRA_SOURCE_PACKAGE = "EXTRA_SOURCE_PACKAGE"
-    const val TASK_EVENT_NAME = "NotificationCapture"
-  }
-
-  override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
-    val params = Arguments.createMap().apply {
-      putString("text", intent?.getStringExtra(EXTRA_MESSAGE_TEXT))
-      putString("sourcePackage", intent?.getStringExtra(EXTRA_SOURCE_PACKAGE))
-      putDouble("timestamp", System.currentTimeMillis().toDouble())
-    }
-    return HeadlessJsTaskConfig(TASK_EVENT_NAME, params, 5000, true)
-  }
-}
-`;
-
-  const moduleCode = `package ${packageName}
-
-import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.module.annotations.ReactModule
-
-@ReactModule(name = NotificationListenerModule.NAME)
-class NotificationListenerModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
-  companion object {
-    const val NAME = "NotificationListenerModule"
-  }
-
-  override fun getName() = NAME
-
-  @ReactMethod
-  fun requestOverlayPermission() {
-    val currentActivity: Activity? = currentActivity
-    if (currentActivity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:\${getReactApplicationContext().packageName}"))
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      currentActivity.startActivity(intent)
-    }
-  }
-
-  @ReactMethod
-  fun showThreatOverlay(message: String, threatLevel: String) {
-    val intent = Intent(getReactApplicationContext(), WarningOverlayActivity::class.java).apply {
-      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      putExtra("message", message)
-      putExtra("threatLevel", threatLevel)
-    }
-    getReactApplicationContext().startActivity(intent)
-  }
-}
-`;
-
-  const packageCode = `package ${packageName}
-
-import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.JavaScriptModule
-import com.facebook.react.bridge.NativeModule
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.uimanager.ViewManager
-
-class NotificationListenerPackage : ReactPackage {
-  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    return listOf(NotificationListenerModule(reactContext))
-  }
-
-  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return emptyList()
-  }
-
-  @Deprecated("Deprecated in RN 0.47+")
-  override fun createJSModules(): List<Class<out JavaScriptModule>> {
-    return emptyList()
-  }
-}
-`;
-
-  const overlayActivityCode = `package ${packageName}
-
-import android.app.Activity
-import android.graphics.Color
-import android.os.Build
-import android.os.Bundle
-import android.provider.Settings
-import android.view.Gravity
-import android.view.ViewGroup
-import android.view.WindowManager
-import android.widget.FrameLayout
-import android.widget.TextView
-
-class WarningOverlayActivity : Activity() {
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-      finish()
-      return
-    }
-
-    window.addFlags(
-      WindowManager.LayoutParams.FLAG_FULLSCREEN or
-        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-    )
-
-    val message = intent.getStringExtra("message") ?: "Potential high-threat SMS detected"
-    val threatLevel = intent.getStringExtra("threatLevel") ?: "High Threat"
-
-    val container = FrameLayout(this).apply {
-      setBackgroundColor(Color.parseColor("#cc0000"))
-      layoutParams = FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-      )
-      setOnClickListener { finish() }
-    }
-
-    val content = TextView(this).apply {
-      text = "$threatLevel\\n\\n$message"
-      setTextColor(Color.WHITE)
-      textSize = 22f
-      setPadding(48, 120, 48, 48)
-      gravity = Gravity.CENTER
-    }
-
-    container.addView(content)
-    setContentView(container)
-  }
-}
-`;
-
-  fs.writeFileSync(path.join(packagePath, 'NotificationCaptureService.kt'), serviceCode);
-  fs.writeFileSync(path.join(packagePath, 'NotificationCaptureTaskService.kt'), taskServiceCode);
-  fs.writeFileSync(path.join(packagePath, 'NotificationListenerModule.kt'), moduleCode);
-  fs.writeFileSync(path.join(packagePath, 'NotificationListenerPackage.kt'), packageCode);
-  fs.writeFileSync(path.join(packagePath, 'WarningOverlayActivity.kt'), overlayActivityCode);
-};
-
-const patchMainApplication = async (projectRoot, packageName) => {
-  const mainApplicationPath = AndroidConfig.Paths.getProjectFilePath(projectRoot, 'MainApplication');
-  const androidDir = await AndroidConfig.Paths.getProjectPathOrThrowAsync(projectRoot);
-  const javaPath = mainApplicationPath && mainApplicationPath.endsWith('.java') ? mainApplicationPath : path.join(androidDir, 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.java');
-  const ktPath = mainApplicationPath && mainApplicationPath.endsWith('.kt') ? mainApplicationPath : path.join(androidDir, 'app', 'src', 'main', 'java', ...packageName.split('.'), 'MainApplication.kt');
-
-  const patchJava = (content) => {
-    if (!content.includes('NotificationListenerPackage')) {
-      let result = content;
-      if (!result.includes(`import ${packageName}.NotificationListenerPackage;`)) {
-        result = result.replace(/(import com\.facebook\.react\.ReactApplication;\r?\n)/, `$1import ${packageName}.NotificationListenerPackage;\n`);
-      }
-      result = result.replace(/(List<ReactPackage> packages = new PackageList\(this\)\.getPackages\(\);\r?\n)/, `$1    packages.add(new NotificationListenerPackage());\n`);
-      fs.writeFileSync(javaPath, result, 'utf8');
-    }
-  };
-
-  const patchKotlin = (content) => {
-    if (!content.includes('NotificationListenerPackage')) {
-      let result = content;
-      if (!result.includes(`import ${packageName}.NotificationListenerPackage`)) {
-        result = result.replace(/(import com\.facebook\.react\.ReactApplication\r?\n)/, `$1import ${packageName}.NotificationListenerPackage\n`);
-      }
-      result = result.replace(/(val packages = PackageList\(this\)\.packages\r?\n)/, `$1    packages.toMutableList().add(NotificationListenerPackage())\n`);
-      fs.writeFileSync(ktPath, result, 'utf8');
-    }
-  };
-
-  if (fs.existsSync(javaPath)) {
-    patchJava(fs.readFileSync(javaPath, 'utf8'));
-  }
-  if (fs.existsSync(ktPath)) {
-    patchKotlin(fs.readFileSync(ktPath, 'utf8'));
-  }
-};
 
 const withNotificationListener = (config) => {
-  const packageName = (config.android && config.android.package) || DEFAULT_PACKAGE_NAME;
-  config.android = {
-    ...config.android,
-    package: packageName,
-  };
+  const packageName = config.android?.package ?? DEFAULT_ANDROID_PACKAGE;
 
-  config = withAndroidManifest(config, (config) => {
-    addPermissionsToManifest(config.modResults);
-    addServiceAndActivityToManifest(config.modResults);
-    return config;
+  config = withAndroidManifest(config, (modConfig) => {
+    modConfig.modResults = updateManifest(modConfig.modResults);
+    return modConfig;
+  });
+
+  config = withAppBuildGradle(config, (modConfig) => {
+    modConfig.modResults.contents = addDataStoreDependency(modConfig.modResults.contents);
+    return modConfig;
+  });
+
+  config = withMainApplication(config, (modConfig) => {
+    modConfig.modResults.contents = patchMainApplication(
+      modConfig.modResults.contents,
+      modConfig.modResults.language,
+      packageName,
+    );
+    return modConfig;
   });
 
   config = withDangerousMod(config, [
     'android',
-    async (config) => {
-      await writeNativeFiles(config.modRequest.projectRoot, packageName);
-      await patchMainApplication(config.modRequest.projectRoot, packageName);
-      return config;
-    }
+    async (modConfig) => {
+      const androidRoot = await AndroidConfig.Paths.getProjectPathOrThrowAsync(modConfig.modRequest.projectRoot);
+      writeGeneratedSources(androidRoot, packageName);
+      patchDebugManifest(androidRoot);
+      return modConfig;
+    },
   ]);
 
   return config;

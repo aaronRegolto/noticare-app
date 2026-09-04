@@ -31,7 +31,20 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# local Supabase and test output
+backend/supabase/.temp/
+.detection-test-build/
+
+# local build / diagnostic captures
+eas-*.txt
+eas-*.txt.*
+eas-*.bin
+easbuildlog.txt
+headers.txt
+tmp-*.png
 
 # typescript
 *.tsbuildinfo

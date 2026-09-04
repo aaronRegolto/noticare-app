@@ -1,0 +1,55 @@
+{
+    "model_provenance": {
+        "candidate_status": "prototype_candidate",
+        "version": "3.0.0-augmented",
+        "keras_file": "noticare_smishing_v3.keras",
+        "dataset_provenance_counts": {
+            "UCI_SMS_Spam": 5158,
+            "NCSU_SMS_Phishing": 4135
+        }
+    },
+    "final_training_set": {
+        "base_rows": 6537,
+        "synthetic_rows": 1435,
+        "total_rows": 7972,
+        "note": "Source provenance may overlap for individual deduplicated rows."
+    },
+    "technical_specifications": {
+        "input_shape": [
+            256
+        ],
+        "runtime_tensor_shape": [
+            1,
+            256
+        ],
+        "input_dtype": "int32",
+        "preprocessing": {
+            "encoding": "UTF-8",
+            "max_length": 256,
+            "byte_offset": "add 1 to each byte value",
+            "padding": "zero-pad to max_length",
+            "truncation": "truncate beyond 256 bytes"
+        },
+        "locked_thresholds": {
+            "safe": 0.0037353637162595987,
+            "dangerous": 0.0239969864487648
+        }
+    },
+    "audit_performance_frozen_test": {
+        "sample_count": 1366,
+        "accuracy": 0.9773,
+        "pr_auc": 0.9977,
+        "safety_errors": {
+            "false_negatives": 2,
+            "false_positives": 25,
+            "rate": "1.98%"
+        },
+        "uncertainty_count": 90
+    },
+    "known_limitations": [
+        "Five-case Philippine regression suite is not exhaustive",
+        "Known False Positive trigger for high-value legitimate GCash receipts",
+        "SAFE label represents lower estimated risk, not guaranteed safety"
+    ],
+    "exported_at": "2026-08-22 22:35:52"
+}
