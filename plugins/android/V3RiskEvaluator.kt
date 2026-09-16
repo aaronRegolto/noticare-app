@@ -9,19 +9,21 @@ import org.tensorflow.lite.Interpreter
 
 /**
  * Runs the audited V3 byte-level model entirely on-device. V3 remains an
- * advisory prototype: it may raise a rule-safe message to SUSPICIOUS, but it
- * cannot independently suppress a notification as DANGEROUS.
+ * advisory prototype: it can reinforce concrete phishing evidence, but cannot
+ * create a warning from its output alone or independently mark text DANGEROUS.
  */
 object V3RiskEvaluator {
   private const val MODEL_ASSET = "noticare_smishing_v3.tflite"
   private const val METADATA_ASSET = "model_metadata.json"
   private const val INPUT_LENGTH = 256
-  private const val VERSION = "3.0.0-augmented-advisory"
+  private const val VERSION = "3.0.0-corroborated-advisory"
+
+  // These generic signals occur in ordinary conversation and promotions too.
+  private val weakSignals = setOf("urgency-pressure", "link-or-reply-pressure", "obfuscated-text")
 
   private data class Runtime(
     val interpreter: Interpreter,
     val safeThreshold: Float,
-    val dangerousThreshold: Float,
   )
 
   @Volatile private var runtime: Runtime? = null
@@ -29,21 +31,26 @@ object V3RiskEvaluator {
   @Synchronized
   fun evaluate(context: Context, message: String): ThreatResult {
     val rules = SmishingEvaluator.evaluate(message)
+    if (!hasSupportingEvidence(rules)) return rules
     val probability = runCatching { predict(context.applicationContext, message) }.getOrNull() ?: return rules
     val current = requireRuntime(context.applicationContext)
-    val modelLevel = when {
-      probability >= current.dangerousThreshold -> ThreatLevel.DANGEROUS
-      probability >= current.safeThreshold -> ThreatLevel.SUSPICIOUS
-      else -> ThreatLevel.SAFE
-    }
+    return combine(rules, probability, current.safeThreshold)
+  }
 
-    if (rules.level != ThreatLevel.SAFE || modelLevel == ThreatLevel.SAFE) return rules
+  private fun hasSupportingEvidence(rules: ThreatResult): Boolean =
+    rules.level == ThreatLevel.SAFE && rules.reasons.any { it.weight > 0 && it.code !in weakSignals }
+
+  /** Kept separate from inference so false-positive and failure paths can be tested. */
+  internal fun combine(rules: ThreatResult, probability: Float, safeThreshold: Float): ThreatResult {
+    if (!hasSupportingEvidence(rules)) return rules
+    if (!probability.isFinite() || probability !in 0f..1f ||
+      !safeThreshold.isFinite() || safeThreshold <= 0f || safeThreshold >= 1f || probability < safeThreshold) return rules
 
     val reason = ThreatReason(
       code = "v3-model-risk",
       label = "On-device risk model",
-      description = "The on-device prototype found patterns associated with spam, scams, or risky messages.",
-      weight = 30,
+      description = "The on-device model supports the specific warning signs listed for this message. Its output alone does not establish smishing.",
+      weight = max(0, 30 - rules.score),
     )
     return rules.copy(
       level = ThreatLevel.SUSPICIOUS,
@@ -74,7 +81,6 @@ object V3RiskEvaluator {
     return Runtime(
       interpreter = Interpreter(modelBuffer),
       safeThreshold = thresholds.getDouble("safe").toFloat(),
-      dangerousThreshold = thresholds.getDouble("dangerous").toFloat(),
     ).also { created -> runtime = created }
   }
 

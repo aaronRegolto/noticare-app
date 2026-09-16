@@ -39,6 +39,8 @@ class ThreatWarningActivity : Activity() {
   }
 
   private fun buildContent(threat: PendingThreat): View {
+    val dangerous = threat.result.level == ThreatLevel.DANGEROUS
+    val accent = if (dangerous) danger else caution
     val scroll = ScrollView(this).apply {
       setBackgroundColor(Color.rgb(248, 249, 252))
       isFillViewport = true
@@ -55,16 +57,16 @@ class ThreatWarningActivity : Activity() {
       setTextColor(Color.WHITE)
       gravity = Gravity.CENTER
       typeface = Typeface.DEFAULT_BOLD
-      background = rounded(danger, 40f)
+      background = rounded(accent, 40f)
     }, LinearLayout.LayoutParams(dp(80), dp(80)))
-    root.addView(label("Possible phishing message", 27f, Color.rgb(25, 38, 57), true).withTop(22))
-    root.addView(label("NotiCare found strong warning signs. Review why before deciding.", 16f, Color.rgb(82, 99, 122), false).withTop(10))
+    root.addView(label(if (dangerous) "Possible phishing message" else "Suspicious message", 27f, Color.rgb(25, 38, 57), true).withTop(22))
+    root.addView(label(if (dangerous) "NotiCare found strong warning signs. Review why before deciding." else "NotiCare found warning signs that need your attention.", 16f, Color.rgb(82, 99, 122), false).withTop(10))
 
     val risk = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(18), dp(16), dp(18), dp(16))
-      background = rounded(Color.rgb(255, 236, 235), 18f)
-      addView(label("HIGH RISK · ${threat.result.score}/100", 14f, danger, true))
+      background = rounded(if (dangerous) Color.rgb(255, 236, 235) else Color.rgb(255, 246, 225), 18f)
+      addView(label("${if (dangerous) "HIGH RISK" else "CAUTION"} · ${threat.result.score}/100", 14f, accent, true))
       addView(label("Do not tap links or share passwords, PINs, or OTP codes.", 15f, Color.rgb(101, 35, 32), false).withTop(6))
     }
     root.addView(risk, matchWidth(top = 24))
@@ -83,7 +85,7 @@ class ThreatWarningActivity : Activity() {
 
     val domains = threat.result.urls.mapNotNull { it.normalizedDomain }.distinct().take(3)
     if (domains.isNotEmpty()) {
-      root.addView(label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, danger, true).withTop(16))
+      root.addView(label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, accent, true).withTop(16))
     }
     root.addView(label("Block hides this notification and saves a protected local History record. Ignore leaves the message notification visible.", 13f, Color.rgb(92, 107, 127), false).withTop(22))
 
@@ -93,7 +95,7 @@ class ThreatWarningActivity : Activity() {
       setTextColor(Color.WHITE)
       typeface = Typeface.DEFAULT_BOLD
       isAllCaps = false
-      background = rounded(danger, 14f)
+      background = rounded(accent, 14f)
       setOnClickListener { decide(true) }
     }, matchWidth(height = 56, top = 24))
     root.addView(Button(this).apply {
@@ -139,5 +141,6 @@ class ThreatWarningActivity : Activity() {
 
   companion object {
     private val danger = Color.rgb(190, 45, 42)
+    private val caution = Color.rgb(178, 103, 0)
   }
 }

@@ -41,4 +41,8 @@ data class BlockedHistoryRecord(
   val urls: List<ExtractedUrl>,
   val sourcePackage: String,
   val ruleVersion: String,
+  // Defaults preserve existing dangerous, blocked records from older installs.
+  val level: ThreatLevel = ThreatLevel.DANGEROUS,
+  val blocked: Boolean = true,
+  val isRead: Boolean = false,
 )

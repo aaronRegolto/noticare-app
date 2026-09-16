@@ -7,11 +7,11 @@ import java.util.Locale
 import kotlin.math.min
 
 /**
- * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.08.1).
+ * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.09.10).
  * Both implementations are deterministic, offline, and make no network request.
  */
 object SmishingEvaluator {
-  const val RULE_VERSION = "2026.08.1"
+  const val RULE_VERSION = "2026.09.10"
   private const val scoreCap = 100
   private const val suspiciousThreshold = 30
   private const val dangerousThreshold = 70
@@ -146,6 +146,8 @@ object SmishingEvaluator {
     TextRule(
       credentialRequest,
       listOf(
+        insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username\s+and\s+password|card\s+number\s+and\s+cvv)\b"""),
+        insensitive("""\b(?:paki[-\s]?(?:reply|send)|isumite|ibigay|ipadala|ilagay|i[-\s]?(?:send|type|share|reply))\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:otp|passcode|password|m?pin|cvv|bank\s+details)\b"""),
         insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|account(?:\s+details)?|bank(?:ing)?\s+details)\b"""),
         insensitive("""\b(?:share|forward)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin)\b"""),
         insensitive("""\b(?:ibigay|ipadala|i[-\s]?send|isend|ilagay|i[-\s]?type|itype|i[-\s]?share|ishare|ibahagi|i[-\s]?reply|ireply)\s+(?:(?:ang|yung|iyong|mo)\s+){0,2}(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|detalye(?:\s+ng\s+account)?)\b"""),

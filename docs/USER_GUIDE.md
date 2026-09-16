@@ -29,12 +29,12 @@ The status is Active only when notification access is granted, the service is co
 | Result     | Meaning                                                  | What NotiCare does                                                       |
 | ---------- | -------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Safe       | No meaningful phishing signs were found.                 | Leaves the SMS notification alone.                                       |
-| Suspicious | There are warning signs, but not enough strong evidence. | Leaves the SMS notification visible and can show a caution.              |
+| Suspicious | There are warning signs, but not enough strong evidence. | Uses your selected warning style and lets you Block or Ignore it.         |
 | Dangerous  | Strong signs suggest phishing or credential theft.       | Shows Block and Ignore controls. The notification is suppressed only if you choose Block. |
 
 If a notification is marked blocked, the original SMS is still in your Messages inbox. NotiCare suppresses a notification only after you choose Block and Android allows it.
 
-In **Settings & Privacy → Real-Time Protection**, turn on **Full-screen phishing warning** to show an immersive explanation when Android permits a background screen to open. Turn it off to use an actionable high-priority banner. Both modes explain the detected warning signs and offer **Block** and **Ignore**. Android can restrict background activity launches, so an actionable banner always remains available as a fallback.
+In **Settings & Privacy → Warning Appearance**, choose **Full-screen warning** to show an immersive explanation for Suspicious and Dangerous detections when Android permits a background screen to open. Choose **Notification banner** for a compact alert. Both modes explain the detected warning signs and offer **Block** and **Ignore**. Android can restrict background activity launches, so an actionable banner always remains available as a fallback.
 
 ## Manually scan a message
 
@@ -42,13 +42,17 @@ In **Settings & Privacy → Real-Time Protection**, turn on **Full-screen phishi
 2. Return to NotiCare and open **Manual Scan**.
 3. Tap **Paste**, review the text, then tap **Scan Message**.
 
-NotiCare reads the clipboard only when you tap Paste. It shows URLs as text and does not open them. A Manual Scan does not add a message to blocked History.
+NotiCare reads the clipboard only when you tap Paste. It shows URLs as text and does not open them. A Manual Scan does not add a message to the captured Messages inbox.
 
-## View and delete History
+Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. Reports contain classification metadata, never message text. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
 
-History contains only Dangerous real-time notifications that NotiCare successfully suppressed. It does not include Safe messages, visible Suspicious messages, unrelated app notifications, or Manual Scan results.
+## View and delete captured messages
 
-Use search or the month filter to find a local record. You can delete one record or clear all local History. Deleting History removes the encrypted local copy; it does not delete the original SMS from Messages.
+**Messages** shows every SMS notification scanned while monitoring is on: Safe, Suspicious, and Dangerous, including messages you ignore or block. These copies remain encrypted and scoped to the signed-in profile. It does not import earlier SMS, unrelated app notifications, or Manual Scan results. The app does not send or reply to SMS.
+
+Search sender names or the first 160 characters of a message, filter by classification, unread or blocked status, and use the month filter to narrow results. Tap a message to read its full text and scan details. Messages refreshes while open; pull down for an immediate refresh. Deleting a local copy or clearing the inbox does not delete the original SMS from your Messages app.
+
+After updating the native capture code, run `npm run android` to build and install it. A Metro reload alone only updates the interface. Previously captured blocked records remain available; new captures include all classifications.
 
 ## If a message looks suspicious
 

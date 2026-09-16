@@ -183,7 +183,7 @@ export default function SettingsScreen() {
   const confirmClearHistory = useCallback(() => {
     Alert.alert(
       'Clear protected History?',
-      'This permanently deletes local copies of successfully blocked notifications from this device. The original SMS messages remain in your Messages inbox.',
+      'This permanently deletes all captured message copies in NotiCare. The original SMS messages remain in your Messages app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -356,8 +356,8 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <SettingRow
             icon="trash-outline"
-            title="Clear Local History"
-            subtitle="Delete protected copies of blocked notifications"
+            title="Clear Messages Inbox"
+            subtitle="Delete all captured message copies in NotiCare"
             onPress={confirmClearHistory}
             destructive
           />

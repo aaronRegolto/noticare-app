@@ -89,19 +89,20 @@ object NotiCareNotifications {
     notificationManager(context)?.cancel(token.hashCode())
   }
 
-  fun showBlocked(context: Context, recordId: String?, score: Int, historySaved: Boolean) {
+  fun showBlocked(context: Context, recordId: String?, score: Int, historySaved: Boolean, level: String) {
     ensureChannels(context)
     val storageText = if (historySaved) {
-      "The original SMS was not deleted. A protected local record is available in History."
+      "The original SMS was not deleted. A protected local copy is available in NotiCare Messages."
     } else {
       "The original SMS was not deleted. No protected local message copy was saved."
     }
-    val body = "A likely smishing notification was suppressed (risk score $score/100). $storageText"
+    val classification = if (level == "dangerous") "likely smishing" else "suspicious SMS"
+    val body = "A $classification notification was suppressed (risk score $score/100). $storageText"
     notificationManager(context)?.notify(
       recordId?.hashCode() ?: (6200 + score),
       builder(context, dangerChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("NotiCare blocked a likely smishing SMS")
+        .setContentTitle("NotiCare blocked a $classification")
         .setContentText(body)
         .setStyle(Notification.BigTextStyle().bigText(body))
         .setContentIntent(historyIntent(context, recordId))

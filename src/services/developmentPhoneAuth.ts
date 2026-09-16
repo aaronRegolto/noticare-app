@@ -15,11 +15,14 @@ export type DevelopmentPhoneSession = Readonly<StoredDevelopmentPhoneSession>;
  * A local phone-only profile is deliberately available only to a JavaScript
  * development bundle. Release bundles always use Supabase Phone OTP.
  */
-export function canUseDevelopmentPhoneLogin(isDevelopmentBundle: boolean) {
-  return isDevelopmentBundle;
+export function canUseDevelopmentPhoneLogin(isDevelopmentBundle: boolean, explicitlyEnabled = false) {
+  return isDevelopmentBundle && explicitlyEnabled;
 }
 
-export const isDevelopmentPhoneLoginEnabled = canUseDevelopmentPhoneLogin(__DEV__);
+export const isDevelopmentPhoneLoginEnabled = canUseDevelopmentPhoneLogin(
+  __DEV__,
+  process.env.EXPO_PUBLIC_ENABLE_DEV_PHONE_LOGIN === 'true',
+);
 
 function isStoredSession(value: unknown): value is StoredDevelopmentPhoneSession {
   if (!value || typeof value !== 'object') return false;

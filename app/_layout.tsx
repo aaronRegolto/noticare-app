@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 import { AppSplash } from '@/src/components/AppSplash';
 import { AppErrorBoundary } from '@/src/components/AppErrorBoundary';
 import { AuthProvider, useAuth } from '@/src/providers/AuthProvider';
+import { EventSync } from '@/src/providers/EventSync';
 import { OnboardingProvider, useOnboarding } from '@/src/providers/OnboardingProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -41,6 +42,7 @@ export default function RootLayout() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
+        <EventSync />
         <OnboardingProvider>
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <RootNavigator />

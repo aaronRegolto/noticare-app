@@ -29,7 +29,7 @@ object EncryptedHistoryStore {
   }
 
   @Synchronized
-  fun saveBlocked(
+  fun saveScanned(
     context: Context,
     ownerScope: String,
     sender: String?,
@@ -40,6 +40,7 @@ object EncryptedHistoryStore {
     urls: List<ExtractedUrl>,
     sourcePackage: String,
     ruleVersion: String,
+    level: ThreatLevel,
   ): SaveResult {
     if (message.isBlank()) return SaveResult.Unavailable("content_unavailable")
 
@@ -56,6 +57,8 @@ object EncryptedHistoryStore {
         urls = urls,
         sourcePackage = sourcePackage,
         ruleVersion = ruleVersion,
+        level = level,
+        blocked = false,
       )
       val records = readRecords(context).toMutableList().apply { add(record) }
       writeRecords(context, records)
@@ -75,6 +78,27 @@ object EncryptedHistoryStore {
   @Synchronized
   fun find(context: Context, id: String, ownerScope: String): BlockedHistoryRecord? = readRecords(context)
     .firstOrNull { it.id == id && it.ownerScope == ownerScope }
+
+  /** Updates the captured item rather than creating a second copy after Block. */
+  @Synchronized
+  fun markBlocked(context: Context, id: String, ownerScope: String): Boolean {
+    val records = readRecords(context)
+    if (records.none { it.id == id && it.ownerScope == ownerScope }) return false
+    writeRecords(context, records.map {
+      if (it.id == id && it.ownerScope == ownerScope) it.copy(blocked = true) else it
+    })
+    return true
+  }
+
+  @Synchronized
+  fun markRead(context: Context, id: String, ownerScope: String): Boolean {
+    val records = readRecords(context)
+    val record = records.firstOrNull { it.id == id && it.ownerScope == ownerScope } ?: return false
+    if (!record.isRead) writeRecords(context, records.map {
+      if (it.id == id && it.ownerScope == ownerScope) it.copy(isRead = true) else it
+    })
+    return true
+  }
 
   @Synchronized
   fun delete(context: Context, id: String, ownerScope: String): Boolean {
@@ -196,6 +220,9 @@ object EncryptedHistoryStore {
     put("sender", record.sender)
     put("receivedAt", record.receivedAt)
     put("score", record.score)
+    put("level", record.level.wireValue)
+    put("blocked", record.blocked)
+    put("isRead", record.isRead)
     put("message", record.message)
     put("redactedPreview", record.redactedPreview)
     put("sourcePackage", record.sourcePackage)
@@ -233,6 +260,9 @@ object EncryptedHistoryStore {
       sender = json.optString("sender").takeIf { it.isNotBlank() },
       receivedAt = json.optLong("receivedAt"),
       score = json.optInt("score").coerceIn(0, 100),
+      level = ThreatLevel.entries.firstOrNull { it.wireValue == json.optString("level") } ?: ThreatLevel.DANGEROUS,
+      blocked = json.optBoolean("blocked", true),
+      isRead = json.optBoolean("isRead", false),
       message = message,
       redactedPreview = json.optString("redactedPreview").takeIf { it.isNotBlank() } ?: redactedPreview(),
       reasons = reasonsFromJson(json.optJSONArray("reasons")),

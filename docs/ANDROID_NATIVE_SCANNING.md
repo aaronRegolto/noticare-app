@@ -10,7 +10,7 @@ NotiCare real-time scanning is Android-only and requires a development or releas
 2. Resolves the current default SMS package with `Telephony.Sms.getDefaultSmsPackage(context)`.
 3. Compares the notification package to that package and rejects all other packages before reading notification extras.
 4. Rejects NotiCare's own notifications and group summaries.
-5. Reads `EXTRA_BIG_TEXT`, `EXTRA_TEXT`, and `EXTRA_TEXT_LINES` only after the package check; duplicate multipart text is collapsed.
+5. Selects the latest structured message by timestamp, or a single expanded/main text payload, only after the package check. It never joins different notification fields or InboxStyle entries into one SMS. Missing, malformed, or ambiguous content is reported unavailable.
 
 Consequently, social, email, banking, shopping, and other unrelated notifications are never read, scored, saved, or queued by this service. The app does not request `READ_SMS`, does not become the default SMS app, and does not use an accessibility service or an overlay.
 
@@ -18,19 +18,18 @@ If Android hides a notification preview, the listener records the non-sensitive 
 
 ## Native actions
 
-The Kotlin evaluator is offline-only and mirrors the versioned TypeScript rules in `src/features/detection/rules.ts` (version `2026.08.1`). It also runs the bundled V3 LiteRT model with its audited UTF-8 byte preprocessing and locked thresholds. The V3 model is advisory: it may raise a rule-safe message to Suspicious, but it cannot independently mark a notification Dangerous or suppress it. If model loading or inference fails, scanning falls back to the rule evaluator. Neither evaluator opens, resolves, previews, or fetches a URL.
+The Kotlin evaluator is offline-only and mirrors the versioned TypeScript rules in `src/features/detection/rules.ts` (version `2026.09.10`). The bundled V3 LiteRT model uses its audited UTF-8 byte preprocessing and locked threshold, but can raise a rule-safe result to Suspicious only when concrete phishing evidence also exists. Generic urgency, instructions to click or reply, and text obfuscation alone cannot support that escalation. Messages with no supporting indicators, such as ordinary greetings, retain their rule result. Existing Suspicious and Dangerous rule results are preserved. Model loading failures, invalid outputs, or invalid thresholds fall back to the rules. Neither evaluator opens, resolves, previews, or fetches a URL. This decision-policy change has regression coverage; it is not a model retraining or a new measured accuracy claim.
 
 - **Safe:** leaves the notification visible and queues sanitized aggregate metadata.
-- **Suspicious:** leaves it visible and posts a NotiCare caution with no SMS body, sender, or URL.
-- **Dangerous:** shows a full-screen warning or actionable banner with heuristic reasons and **Block**/**Ignore** controls. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. Only when Android accepts that call does NotiCare save the message in encrypted local History and call it _blocked_. **Ignore** leaves the notification visible. The original SMS is never deleted from the Messages inbox.
+- **Suspicious / Dangerous:** shows a full-screen warning or actionable banner with reasons and **Block**/**Ignore** controls. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. A captured message is marked _blocked_ only when Android accepts that call. **Ignore** leaves the notification visible. The original SMS is never deleted from the Messages app. All scanned levels are saved in the encrypted local Messages inbox when storage is available.
 
 Android does not provide a separate, synchronous “delivery suppressed” acknowledgement after `cancelNotification`; the app treats the platform accepting the cancellation call as the available best-effort success signal.
 
 ## Local data
 
-Blocked History is stored in an AES-GCM encrypted file. The encryption key is created in Android Keystore under a NotiCare-specific alias and never crosses the React Native bridge. History is also scoped to a hash of the currently signed-in profile: a different profile cannot list, open, delete, or clear another profile's records. Clearing the owner scope on sign-out also turns monitoring off, so a shared device cannot save new raw SMS content while it has no active owner. If Keystore or encrypted storage cannot be initialized, raw message text is not written anywhere and the native status reports encrypted History as unavailable.
+Captured Messages are stored in an AES-GCM encrypted file. The encryption key is created in Android Keystore under a NotiCare-specific alias and never crosses the React Native bridge. Messages are scoped to a hash of the currently signed-in profile: a different profile cannot list, open, delete, or clear another profile's records. Clearing the owner scope on sign-out also turns monitoring off. If encrypted storage cannot be initialized, raw message text is not written to a fallback store and native status reports storage as unavailable.
 
-History lists contain a masked sender, risk metadata, and the fixed label `Content redacted. Open to view the protected SMS.` They never contain an SMS-derived excerpt, URL, OTP, title, or sender value beyond the masked sender. Full encrypted message text is returned only by `getHistoryRecord(id)` after an explicit user action.
+Messages lists include the captured sender, a 160-character preview, risk metadata, blocked status, and read status. Full message text is returned by `getHistoryRecord(id)` after the user opens it. These local fields never enter the telemetry payload.
 
 The separate telemetry queue is also encrypted. It contains only:
 
@@ -57,7 +56,7 @@ The public typed wrapper is `src/services/notificationListener.ts`.
 | `setScanningEnabled(enabled)`                 | Persists the requested scan preference. `active` is returned only when all runtime requirements are met.           |
 | `setHistoryOwner(ownerId \| null)`            | Sets the active encrypted-History owner using a native hash; `null` clears the scope and disables scanning.        |
 | `scanTextLocally(text)`                       | Runs the same native offline evaluator for a user-initiated Manual Scan.                                           |
-| `getHistory()` / `getHistoryRecord(id)`       | Lists masked History summaries and explicitly decrypts a selected record.                                          |
+| `getHistory()` / `getHistoryRecord(id)`       | Lists local message previews and opens a selected encrypted record.                                                |
 | `deleteHistoryRecord(id)` / `clearHistory()`  | Local encrypted History deletion actions.                                                                          |
 | `getPendingTelemetry()` / `ackTelemetry(ids)` | Sanitized native realtime telemetry synchronization.                                                               |
 

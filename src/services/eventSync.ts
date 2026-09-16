@@ -18,6 +18,12 @@ const INSTALLATION_ID_KEY = 'noticare.installation-id.v1';
 const DEVICE_ID_KEY_PREFIX = 'noticare.device-id.v1';
 const EVENT_QUEUE_KEY = 'noticare.anonymous-event-queue.v1';
 const MAX_QUEUED_EVENTS = 100;
+let queueWork: Promise<unknown> = Promise.resolve();
+function serializeQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const next = queueWork.then(operation, operation);
+  queueWork = next.catch(() => undefined);
+  return next;
+}
 
 type QueueEvent = {
   clientEventId: string;
@@ -44,8 +50,8 @@ async function getOrCreateSecureId(key: string) {
   return created;
 }
 
-async function readQueue(): Promise<QueueEvent[]> {
-  const raw = await AsyncStorage.getItem(EVENT_QUEUE_KEY);
+async function readQueue(userId: string): Promise<QueueEvent[]> {
+  const raw = await AsyncStorage.getItem(`${EVENT_QUEUE_KEY}.${userId}`);
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -72,8 +78,8 @@ function isQueueEvent(value: unknown): value is QueueEvent {
   );
 }
 
-async function writeQueue(queue: QueueEvent[]) {
-  await AsyncStorage.setItem(EVENT_QUEUE_KEY, JSON.stringify(queue.slice(-MAX_QUEUED_EVENTS)));
+async function writeQueue(queue: QueueEvent[], userId: string) {
+  await AsyncStorage.setItem(`${EVENT_QUEUE_KEY}.${userId}`, JSON.stringify(queue.slice(-MAX_QUEUED_EVENTS)));
 }
 
 /** Creates an anonymized event. The caller passes no text, sender, title, or raw URL. */
@@ -82,6 +88,7 @@ export async function queueThreatEvent(
   source: 'manual' | 'realtime',
   blocked: boolean,
 ): Promise<string> {
+  const userId = await activeUserId();
   const event: QueueEvent = {
     clientEventId: Crypto.randomUUID(),
     occurredAt: new Date().toISOString(),
@@ -94,9 +101,11 @@ export async function queueThreatEvent(
     ruleVersion: result.ruleVersion,
     attempts: 0,
   };
-  const queue = await readQueue();
-  queue.push(event);
-  await writeQueue(queue);
+  await serializeQueue(async () => {
+    const queue = await readQueue(userId);
+    queue.push(event);
+    await writeQueue(queue, userId);
+  });
   return event.clientEventId;
 }
 
@@ -141,15 +150,20 @@ export async function clearCurrentDeviceRegistration() {
  * intentionally unavailable to this function.
  */
 export async function flushQueuedThreatEvents() {
-  if (!isSupabaseConfigured) return { synced: 0, pending: (await readQueue()).length };
+  return serializeQueue(flushUserQueue);
+}
+async function flushUserQueue() {
+  if (!isSupabaseConfigured) return { synced: 0, pending: 0 };
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return { synced: 0, pending: (await readQueue()).length };
+  if (!sessionData.session) return { synced: 0, pending: 0 };
+  const userId = sessionData.session.user.id;
 
-  const queued = await readQueue();
+  const queued = await readQueue(userId);
   const remaining: QueueEvent[] = [];
   let synced = 0;
   for (const event of queued) {
     try {
+      if ((await activeUserId()) !== userId) throw new Error('Account changed during sync.');
       const deviceId = await registerDevice(event.ruleVersion);
       const { error } = await supabase.rpc('record_threat_event', {
         p_client_event_id: event.clientEventId,
@@ -170,7 +184,7 @@ export async function flushQueuedThreatEvents() {
       remaining.push({ ...event, attempts: event.attempts + 1 });
     }
   }
-  await writeQueue(remaining);
+  await writeQueue(remaining, userId);
   return { synced, pending: remaining.length };
 }
 

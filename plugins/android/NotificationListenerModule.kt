@@ -160,6 +160,18 @@ class NotificationListenerModule(
   }
 
   @ReactMethod
+  fun markHistoryRead(id: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        RealtimeScanPreferences.historyOwnerScope(appContext)
+          ?.let { ownerScope -> EncryptedHistoryStore.markRead(appContext, id, ownerScope) }
+          ?: false
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("history_read_failed", "Unable to mark this message as read.", error) }
+    }
+  }
+
+  @ReactMethod
   fun deleteHistoryRecord(id: String, promise: Promise) {
     bridgeScope.launch {
       runCatching {
@@ -257,11 +269,14 @@ class NotificationListenerModule(
   private fun historyListMap(record: BlockedHistoryRecord): WritableMap = Arguments.createMap().apply {
     putString("id", record.id)
     putString("maskedSender", EncryptedHistoryStore.maskedSender(record.sender))
+    putString("sender", record.sender ?: "Unknown sender")
+    putString("preview", record.message.replace(Regex("\\s+"), " ").take(160))
+    putBoolean("blocked", record.blocked)
+    putBoolean("isRead", record.isRead)
     putDouble("receivedAt", record.receivedAt.toDouble())
-    putString("level", "dangerous")
+    putString("level", record.level.wireValue)
     putInt("score", record.score)
-    // This is a fixed safe label, not a message-derived excerpt. The full SMS
-    // is returned only by getHistoryRecord(id) after an explicit open.
+    // Preserve the old label for older JS bundles; the new inbox uses preview.
     putString("redactedPreview", record.redactedPreview)
     putInt("warningSignCount", record.reasons.size)
     putString("sourcePackage", record.sourcePackage)
@@ -273,7 +288,9 @@ class NotificationListenerModule(
     putString("message", record.message)
     putArray("reasons", reasonsArray(record.reasons))
     putArray("urls", urlsArray(record.urls))
-    putString("originalSmsNotice", "The original SMS still exists in the Messages inbox. NotiCare suppressed its notification; it did not delete the message.")
+    putString("originalSmsNotice", if (record.blocked)
+      "NotiCare suppressed this notification. It did not delete the original SMS from your Messages app."
+      else "Captured from your Messages app notification. NotiCare did not suppress this notification or delete the original SMS.")
   }
 
   private fun threatResultMap(result: ThreatResult): WritableMap = Arguments.createMap().apply {

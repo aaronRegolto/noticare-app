@@ -46,7 +46,12 @@ export type HistorySummary = {
   id: string;
   maskedSender: string;
   receivedAt: number;
-  level: 'dangerous';
+  level: ThreatLevel;
+  /** Available after rebuilding with the Messages inbox native module. */
+  sender?: string;
+  preview?: string;
+  blocked?: boolean;
+  isRead?: boolean;
   score: number;
   /** Fixed non-content label; never an SMS-derived excerpt. */
   redactedPreview: string;
@@ -85,6 +90,7 @@ type NotificationListenerNativeModule = {
   scanText(text: string): Promise<LocalThreatResult>;
   getHistory(): Promise<HistorySummary[]>;
   getHistoryRecord(id: string): Promise<HistoryRecord | null>;
+  markHistoryRead?(id: string): Promise<boolean>;
   deleteHistoryRecord(id: string): Promise<boolean>;
   clearHistory(): Promise<boolean>;
   getPendingTelemetry(): Promise<PendingTelemetryEvent[]>;
@@ -153,7 +159,7 @@ export function scanTextLocally(text: string): Promise<LocalThreatResult> {
   return requireAndroidNativeModule().scanText(text);
 }
 
-/** Lists only dangerous real-time notifications that Android accepted for suppression. */
+/** Lists captured SMS notifications for the active local profile, newest first. */
 export function getHistory(): Promise<HistorySummary[]> {
   return requireAndroidNativeModule().getHistory();
 }
@@ -161,6 +167,15 @@ export function getHistory(): Promise<HistorySummary[]> {
 /** Decrypts a full History record only after the user explicitly opens it. */
 export function getHistoryRecord(id: string): Promise<HistoryRecord | null> {
   return requireAndroidNativeModule().getHistoryRecord(id);
+}
+
+/** Older installed native builds can still display their existing blocked history. */
+export function supportsMessageInbox(): boolean {
+  return isNativeMonitoringAvailable() && typeof nativeModule?.markHistoryRead === 'function';
+}
+
+export async function markHistoryRead(id: string): Promise<boolean> {
+  return requireAndroidNativeModule().markHistoryRead?.(id) ?? false;
 }
 
 export function deleteHistoryRecord(id: string): Promise<boolean> {

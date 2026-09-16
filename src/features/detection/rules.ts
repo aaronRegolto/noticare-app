@@ -6,7 +6,7 @@ import type { DetectionRuleBundle } from './types';
  * We intentionally score combinations, rather than a brand name or one keyword alone.
  */
 export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
-  version: '2026.08.1',
+  version: '2026.09.10',
   scoreCap: 100,
   thresholds: {
     suspicious: 30,
@@ -22,6 +22,8 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       signals: ['credential-request'],
       ignoreWhenPrecededBySafetyAdvice: true,
       patterns: [
+        String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username\s+and\s+password|card\s+number\s+and\s+cvv)\b`,
+        String.raw`\b(?:paki[-\s]?(?:reply|send)|isumite|ibigay|ipadala|ilagay|i[-\s]?(?:send|type|share|reply))\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:otp|passcode|password|m?pin|cvv|bank\s+details)\b`,
         String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|account(?:\s+details)?|bank(?:ing)?\s+details)\b`,
         String.raw`\b(?:share|forward)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin)\b`,
         String.raw`\b(?:ibigay|ipadala|i[-\s]?send|isend|ilagay|i[-\s]?type|itype|i[-\s]?share|ishare|ibahagi|i[-\s]?reply|ireply)\s+(?:(?:ang|yung|iyong|mo)\s+){0,2}(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|detalye(?:\s+ng\s+account)?)\b`,

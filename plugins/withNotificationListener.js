@@ -24,11 +24,7 @@ const LEGACY_SERVICES = new Set([
   '.realtime.MessagingNotificationListener',
 ]);
 
-const LEGACY_ACTIVITIES = new Set([
-  '.WarningOverlayActivity',
-  '.ui.AlertActivity',
-  '.ui.ThreatDetailsActivity',
-]);
+const LEGACY_ACTIVITIES = new Set(['.WarningOverlayActivity', '.ui.AlertActivity', '.ui.ThreatDetailsActivity']);
 
 // These APIs would either grant broad SMS access or support the removed overlay/
 // accessibility implementation. Keep the removal defensive so a dependency or a
@@ -286,11 +282,14 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['SmishingEvaluator.kt', path.join(sourceRoot, 'bridge', 'SmishingEvaluator.kt')],
     ['V3RiskEvaluator.kt', path.join(sourceRoot, 'bridge', 'V3RiskEvaluator.kt')],
     ['SmsNotificationListener.kt', path.join(sourceRoot, 'bridge', 'SmsNotificationListener.kt')],
+    ['NotificationInput.kt', path.join(sourceRoot, 'bridge', 'NotificationInput.kt')],
     ['ThreatDecisionReceiver.kt', path.join(sourceRoot, 'bridge', 'ThreatDecisionReceiver.kt')],
     ['ThreatWarningActivity.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningActivity.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
     ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
     ['V3RiskEvaluatorTest.kt', path.join(testSourceRoot, 'bridge', 'V3RiskEvaluatorTest.kt')],
+    ['NotificationInputTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationInputTest.kt')],
+    ['ModelEvaluationTest.kt', path.join(testSourceRoot, 'bridge', 'ModelEvaluationTest.kt')],
   ];
 
   for (const [templatePath, destinationPath] of mappings) {

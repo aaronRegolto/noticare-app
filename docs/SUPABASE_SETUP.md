@@ -19,7 +19,17 @@ Show a generic error for rate limits, invalid/expired code, or network problems.
 
 ### Local development shortcut
 
-When a JavaScript development bundle runs from Metro (`__DEV__`), NotiCare validates the entered phone number locally and creates a device-only profile instead of sending an OTP. It never creates a Supabase user or access token, so it is not suitable for testing authenticated RPCs, remote community data, or release behavior. A release bundle always uses the OTP flow above.
+Supabase Phone OTP is the default in both development and release builds. Set `EXPO_PUBLIC_ENABLE_DEV_PHONE_LOGIN=true` only for deliberately offline development. This opt-in validates the phone number locally and creates a device-only profile; it cannot upload scans, feedback, or access authenticated community data. Release bundles always use OTP regardless of this flag.
+
+## Verify mobile → Supabase → admin
+
+1. Run the admin server and Metro from this repository using the same root `.env`. For EAS builds, set the same Supabase URL and public key in the selected EAS environment. Previously installed builds may contain older values; rebuild when changing embedded configuration.
+2. Restart Metro with `npx expo start --dev-client --clear` after updating the login configuration. Sign in on the phone using real Supabase Phone OTP. Local development profiles cannot be converted to authenticated Supabase sessions.
+3. Run a Manual Scan while online. Open the admin dashboard's **Connection status** and refresh: verify the latest received timestamp advances. Open **Scan records** to inspect the new manual event. Raw SMS text is never uploaded.
+4. Leave the app open: queues retry every 30 seconds and when it returns to the foreground. Background notifications remain locally queued until the app resumes; this is not an always-running background upload service.
+5. Submit feedback on the phone and refresh **User feedback**. To check offline retries, disconnect the phone, scan, reconnect, and keep the app foregrounded for at least 30 seconds. Repeated retries must not create duplicate events.
+
+Manual queues are now account-scoped and serialized to prevent lost writes during uploads. Older unscoped queues are left untouched and are not uploaded because their account ownership cannot be determined. Supabase remains the shared backend; the phone does not connect to the local admin server. Training CSVs remain admin-local and do not update the model bundled with the phone.
 
 ## 2. Create local environment values
 

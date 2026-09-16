@@ -8,7 +8,7 @@ NotiCare is an Android-only, privacy-first anti-smishing application. It checks 
 
 - Non-SMS notifications are rejected before notification extras are read.
 - Full SMS text, complete sender numbers, raw URLs, notification titles, clipboard content, OTPs, and encryption keys stay off Supabase.
-- Only Dangerous real-time notifications that were successfully suppressed are saved in encrypted local History.
+- Every scanned SMS notification is saved in the encrypted local Messages inbox, with sender previews, classification filters, unread status, and message details. Blocked status records successful notification suppression separately from risk level.
 - Community charts use anonymous, aggregate metadata only.
 - Manual Scan reads the clipboard only after the user taps Paste and never opens detected links.
 
@@ -58,7 +58,7 @@ Expo SDK 54 targets React Native 0.81 and Android compile/target SDK 36. See the
 
 ## Development phone sign-in
 
-When NotiCare runs from Metro in a JavaScript development bundle (`__DEV__`), entering a valid phone number creates a device-only development profile and skips SMS OTP. It is for local UI and scanner testing only: no SMS is sent, no Supabase user/session is created, and it must not be used to verify remote community features.
+NotiCare uses Supabase Phone OTP by default, including Metro development builds. For offline UI/scanner testing only, set `EXPO_PUBLIC_ENABLE_DEV_PHONE_LOGIN=true` and restart Metro. This explicit development shortcut creates a device-only profile: it cannot upload scans or feedback to the admin dashboard. Release builds always require real OTP.
 
 Release bundles always use Supabase Phone OTP. Test the production login flow with a configured SMS provider before distributing an APK or App Bundle.
 

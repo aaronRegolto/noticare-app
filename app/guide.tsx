@@ -37,8 +37,8 @@ const topics: GuideTopic[] = [
     body: 'Long-press an SMS in Messages, tap Copy, return to NotiCare, tap Paste, then choose Scan Message. NotiCare never opens links it finds.',
   },
   {
-    title: 'History',
-    body: 'History contains only Dangerous real-time notifications that NotiCare successfully suppressed. Manual scans, Safe messages, and visible Suspicious messages do not appear there.',
+    title: 'Messages inbox',
+    body: 'Messages shows every SMS notification captured while real-time scanning is on. Search senders or message previews, filter by classification or unread status, and tap a message to read it. Pull down to refresh. Earlier SMS and manual scans are not imported. Deleting a local copy does not delete the original SMS.',
   },
   {
     title: 'Privacy',

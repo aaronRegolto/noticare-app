@@ -190,7 +190,7 @@ export default function DashboardScreen() {
     }
     const [nextStatus, records] = await Promise.all([getMonitoringStatus(), getHistory()]);
     setMonitoring(nextStatus);
-    setHistory(records);
+    setHistory(records.filter((record) => record.blocked ?? true));
   }, []);
 
   const refreshCommunity = useCallback(async (selectedRange: CommunityRange) => {
@@ -340,8 +340,6 @@ export default function DashboardScreen() {
             </View>
           </View>
           <Text style={styles.blockedNote}>
-            “Blocked” means a dangerous notification was suppressed when Android allowed it. The original SMS is never
-            deleted.
           </Text>
         </View>
 
@@ -454,7 +452,7 @@ export default function DashboardScreen() {
         <View style={styles.localTitleRow}>
           <Text style={styles.localTitle}>Your protected device</Text>
           <Pressable onPress={() => router.push('/history')} accessibilityRole="button">
-            <Text style={styles.historyLink}>View History</Text>
+            <Text style={styles.historyLink}>View Messages</Text>
           </Pressable>
         </View>
         <View style={styles.metrics}>

@@ -20,6 +20,8 @@ data class PendingThreat(
   val sourcePackage: String,
   val postedAt: Long,
   val result: ThreatResult,
+  val ownerScope: String,
+  val recordId: String?,
 )
 
 object ThreatDecisionCoordinator {
@@ -81,6 +83,7 @@ class SmsNotificationListener : NotificationListenerService() {
   private suspend fun processPostedNotification(sbn: StatusBarNotification) {
     // 1. The persisted switch is checked before package/content processing.
     if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) return
+    val ownerScope = RealtimeScanPreferences.historyOwnerScope(applicationContext) ?: return
 
     // 2. Resolve the device's current default SMS provider for every event.
     // This automatically handles default-Messages-app changes.
@@ -94,35 +97,53 @@ class SmsNotificationListener : NotificationListenerService() {
     if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
     // Extras are intentionally read only after the package guard above.
-    val text = NotificationTextExtractor.extractText(notification)
+    val text = runCatching { NotificationTextExtractor.extractText(notification) }.getOrNull()
     if (text.isNullOrBlank()) {
       ScanRuntime.markContentUnavailable()
       return
     }
 
-    val fingerprint = fingerprint(sourcePackage, text)
+    val sender = runCatching { NotificationTextExtractor.extractSender(notification) }.getOrNull()
+    val fingerprint = fingerprint("$sourcePackage\n${sender.orEmpty()}", text)
     if (NotificationDeduplicator.isDuplicate(sbn.key, fingerprint)) return
 
-    val sender = NotificationTextExtractor.extractSender(notification)
     val result = V3RiskEvaluator.evaluate(applicationContext, text)
+    // Do not attribute an in-flight scan to a newly signed-in profile.
+    if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != ownerScope) return
+    if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) return
+    val saved = EncryptedHistoryStore.saveScanned(
+      context = applicationContext,
+      ownerScope = ownerScope,
+      sender = sender,
+      receivedAt = sbn.postTime,
+      score = result.score,
+      message = text,
+      reasons = result.reasons,
+      urls = result.urls,
+      sourcePackage = sourcePackage,
+      ruleVersion = result.ruleVersion,
+      level = result.level,
+    )
+    val recordId = (saved as? EncryptedHistoryStore.SaveResult.Saved)?.id
     ScanRuntime.markProcessed()
 
     when (result.level) {
       ThreatLevel.SAFE -> EncryptedTelemetryQueue.enqueue(applicationContext, result, false, sbn.postTime)
       ThreatLevel.SUSPICIOUS -> {
-        EncryptedTelemetryQueue.enqueue(applicationContext, result, false, sbn.postTime)
-        NotiCareNotifications.showCaution(applicationContext, result.score)
+        handleActionableNotification(sbn, sender, text, sourcePackage, result, ownerScope, recordId)
       }
-      ThreatLevel.DANGEROUS -> handleDangerousNotification(sbn, sender, text, sourcePackage, result)
+      ThreatLevel.DANGEROUS -> handleActionableNotification(sbn, sender, text, sourcePackage, result, ownerScope, recordId)
     }
   }
 
-  private suspend fun handleDangerousNotification(
+  private suspend fun handleActionableNotification(
     sbn: StatusBarNotification,
     sender: String?,
     text: String,
     sourcePackage: String,
     result: ThreatResult,
+    ownerScope: String,
+    recordId: String?,
   ) {
     val pending = PendingThreat(
       token = UUID.randomUUID().toString(),
@@ -132,6 +153,8 @@ class SmsNotificationListener : NotificationListenerService() {
       sourcePackage = sourcePackage,
       postedAt = sbn.postTime,
       result = result,
+      ownerScope = ownerScope,
+      recordId = recordId,
     )
     ThreatDecisionCoordinator.add(pending)
     NotiCareNotifications.showDangerChoice(applicationContext, pending)
@@ -143,6 +166,7 @@ class SmsNotificationListener : NotificationListenerService() {
   fun applyDecision(pending: PendingThreat, block: Boolean) {
     scanScope.launch {
       NotiCareNotifications.dismissDangerChoice(applicationContext, pending.token)
+      if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != pending.ownerScope) return@launch
       if (!block) {
         EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, false, pending.postedAt)
         return@launch
@@ -158,42 +182,20 @@ class SmsNotificationListener : NotificationListenerService() {
         return@launch
       }
 
-    EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, true, pending.postedAt)
-    val ownerScope = RealtimeScanPreferences.historyOwnerScope(applicationContext)
-    if (ownerScope == null) {
-      // A signed-out/shared device may still receive the safety warning, but it
-      // must never create a raw SMS History record with no account owner.
-      NotiCareNotifications.showBlocked(applicationContext, null, pending.result.score, false)
-      return@launch
-    }
-
-    val saveResult = EncryptedHistoryStore.saveBlocked(
-      context = applicationContext,
-      ownerScope = ownerScope,
-      sender = pending.sender,
-      receivedAt = pending.postedAt,
-      score = pending.result.score,
-      message = pending.message,
-      reasons = pending.result.reasons,
-      urls = pending.result.urls,
-      sourcePackage = pending.sourcePackage,
-      ruleVersion = pending.result.ruleVersion,
-    )
-    when (saveResult) {
-      is EncryptedHistoryStore.SaveResult.Saved -> {
-        NotiCareNotifications.showBlocked(applicationContext, saveResult.id, pending.result.score, true)
-      }
-      is EncryptedHistoryStore.SaveResult.Unavailable -> {
-        NotiCareNotifications.showBlocked(applicationContext, null, pending.result.score, false)
-      }
-    }
+      EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, true, pending.postedAt)
+      val historySaved = pending.recordId?.let { id ->
+        runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
+          .getOrElse { ScanRuntime.markStorageUnavailable(); false }
+      } ?: false
+      NotiCareNotifications.showBlocked(
+        applicationContext, pending.recordId.takeIf { historySaved }, pending.result.score, historySaved, pending.result.level.wireValue,
+      )
     }
   }
 
   private fun fingerprint(sourcePackage: String, text: String): String {
-    val normalized = SmishingEvaluator.normalize(text)
     val bytes = MessageDigest.getInstance("SHA-256")
-      .digest("$sourcePackage\\n$normalized".toByteArray(Charsets.UTF_8))
+      .digest("$sourcePackage\n$text".toByteArray(Charsets.UTF_8))
     return bytes.joinToString(separator = "") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
   }
 }
@@ -201,33 +203,14 @@ class SmsNotificationListener : NotificationListenerService() {
 private object NotificationTextExtractor {
   fun extractText(notification: Notification): String? {
     val extras = notification.extras ?: return null
-    val candidates = buildList {
-      messagingStyleMessages(extras)
-        .lastOrNull()
-        ?.text
-        ?.toString()
-        ?.let(::add)
-      extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.let(::add)
-      extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.let(::add)
-      extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
-        ?.map(CharSequence::toString)
-        ?.forEach(::add)
-    }
-    val unique = mutableListOf<String>()
-    for (candidate in candidates) {
-      val value = candidate.trim()
-      if (value.isBlank()) continue
-      val normalized = SmishingEvaluator.normalize(value)
-      if (unique.none { existing ->
-          val existingNormalized = SmishingEvaluator.normalize(existing)
-          existingNormalized == normalized ||
-            existingNormalized.contains(normalized) || normalized.contains(existingNormalized)
-        }
-      ) {
-        unique += value
-      }
-    }
-    return unique.joinToString("\n").takeIf { it.isNotBlank() }
+    val messages = messagingStyleMessages(extras)
+    return NotificationInput.select(
+      hasMessages = messages.isNotEmpty(),
+      latestMessage = messages.asReversed().maxByOrNull { it.timestamp }?.text?.toString(),
+      bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+      text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+      lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.map(CharSequence::toString) ?: emptyList(),
+    )
   }
 
   @Suppress("DEPRECATION")
@@ -236,15 +219,17 @@ private object NotificationTextExtractor {
     return Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
   }
 
+  @Suppress("DEPRECATION")
   fun extractSender(notification: Notification): String? {
     val extras = notification.extras ?: return null
-    return extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()?.takeIf { it.isNotBlank() }
+    return messagingStyleMessages(extras).asReversed().maxByOrNull { it.timestamp }?.sender?.toString()?.takeIf { it.isNotBlank() }
+      ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()?.takeIf { it.isNotBlank() }
       ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.takeIf { it.isNotBlank() }
       ?: extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.takeIf { it.isNotBlank() }
   }
 }
 
-private object NotificationDeduplicator {
+internal object NotificationDeduplicator {
   private const val dedupeWindowMs = 2 * 60 * 1000L
   private const val maxEntries = 256
   private val recent = LinkedHashMap<String, Long>()
@@ -252,11 +237,11 @@ private object NotificationDeduplicator {
   @Synchronized
   fun isDuplicate(notificationKey: String, contentFingerprint: String, now: Long = System.currentTimeMillis()): Boolean {
     recent.entries.removeAll { (_, timestamp) -> now - timestamp > dedupeWindowMs }
-    val keyEntry = "notification:$notificationKey"
-    val contentEntry = "content:$contentFingerprint"
-    if (recent.containsKey(keyEntry) || recent.containsKey(contentEntry)) return true
+    // A conversation notification can be updated with a new incoming message.
+    // Only skip a repeat of the same content on that notification.
+    val keyEntry = "notification:$notificationKey:$contentFingerprint"
+    if (recent.containsKey(keyEntry)) return true
     recent[keyEntry] = now
-    recent[contentEntry] = now
     while (recent.size > maxEntries) recent.remove(recent.entries.first().key)
     return false
   }

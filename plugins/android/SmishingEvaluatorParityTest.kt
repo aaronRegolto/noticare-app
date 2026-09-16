@@ -160,6 +160,16 @@ class SmishingEvaluatorParityTest {
 
   @Test
   fun reportsTheSameVersionAsTheTypeScriptRuleBundle() {
-    assertEquals("2026.08.1", SmishingEvaluator.RULE_VERSION)
+    assertEquals("2026.09.10", SmishingEvaluator.RULE_VERSION)
   }
+  @Test
+  fun credentialWordingAndSafetyAdvice() {
+    listOf("Reply with your six-digit OTP to cancel the transfer.","Enter your e-wallet password to release the refund.","Confirm your username and password.","Update your card number and CVV.","Paki-reply ang OTP para ma-release ang pera.","Isumite ang inyong MPIN.").forEach { message ->
+      assertEquals(message, ThreatLevel.SUSPICIOUS, SmishingEvaluator.evaluate(message).level)
+    }
+    listOf("hello love","Never reply with your six-digit OTP.","Do not enter your e-wallet password.","Never confirm your username and password.","Huwag paki-reply ang OTP.","Huwag isumite ang inyong MPIN.","Your six-digit OTP is 123456. Never share it.","Payment received. Thank you.").forEach { message ->
+      assertEquals(message, ThreatLevel.SAFE, SmishingEvaluator.evaluate(message).level)
+    }
+  }
+
 }

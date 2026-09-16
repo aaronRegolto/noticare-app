@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const sections = [
   [
     'What stays on your device',
-    'Full SMS text, complete sender details, and raw links stay on this device. Dangerous notifications that Android successfully suppresses can be stored in encrypted local History.',
+    'Scanned SMS notifications, including Safe, Suspicious, and Dangerous messages, are saved in your encrypted local Messages inbox. Sender names and previews appear in the inbox; full text and raw links stay on this device.',
   ],
   [
     'What can be shared anonymously',
@@ -19,7 +19,7 @@ const sections = [
   ],
   [
     'Your controls',
-    'You can turn scanning off, delete one protected History record, clear all protected local History, submit feedback without sharing a message, or sign out at any time.',
+    'You can turn scanning off, delete one captured message, clear your local Messages inbox, submit reports without sharing message text, or sign out at any time.',
   ],
 ];
 

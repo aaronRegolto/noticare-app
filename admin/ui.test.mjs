@@ -1,0 +1,85 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+import { runInContext } from 'node:vm';
+
+function browser() {
+  const dom = new JSDOM(readFileSync(new URL('./public/index.html', import.meta.url), 'utf8'), {
+    url: 'http://localhost:4173',
+    runScripts: 'outside-only',
+  });
+  dom.window.fetch = async () => ({ ok: true, json: async () => ({ configured: true }) });
+  dom.window.AbortSignal.timeout = () => undefined;
+  dom.window.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  dom.window.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new dom.window.Event('close'));
+  };
+  runInContext(readFileSync(new URL('./public/app.js', import.meta.url), 'utf8'), dom.getInternalVMContext());
+  dom.window.eval(`
+    $('#content').innerHTML = '<button id="export"></button><div id="records"></div>';
+    rows = [{ score: 10, message: '<img src=x onerror=alert(1)>', nested: { label: 'dangerous' } }, { score: 2, message: 'Other message', nested: null }];
+    renderRecordBrowser();
+  `);
+  return dom;
+}
+
+test('page search narrows export rows and empty searches can be cleared', () => {
+  const dom = browser();
+  try {
+    const { document, Event } = dom.window;
+    const search = document.querySelector('#page-search');
+    search.value = 'dangerous';
+    search.dispatchEvent(new Event('input'));
+    assert.equal(dom.window.eval('rows.length'), 1);
+    assert.equal(document.querySelectorAll('tbody tr').length, 1);
+    search.value = 'no match';
+    search.dispatchEvent(new Event('input'));
+    assert.equal(document.querySelector('#export').disabled, true);
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    assert.equal(dom.window.eval('rows.length'), 2);
+    assert.equal(document.querySelector('#export').disabled, false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('column sorting is numeric, reversible, and retains keyboard focus', () => {
+  const dom = browser();
+  try {
+    const { document } = dom.window;
+    document.querySelector('[data-sort="0"]').click();
+    assert.equal(dom.window.eval('rows[0].score'), 2);
+    assert.equal(document.activeElement.dataset.sort, '0');
+    assert.equal(document.activeElement.parentElement.getAttribute('aria-sort'), 'ascending');
+    document.activeElement.click();
+    assert.equal(dom.window.eval('rows[0].score'), 10);
+    assert.equal(document.activeElement.parentElement.getAttribute('aria-sort'), 'descending');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('record details display untrusted text safely and clear on sign out', () => {
+  const dom = browser();
+  try {
+    const { document } = dom.window;
+    const trigger = document.querySelector('[data-record="0"]');
+    trigger.click();
+    const dialog = document.querySelector('#record-dialog');
+    assert.match(dialog.textContent, /<img src=x onerror=alert\(1\)>/);
+    assert.equal(dialog.querySelector('img'), null);
+    assert.match(dialog.querySelector('pre').textContent, /"label": "dangerous"/);
+    dialog.querySelector('button').click();
+    assert.equal(document.activeElement, trigger);
+    trigger.click();
+    dom.window.eval('signOut()');
+    assert.equal(document.querySelector('#record-dialog'), null);
+  } finally {
+    dom.window.close();
+  }
+});

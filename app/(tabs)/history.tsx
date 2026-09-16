@@ -1,8 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  AppState,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -11,12 +22,22 @@ import {
   getHistory,
   getHistoryRecord,
   isNativeMonitoringAvailable,
+  markHistoryRead,
+  supportsMessageInbox,
   type HistoryRecord,
   type HistorySummary,
 } from '@/src/services/notificationListener';
 import { logError } from '@/src/services/logger';
+import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
+import { useAuth } from '@/src/providers/AuthProvider';
 
 const navy = '#1E2D43';
+const tones = {
+  safe: { color: '#087653', surface: '#E5F6EE', label: 'Safe' },
+  suspicious: { color: '#8A5C06', surface: '#FFF2D8', label: 'Suspicious' },
+  dangerous: { color: '#B42332', surface: '#FDE9EC', label: 'Dangerous' },
+};
+const inboxFilters: MessageFilter[] = ['all', 'unread', 'safe', 'suspicious', 'dangerous', 'blocked'];
 
 function Header() {
   const router = useRouter();
@@ -75,37 +96,38 @@ function Counter({
 }
 
 function RecordCard({ record, onOpen }: { record: HistorySummary; onOpen: () => void }) {
+  const tone = tones[record.level];
   return (
     <Pressable
       onPress={onOpen}
-      style={styles.recordCard}
+      style={({ pressed }) => [styles.recordCard, pressed && { backgroundColor: '#F1F6FA' }]}
       accessibilityRole="button"
-      accessibilityLabel={`Open blocked SMS from ${record.maskedSender}`}
+      accessibilityLabel={`${record.isRead ? '' : 'Unread, '}${tone.label} message from ${messageSender(record)}. Open message`}
     >
       <View style={styles.recordTop}>
         <View style={styles.senderRow}>
-          <View style={styles.senderIcon}>
-            <Ionicons name="person-outline" size={18} color="#365A7B" />
+          <View style={[styles.senderIcon, { backgroundColor: tone.surface }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={tone.color} />
           </View>
-          <View>
-            <Text style={styles.sender}>{record.maskedSender}</Text>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={[styles.sender, { fontWeight: record.isRead ? '500' : '800' }]}>
+              {messageSender(record)}
+            </Text>
             <Text style={styles.date}>{formatDate(record.receivedAt)}</Text>
           </View>
         </View>
-        <View style={styles.dangerBadge}>
-          <Ionicons name="shield-checkmark" size={12} color="#B42318" />
-          <Text style={styles.dangerBadgeText}>DANGEROUS</Text>
+        <View style={[styles.dangerBadge, { backgroundColor: tone.surface }]}>
+          <Text style={[styles.dangerBadgeText, { color: tone.color }]}>{tone.label}</Text>
         </View>
       </View>
-      <Text style={styles.redactedLabel}>CONTENT REDACTED</Text>
       <Text style={styles.redactedPreview} numberOfLines={2}>
-        {record.redactedPreview}
+        {record.preview ?? record.redactedPreview}
       </Text>
       <View style={styles.recordFooter}>
-        <Text style={styles.score}>Risk score {record.score}/100</Text>
-        <Text style={styles.signs}>
-          {record.warningSignCount} warning sign{record.warningSignCount === 1 ? '' : 's'}
+        <Text style={[styles.score, { color: tone.color }]}>
+          {isMessageBlocked(record) ? 'Notification blocked' : `Risk score ${record.score}/100`}
         </Text>
+        <Text style={styles.signs}>{record.isRead ? 'Read' : '● Unread'}</Text>
       </View>
     </Pressable>
   );
@@ -121,6 +143,7 @@ function DetailModal({
   onDelete: (id: string) => void;
 }) {
   if (!record) return null;
+  const tone = tones[record.level];
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={styles.modalPage}>
@@ -133,7 +156,7 @@ function DetailModal({
           >
             <Ionicons name="close" size={26} color="#fff" />
           </Pressable>
-          <Text style={styles.modalTitle}>Blocked SMS details</Text>
+          <Text style={styles.modalTitle}>Message details</Text>
           <Pressable
             onPress={() => onDelete(record.id)}
             hitSlop={12}
@@ -144,12 +167,14 @@ function DetailModal({
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.modalContent}>
-          <View style={styles.detailHero}>
-            <View style={styles.detailDangerIcon}>
-              <Ionicons name="shield-checkmark" size={26} color="#B42318" />
+          <View style={[styles.detailHero, { backgroundColor: tone.surface }]}>
+            <View style={[styles.detailDangerIcon, { backgroundColor: tone.surface }]}>
+              <Ionicons name="shield-checkmark" size={26} color={tone.color} />
             </View>
-            <View>
-              <Text style={styles.detailDanger}>Dangerous — notification suppressed</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.detailDanger, { color: tone.color }]}>
+                {tone.label} · {isMessageBlocked(record) ? 'Notification blocked' : 'Not blocked'}
+              </Text>
               <Text style={styles.detailDate}>
                 {formatDate(record.receivedAt)} · Risk score {record.score}/100
               </Text>
@@ -159,8 +184,10 @@ function DetailModal({
             <Ionicons name="information-circle-outline" size={20} color="#406382" />
             <Text style={styles.noticeText}>{record.originalSmsNotice}</Text>
           </View>
-          <Text style={styles.detailLabel}>MASKED SENDER</Text>
-          <Text style={styles.detailValue}>{record.maskedSender}</Text>
+          <Text style={styles.detailLabel}>FROM</Text>
+          <Text selectable style={styles.detailValue}>
+            {messageSender(record)}
+          </Text>
           <Text style={styles.detailLabel}>MESSAGE STORED ON THIS DEVICE</Text>
           <View style={styles.messageBox}>
             <Text selectable style={styles.messageText}>
@@ -168,6 +195,7 @@ function DetailModal({
             </Text>
           </View>
           <Text style={styles.detailLabel}>WARNING SIGNS</Text>
+          {!record.reasons.length && <Text style={styles.reasonText}>No significant warning signs detected.</Text>}
           {record.reasons.map((reason) => (
             <View style={styles.reasonRow} key={reason.code}>
               <Ionicons name="alert-circle-outline" size={19} color="#B42318" />
@@ -208,15 +236,22 @@ function DetailModal({
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const params = useLocalSearchParams<{ recordId?: string }>();
   const [records, setRecords] = useState<HistorySummary[]>([]);
   const [selected, setSelected] = useState<HistoryRecord | null>(null);
   const [query, setQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [filter, setFilter] = useState<MessageFilter>('all');
+  const focused = useRef(false);
+  const request = useRef(0);
+  const detailRequest = useRef(0);
+  const openedLink = useRef<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (openRecordId?: string) => {
+  const load = useCallback(async (openRecordId?: string, quiet = false) => {
+    const current = ++request.current;
     if (!isNativeMonitoringAvailable()) {
       setError(
         'Install an Android development or release build to view protected local History. Expo Go cannot use the encrypted native store.',
@@ -224,34 +259,74 @@ export default function HistoryScreen() {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const next = await getHistory();
+      if (!focused.current || current !== request.current) return;
       setRecords(next);
       if (openRecordId) {
         const detail = await getHistoryRecord(openRecordId);
-        if (detail) setSelected(detail);
+        if (!focused.current || current !== request.current) return;
+        if (detail) {
+          setSelected(detail);
+          if (await markHistoryRead(openRecordId)) {
+            if (focused.current && current === request.current)
+              setRecords((items) => items.map((item) => (item.id === openRecordId ? { ...item, isRead: true } : item)));
+          }
+        }
       }
     } catch (loadError) {
       logError('history-load-failed', loadError);
-      setError('Protected local History is unavailable on this device. No raw SMS content is shown.');
+      if (focused.current && current === request.current)
+        setError('Encrypted messages are unavailable on this device. Pull down to try again.');
     } finally {
-      setLoading(false);
+      if (focused.current && current === request.current) setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load(typeof params.recordId === 'string' ? params.recordId : undefined);
-    }, [load, params.recordId]),
+      if (!session?.user.id) {
+        setRecords([]);
+        setSelected(null);
+        return;
+      }
+      focused.current = true;
+      const recordId =
+        typeof params.recordId === 'string' && openedLink.current !== params.recordId ? params.recordId : undefined;
+      openedLink.current = params.recordId;
+      void load(recordId);
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void load(undefined, true);
+      });
+      const timer = setInterval(() => {
+        if (AppState.currentState === 'active') void load(undefined, true);
+      }, 5000);
+      return () => {
+        focused.current = false;
+        request.current++;
+        detailRequest.current++;
+        clearInterval(timer);
+        subscription.remove();
+        setSelected(null);
+        setRecords([]);
+      };
+    }, [load, params.recordId, session?.user.id]),
   );
 
   const openRecord = useCallback(async (id: string) => {
+    const current = ++detailRequest.current;
     try {
       const detail = await getHistoryRecord(id);
-      if (detail) setSelected(detail);
-      else Alert.alert('Record unavailable', 'This protected History record is no longer available.');
+      if (!focused.current || current !== detailRequest.current) return;
+      if (detail) {
+        setSelected(detail);
+        if (await markHistoryRead(id)) {
+          if (focused.current && current === detailRequest.current)
+            setRecords((items) => items.map((item) => (item.id === id ? { ...item, isRead: true } : item)));
+        }
+      } else Alert.alert('Record unavailable', 'This protected History record is no longer available.');
     } catch (openError) {
       logError('history-detail-failed', openError);
       Alert.alert('Unable to open record', 'The protected record could not be decrypted on this device.');
@@ -270,6 +345,9 @@ export default function HistoryScreen() {
           onPress: () => {
             void deleteHistoryRecord(id)
               .then(() => {
+                if (!focused.current) return;
+                request.current++;
+                detailRequest.current++;
                 setRecords((current) => current.filter((record) => record.id !== id));
                 setSelected(null);
               })
@@ -282,8 +360,8 @@ export default function HistoryScreen() {
 
   const removeAll = useCallback(() => {
     Alert.alert(
-      'Clear all protected History?',
-      'This permanently deletes all protected local copies of blocked notifications. It does not delete original SMS messages.',
+      'Clear your Messages inbox?',
+      'This permanently deletes captured copies in NotiCare. It does not delete original SMS messages from your Messages app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -292,6 +370,9 @@ export default function HistoryScreen() {
           onPress: () => {
             void clearHistory()
               .then(() => {
+                if (!focused.current) return;
+                request.current++;
+                detailRequest.current++;
                 setRecords([]);
                 setSelected(null);
               })
@@ -303,13 +384,9 @@ export default function HistoryScreen() {
   }, []);
 
   const monthGroups = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const filtered = records.filter((record) => {
-      const matchesSearch =
-        !normalizedQuery ||
-        `${record.maskedSender} ${record.score} ${record.warningSignCount}`.toLowerCase().includes(normalizedQuery);
+    const filtered = filterMessages(records, filter, query).filter((record) => {
       const month = monthName(record.receivedAt);
-      return matchesSearch && (!selectedMonth || selectedMonth === month);
+      return !selectedMonth || selectedMonth === month;
     });
     return filtered.reduce<Record<string, HistorySummary[]>>((groups, record) => {
       const month = monthName(record.receivedAt);
@@ -317,7 +394,7 @@ export default function HistoryScreen() {
       groups[month].push(record);
       return groups;
     }, {});
-  }, [query, records, selectedMonth]);
+  }, [query, records, selectedMonth, filter]);
   const months = useMemo(() => [...new Set(records.map((record) => monthName(record.receivedAt)))], [records]);
 
   return (
@@ -329,23 +406,37 @@ export default function HistoryScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
       >
         <View style={styles.historyIcon}>
-          <Ionicons name="time-outline" size={38} color="#fff" />
+          <Ionicons name="chatbubbles-outline" size={38} color="#fff" />
         </View>
-        <Text style={styles.heading}>Detection History</Text>
-        <Text style={styles.subheading}>Successfully blocked SMS notifications on this device</Text>
+        <Text style={styles.heading}>Messages</Text>
+        <Text style={styles.subheading}>Your captured SMS notifications, all in one place</Text>
         <View style={styles.counterRow}>
-          <Counter icon="shield-checkmark-outline" value={records.length} label="Blocked" tone="danger" />
-          <Counter icon="lock-closed-outline" value={records.length} label="Protected locally" tone="safe" />
+          <Counter icon="chatbubbles-outline" value={records.length} label="Captured" tone="safe" />
+          <Counter
+            icon="mail-unread-outline"
+            value={records.filter((record) => !record.isRead).length}
+            label="Unread"
+            tone="safe"
+          />
         </View>
         <View style={styles.privacyBanner}>
           <Ionicons name="lock-closed-outline" size={19} color="#006DAB" />
           <Text style={styles.privacyText}>
-            History contains only Dangerous real-time notifications Android successfully suppressed. Manual scans and
-            visible messages are not saved here.
+            Captured while monitoring is on and encrypted on this phone. Older SMS and manual scans are not included.
+            Message text is never uploaded.
           </Text>
         </View>
+        {isNativeMonitoringAvailable() && !supportsMessageInbox() && (
+          <View style={styles.privacyBanner}>
+            <Text style={styles.privacyText}>
+              Rebuild and install the Android app to capture all scanned messages. This installed version only provides
+              blocked history.
+            </Text>
+          </View>
+        )}
         {records.length ? (
           <>
             <View style={styles.search}>
@@ -353,12 +444,27 @@ export default function HistoryScreen() {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search masked sender or score"
+                placeholder="Search sender or message preview"
                 placeholderTextColor="#8294AA"
                 style={styles.searchInput}
-                accessibilityLabel="Search local history summaries"
+                accessibilityLabel="Search captured message senders and previews"
               />
             </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
+              {inboxFilters.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => setFilter(item)}
+                  style={[styles.monthChip, filter === item && styles.monthChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: filter === item }}
+                >
+                  <Text style={[styles.monthText, filter === item && styles.monthTextActive]}>
+                    {item.charAt(0).toUpperCase() + item.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
               <Pressable
                 onPress={() => setSelectedMonth(null)}
@@ -383,13 +489,15 @@ export default function HistoryScreen() {
               ))}
             </ScrollView>
             <View style={styles.listHeader}>
-              <Text style={styles.recentHeading}>Protected detections ({records.length})</Text>
+              <Text style={styles.recentHeading}>
+                Inbox ({Object.values(monthGroups).reduce((sum, items) => sum + items.length, 0)})
+              </Text>
               <Pressable onPress={removeAll} accessibilityRole="button">
                 <Text style={styles.clearAll}>Clear All</Text>
               </Pressable>
             </View>
             {Object.entries(monthGroups).map(([month, entries]) => (
-              <View key={month}>
+              <View key={month} style={{ alignSelf: 'stretch' }}>
                 <Text style={styles.monthHeading}>{month}</Text>
                 {entries.map((record) => (
                   <RecordCard key={record.id} record={record} onOpen={() => void openRecord(record.id)} />
@@ -420,21 +528,40 @@ export default function HistoryScreen() {
             <View style={styles.emptyIcon}>
               <Ionicons name="time-outline" size={35} color="#8DA4C3" />
             </View>
-            <Text style={styles.emptyTitle}>No blocked History yet</Text>
+            <Text style={styles.emptyTitle}>Your inbox starts here</Text>
             <Text style={styles.emptyCopy}>
-              Successfully suppressed Dangerous SMS notifications will appear here. The original SMS is never deleted.
+              Turn on real-time scanning and allow Notification Access. New scanned SMS notifications will appear here,
+              including Safe, Suspicious, and Dangerous messages.
             </Text>
-            <Pressable onPress={() => router.push('/explore')} style={styles.scanLink} accessibilityRole="button">
-              <Text style={styles.scanLinkText}>Try a Manual Scan</Text>
+            <Pressable onPress={() => router.push('/settings')} style={styles.scanLink} accessibilityRole="button">
+              <Text style={styles.scanLinkText}>Open scanning settings</Text>
             </Pressable>
           </View>
         ) : !Object.keys(monthGroups).length ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No protected records match your search.</Text>
+            <Text style={styles.emptyTitle}>No messages match your filters.</Text>
+            <Pressable
+              onPress={() => {
+                setFilter('all');
+                setQuery('');
+                setSelectedMonth(null);
+              }}
+              style={styles.retryButton}
+              accessibilityRole="button"
+            >
+              <Text style={styles.retryText}>Reset filters</Text>
+            </Pressable>
           </View>
         ) : null}
       </ScrollView>
-      <DetailModal record={selected} onClose={() => setSelected(null)} onDelete={removeRecord} />
+      <DetailModal
+        record={selected}
+        onClose={() => {
+          detailRequest.current++;
+          setSelected(null);
+        }}
+        onDelete={removeRecord}
+      />
     </SafeAreaView>
   );
 }
@@ -467,7 +594,7 @@ const styles = StyleSheet.create({
   brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
   tagline: { color: '#CFD7E3', fontSize: 12, marginTop: 1 },
   menuButton: { marginLeft: 'auto', padding: 4 },
-  content: { alignItems: 'center', paddingTop: 15, paddingHorizontal: 10 },
+  content: { alignItems: 'center', paddingTop: 20, paddingHorizontal: 18 },
   historyIcon: {
     width: 64,
     height: 64,
@@ -482,10 +609,10 @@ const styles = StyleSheet.create({
   },
   heading: { color: '#13243C', fontSize: 24, fontWeight: '800', marginTop: 15 },
   subheading: { color: '#566F95', fontSize: 14, marginTop: 7, textAlign: 'center' },
-  counterRow: { alignSelf: 'stretch', flexDirection: 'row', gap: 12, marginTop: 24 },
+  counterRow: { alignSelf: 'stretch', flexDirection: 'row', gap: 12, marginTop: 16 },
   counter: {
     flex: 1,
-    minHeight: 120,
+    minHeight: 96,
     backgroundColor: '#FFF',
     borderRadius: 14,
     alignItems: 'center',
@@ -554,22 +681,18 @@ const styles = StyleSheet.create({
   recordCard: {
     alignSelf: 'stretch',
     backgroundColor: '#fff',
-    borderRadius: 13,
-    padding: 14,
-    marginBottom: 9,
-    borderWidth: 1,
+    borderRadius: 0,
+    padding: 16,
+    marginBottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: '#E4EBF2',
-    shadowColor: '#1E2D43',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
   },
   recordTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   senderRow: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
   senderIcon: {
-    height: 33,
-    width: 33,
-    borderRadius: 17,
+    height: 42,
+    width: 42,
+    borderRadius: 14,
     backgroundColor: '#EEF4FA',
     alignItems: 'center',
     justifyContent: 'center',
@@ -588,14 +711,13 @@ const styles = StyleSheet.create({
   },
   dangerBadgeText: { color: '#B42318', fontWeight: '800', fontSize: 9 },
   redactedLabel: { color: '#7186A4', fontWeight: '800', fontSize: 10, letterSpacing: 0.5, marginTop: 13 },
-  redactedPreview: { color: '#526B8A', lineHeight: 19, marginTop: 3, fontSize: 13 },
+  redactedPreview: { color: '#526B8A', lineHeight: 20, marginTop: 9, fontSize: 13, marginLeft: 51 },
   recordFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 11,
     paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#EEF2F6',
+    marginLeft: 51,
   },
   score: { color: '#B42318', fontWeight: '800', fontSize: 12 },
   signs: { color: '#6F87A6', fontSize: 12 },
@@ -674,8 +796,14 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   detailValue: { color: '#263F5E', fontWeight: '700' },
-  messageBox: { backgroundColor: '#fff', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#E2E9F1' },
-  messageText: { color: '#334E6C', lineHeight: 21 },
+  messageBox: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderTopLeftRadius: 4,
+    padding: 20,
+    boxShadow: '0 2px 8px #1e2d4308',
+  },
+  messageText: { color: '#334E6C', fontSize: 16, lineHeight: 25 },
   reasonRow: {
     backgroundColor: '#fff',
     borderRadius: 10,

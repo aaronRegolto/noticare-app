@@ -40,7 +40,7 @@ The Messages app or Android did not expose usable notification text, commonly be
 
 ## A Dangerous message remained visible
 
-NotiCare can attempt notification suppression only when Android and the source app permit it. It never deletes the SMS from the inbox. If suppression fails, the event must not appear in blocked History; the app should still provide a clear caution/warning if it has a valid scan result.
+NotiCare can attempt notification suppression only when Android and the source app permit it. It never deletes the SMS from the inbox. If suppression fails, the captured message remains in Messages with its classification, but is not marked Blocked. The app still provides a caution/warning for a valid risk result.
 
 ## Dashboard chart is empty or offline
 
@@ -52,7 +52,7 @@ Verify the phone is E.164, Phone OTP is enabled in Supabase, an SMS provider/sen
 
 ## OTP is skipped while developing
 
-Expected behavior when the app is running from Metro in a JavaScript development bundle. NotiCare creates a device-only development profile after validating the phone number, so you can test the app without an SMS provider. Build and test a release variant to exercise Supabase Phone OTP; the shortcut is unavailable there.
+This is expected only if `EXPO_PUBLIC_ENABLE_DEV_PHONE_LOGIN=true` in a Metro development build. Set it to `false` (or remove it), restart Metro with `npx expo start --dev-client --clear`, and sign in using Supabase Phone OTP to test uploads to the admin dashboard. Device-only profiles cannot sync. Release builds always use real OTP.
 
 ## Native change did not appear after a JavaScript reload
 

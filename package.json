@@ -17,7 +17,8 @@
     "test:android": "cd android && gradlew.bat testDebugUnitTest",
     "build:android": "npx eas-cli@latest build --platform android",
     "build:android:production": "npx eas-cli@latest build --platform android --profile production",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "admin": "node admin/server.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

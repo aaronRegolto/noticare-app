@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
@@ -60,7 +60,7 @@ const levelCopy: Record<
       'Do not open links or share passwords, PINs, or OTPs. Contact the organization using its official app, website, or verified number.',
     color: '#B42318',
     surface: '#FFF0F0',
-    icon: 'shield-checkmark',
+    icon: 'close-circle',
   },
 };
 
@@ -138,8 +138,8 @@ function ResultCard({
   feedbackState,
 }: {
   result: ThreatResult;
-  onFeedback: (kind: 'safe' | 'false-result') => void;
-  feedbackState: 'idle' | 'sending' | 'sent';
+  onFeedback: (kind: 'safe' | 'dangerous') => void;
+  feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally';
 }) {
   const display = levelCopy[result.level];
   const scanTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
@@ -190,10 +190,14 @@ function ResultCard({
       <Text style={styles.meta}>
         Scanned {scanTime} · Rule set {result.ruleVersion}
       </Text>
-      {feedbackState === 'sent' ? (
+      {feedbackState === 'sent' || feedbackState === 'saved_locally' ? (
         <View style={styles.feedbackSent} accessibilityLiveRegion="polite">
           <Ionicons name="checkmark-circle" size={18} color="#007D59" />
-          <Text style={styles.feedbackSentText}>Feedback sent without your message text.</Text>
+          <Text style={styles.feedbackSentText}>
+            {feedbackState === 'saved_locally'
+              ? 'Report saved on this device only. It has not been sent to admin.'
+              : 'Report sent. Your message text was not uploaded.'}
+          </Text>
         </View>
       ) : (
         <View style={styles.feedbackRow}>
@@ -202,20 +206,20 @@ function ResultCard({
             onPress={() => onFeedback('safe')}
             style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="This seems safe"
+            accessibilityLabel="Mark as safe"
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Sending…' : 'This seems safe'}</Text>
+            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Saving report…' : 'Mark as safe'}</Text>
           </Pressable>
           <Pressable
             disabled={feedbackState === 'sending'}
-            onPress={() => onFeedback('false-result')}
+            onPress={() => onFeedback('dangerous')}
             style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="Report false result"
+            accessibilityLabel="Report smishing"
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>Report false result</Text>
+            <Text style={styles.feedbackText}>Report smishing</Text>
           </Pressable>
         </View>
       )}
@@ -229,7 +233,9 @@ export default function ScanScreen() {
   const [result, setResult] = useState<ThreatResult | null>(null);
   const [tutorialVisible, setTutorialVisible] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent' | 'saved_locally'>('idle');
+  const feedbackBusy = useRef(false);
+  const scanVersion = useRef(0);
 
   const onPaste = useCallback(async () => {
     const clipboardText = await Clipboard.getStringAsync();
@@ -238,6 +244,7 @@ export default function ScanScreen() {
       return;
     }
     setMessage(clipboardText.slice(0, maxCharacters));
+    scanVersion.current++;
     setResult(null);
     setFeedbackState('idle');
   }, []);
@@ -246,6 +253,7 @@ export default function ScanScreen() {
     const trimmed = message.trim();
     if (!trimmed || scanning) return;
     setScanning(true);
+    scanVersion.current++;
     setFeedbackState('idle');
     try {
       // In an Android development/release build this calls the same Kotlin
@@ -278,17 +286,25 @@ export default function ScanScreen() {
   }, [message, scanning]);
 
   const handleFeedback = useCallback(
-    async (kind: 'safe' | 'false-result') => {
-      if (!result || feedbackState !== 'idle') return;
+    async (kind: 'safe' | 'dangerous') => {
+      if (!result || feedbackState !== 'idle' || feedbackBusy.current) return;
+      feedbackBusy.current = true;
+      const version = scanVersion.current;
       setFeedbackState('sending');
       try {
-        const expected: ThreatLevel = kind === 'safe' ? 'safe' : result.level === 'safe' ? 'suspicious' : 'safe';
-        await sendScanFeedback(expected, result);
-        setFeedbackState('sent');
+        const status = await sendScanFeedback(kind, result);
+        if (version === scanVersion.current) setFeedbackState(status);
       } catch (error) {
         logError('manual-feedback-failed', error);
-        Alert.alert('Feedback not sent', 'Your feedback could not be sent right now. Your message was not uploaded.');
-        setFeedbackState('idle');
+        if (version === scanVersion.current) {
+          Alert.alert(
+            'Report not saved',
+            'Check your connection and sign-in status, then try again. Your message text was not uploaded.',
+          );
+          setFeedbackState('idle');
+        }
+      } finally {
+        feedbackBusy.current = false;
       }
     },
     [feedbackState, result],
@@ -307,8 +323,8 @@ export default function ScanScreen() {
         <View style={styles.scannerIcon}>
           <Ionicons name="scan-outline" size={37} color="#fff" />
         </View>
-        <Text style={styles.heading}>Zero-Login Text Scanner</Text>
-        <Text style={styles.subheading}>I-paste ang kahina-hinalang SMS para i-verify</Text>
+        <Text style={styles.heading}>Text Scanner</Text>
+        <Text style={styles.subheading}>Paste a suspicious SMS here to verify</Text>
         {tutorialVisible ? (
           <ScanTutorial onHide={() => setTutorialVisible(false)} />
         ) : (
@@ -329,10 +345,11 @@ export default function ScanScreen() {
             value={message}
             onChangeText={(text) => {
               setMessage(text.slice(0, maxCharacters));
+              scanVersion.current++;
               setResult(null);
               setFeedbackState('idle');
             }}
-            placeholder="I-paste ang kahina-hinalang text o SMS dito…"
+            placeholder="Paste suspicious SMS here..."
             placeholderTextColor="#7B8AA3"
             multiline
             maxLength={maxCharacters}
@@ -353,6 +370,7 @@ export default function ScanScreen() {
             <Pressable
               onPress={() => {
                 setMessage('');
+                scanVersion.current++;
                 setResult(null);
                 setFeedbackState('idle');
               }}

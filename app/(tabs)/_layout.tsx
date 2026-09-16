@@ -31,8 +31,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: 'History',
-          tabBarIcon: ({ color }) => <Ionicons size={22} name="time-outline" color={color} />,
+          title: 'Messages',
+          tabBarIcon: ({ color }) => <Ionicons size={22} name="chatbubbles-outline" color={color} />,
         }}
       />
     </Tabs>

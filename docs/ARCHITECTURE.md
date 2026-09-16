@@ -54,7 +54,7 @@ If any condition changes, the state becomes Off, Permission required, Service di
 - `cancelNotification` is called only after the user chooses Block and can suppress a posted notification only where Android and the source app permit it. A Dangerous item is placed in History only after suppression succeeds. “Blocked” means the notification was suppressed, not that the SMS was deleted.
 - Bundled, group, MMS, multi-SIM, lock-screen, and notification-update behavior differs by Messages app and Android release. The native pipeline deduplicates keys/content fingerprints and treats unavailable content safely.
 - Android can stop or disconnect a listener. The app must re-check permission/service state on resume, device restart, app update, and default-Messages-app changes.
-- Neither the rule engine nor the V3 model can guarantee every risky message is detected. V3 may raise a rule-safe result to Suspicious, but the prototype model cannot independently suppress a notification as Dangerous because its five-case Philippine regression suite is not yet exhaustive and it has a known legitimate-GCash false positive.
+- Neither the rule engine nor the V3 model can guarantee every risky message is detected. V3 may raise a rule-safe result to Suspicious only with supporting phishing indicators; generic urgency, click/reply instructions, or obfuscation alone are insufficient. Model output alone cannot create a warning or a Dangerous result. This reduces model-only false positives, but risks missing threats that only the model recognizes; the combined policy needs evaluation on representative held-out messages before claiming a new accuracy figure.
 
 ## Offline behavior
 

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NotiCare · Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="/"
+        ><span>NotiCare<small>Admin</small></span></a
+      >
+      <p class="nav-label">Workspace</p>
+      <nav id="nav" aria-label="Dashboard navigation"></nav>
+      <div class="sidebar-note">Research workspace</div>
+    </aside>
+    <main>
+      <header>
+        <span>Admin dashboard</span>
+        <div class="header-actions">
+          <label class="appearance-label"
+            >Appearance<select id="appearance">
+              <option value="minimal">Minimal</option>
+              <option value="sage">Sage</option>
+              <option value="midnight">Midnight</option>
+            </select></label
+          ><label class="appearance-label"
+            >Spacing<select id="density">
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select></label
+          ><button id="logout" hidden>Sign out</button>
+        </div>
+      </header>
+      <div id="notice" role="status" hidden></div>
+      <section id="login" class="panel login">
+        <h1>Sign in</h1>
+        <p>Access your NotiCare dashboard.</p>
+        <form id="login-form">
+          <label
+            >Email<input
+              id="email"
+              type="email"
+              autocomplete="username"
+              required
+              placeholder="admin@example.com" /></label
+          ><label>Password<input id="password" type="password" autocomplete="current-password" required /></label
+          ><button class="primary" type="submit">Sign in</button>
+        </form>
+        <p class="muted">Use a Supabase email account with admin access. See admin/README.md for first-time setup.</p>
+        <button id="preview-model">View model documentation</button>
+      </section>
+      <section id="workspace" hidden>
+        <div class="heading">
+          <div>
+            <h1 id="title">Overview</h1>
+            <p id="subtitle"></p>
+          </div>
+          <button id="refresh">Refresh</button>
+        </div>
+        <div id="content"></div>
+      </section>
+      <footer>NotiCare Admin <span>SMS content stays on the device. Cloud records contain metadata only.</span></footer>
+    </main>
+  </body>
+</html>
