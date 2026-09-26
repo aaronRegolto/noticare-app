@@ -184,25 +184,6 @@ function table(data) {
   const keys = Object.keys(data[0]);
   return `<div class="table-wrap"><table><thead><tr>${keys.map((key) => `<th scope="col">${escape(label(key))}</th>`).join('')}</tr></thead><tbody>${data.map((row) => `<tr>${keys.map((key) => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
-function provenanceTip(title, description) {
-  return `<details class="provenance-tip"><summary aria-label="${escape(title)}" title="${escape(description)}">i</summary><span class="tip-text">${escape(description)}</span></details>`;
-}
-function provenanceTable(counts) {
-  const descriptions = {
-    UCI_SMS_Spam:
-      'The UCI SMS Spam source named in the model metadata. This count describes source provenance, not live scans or the full size of the original dataset.',
-    NCSU_SMS_Phishing:
-      'The NCSU SMS Phishing source named in the model metadata. This count describes source provenance, not live scans or the full size of the original dataset.',
-  };
-  return `<div class="provenance-table"><table><thead><tr><th scope="col">Source ${provenanceTip('About sources', 'The dataset identifier recorded by the training process. Original messages and labels are not included in this dashboard.')}</th><th scope="col">Provenance count ${provenanceTip('About provenance counts', 'The number of rows attributed to this source in the model metadata. Source attribution can overlap, so these are not mutually exclusive training-set counts.')}</th></tr></thead><tbody>${Object.entries(
-    counts,
-  )
-    .map(
-      ([source, count]) =>
-        `<tr><td>${escape(source)} ${provenanceTip(`About ${source}`, descriptions[source] || 'A dataset source reported in the bundled model metadata.')}</td><td>${number(count)}</td></tr>`,
-    )
-    .join('')}</tbody></table></div>`;
-}
 function openRecords(level = '') {
   navigate('threat_events').then(() => {
     const filter = $('#filters')?.elements.level;
