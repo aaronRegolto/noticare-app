@@ -15,6 +15,9 @@ export async function importDataset({ filename, csv }) {
     throw invalid('Use a CSV filename containing letters, numbers, hyphens, and underscores only.');
   if (typeof csv !== 'string' || Buffer.byteLength(csv, 'utf8') > 10 * 1024 * 1024)
     throw invalid('Choose a UTF-8 CSV file no larger than 10 MB.');
+    if (/[\u0000-\u0008\u000e-\u001f]/.test(csv))
+    throw invalid('This file contains binary data (it may be an Excel .xlsx). Save it as "CSV UTF-8" and import again.');
+
   const rows = parseCsv(csv);
   if (!rows.length) throw invalid('The CSV contains no data rows.');
   try {
