@@ -989,20 +989,7 @@ footer {
   --canvas: #f8faf8;
   --sidebar: #fdfefd;
 }
-:root[data-theme='sage'] {
-  --text: #243c33;
-  --surface: #fcfefa;
-  --subtle: #eff5ed;
-  --line: #dce6d9;
-  --muted: #596b5c;
-  --border: #cbdac7;
-  --selected: #dbe9d6;
-  --accent: #365d46;
-  --accent-hover: #284834;
-  --canvas: #f5f9f3;
-  --sidebar: #f9fcf7;
-}
-:root[data-theme='midnight'] {
+:root[data-theme='dark'] {
   color-scheme: dark;
   --text: #e5e9ef;
   --surface: #151c26;
@@ -1017,31 +1004,31 @@ footer {
   --canvas: #101720;
   --sidebar: #151d27;
 }
-:root[data-theme='midnight'] .overview-hero {
+:root[data-theme='dark'] .overview-hero {
   background: radial-gradient(circle at 86% 10%, #305f61 0, transparent 31%), linear-gradient(120deg, #102429, #183b3d);
 }
-:root[data-theme='midnight'] .readiness-icon {
+:root[data-theme='dark'] .readiness-icon {
   background: #203d31;
   color: #b2dec2;
 }
-:root[data-theme='midnight'] .safe {
+:root[data-theme='dark'] .safe {
   background: #203d31;
   color: #b2dec2;
 }
-:root[data-theme='midnight'] .suspicious {
+:root[data-theme='dark'] .suspicious {
   background: #3e3420;
   color: #ebd18d;
 }
-:root[data-theme='midnight'] .dangerous {
+:root[data-theme='dark'] .dangerous {
   background: #432b30;
   color: #f1b3b7;
 }
-:root[data-theme='midnight'] #notice {
+:root[data-theme='dark'] #notice {
   background: #342f22;
   color: #ecd7a4;
   border-color: #61543a;
 }
-:root[data-theme='midnight'] :focus-visible {
+:root[data-theme='dark'] :focus-visible {
   outline-color: #b4d4c4;
 }
 .header-actions {
@@ -1058,22 +1045,6 @@ footer {
 }
 .appearance-label select {
   padding: 7px 9px;
-}
-:root[data-density='compact'] th,
-:root[data-density='compact'] td {
-  padding: 8px 12px;
-}
-:root[data-density='compact'] .metric {
-  padding: 16px;
-}
-:root[data-density='compact'] .panel {
-  padding: 20px;
-}
-:root[data-density='compact'] .heading {
-  margin: 26px 0 20px;
-}
-:root[data-density='compact'] nav button {
-  padding: 8px 12px;
 }
 @media (max-width: 900px) {
   header {
@@ -1326,19 +1297,19 @@ dialog::backdrop {
   width: 100%;
   padding: 13px;
 }
-:root[data-theme='midnight'] .dataset-status.pending {
+:root[data-theme='dark'] .dataset-status.pending {
   background: #413724;
   color: #eacb83;
 }
-:root[data-theme='midnight'] .dataset-status.ready {
+:root[data-theme='dark'] .dataset-status.ready {
   background: #244331;
   color: #b1e2c2;
 }
-:root[data-theme='midnight'] .dataset-monogram {
+:root[data-theme='dark'] .dataset-monogram {
   background: #2e4537;
   color: #c5e5b9;
 }
-:root[data-theme='midnight'] .dataset-card:nth-child(even) .dataset-monogram {
+:root[data-theme='dark'] .dataset-card:nth-child(even) .dataset-monogram {
   background: #30394f;
   color: #c0caf2;
 }

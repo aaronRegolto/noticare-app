@@ -39,7 +39,7 @@ Membership is checked for every request, so revocation takes effect without wait
 
 In **Dataset library**, choose **Import source CSV** on a missing source card, or **Import a dataset** for an additional file. Select the original UTF-8 CSV, review its destination filename, and choose **Import and browse**. Imports validate headers and row structure, require admin membership, and refuse to overwrite existing files. Imported files stay in the local `datasets/` folder and are not uploaded to Supabase or added to model training. The source name and provenance count alone cannot reconstruct the original message rows.
 
-Use the header’s **Appearance** selector to choose Minimal, Sage, or Midnight, and **Spacing** to choose Comfortable or Compact. Choices apply immediately and are stored per authenticated account in this browser; they do not sync between devices. Signed-out preferences are stored separately. Only appearance preferences are persisted, never login tokens.
+Use the header’s **Appearance** selector to choose Light, Dark, or System (follows the OS/browser color scheme and updates automatically if it changes). Choices apply immediately and are stored per authenticated account in this browser; they do not sync between devices. Signed-out preferences are stored separately. Only appearance preferences are persisted, never login tokens.
 
 The layout uses [Carbon’s data table guidance](https://carbondesignsystem.com/components/data-table/usage/) for toolbar organization, pagination, and row spacing, and [Material’s color roles](https://material-web.dev/theming/color/) for consistent light/dark surfaces and text.
 

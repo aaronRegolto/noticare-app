@@ -34,14 +34,21 @@ const escape = (value) =>
 const label = (value) => value.replaceAll('_', ' ');
 const number = (value) => Number(value).toLocaleString();
 let appearanceUser = 'guest';
-function applyAppearance(preferences = {}) {
-  const theme = ['minimal', 'sage', 'midnight'].includes(preferences.theme) ? preferences.theme : 'minimal';
-  const density = preferences.density === 'compact' ? 'compact' : 'comfortable';
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.density = density;
-  $('#appearance').value = theme;
-  $('#density').value = density;
+const systemThemeQuery =
+  typeof matchMedia === 'function'
+    ? matchMedia('(prefers-color-scheme: dark)')
+    : { matches: false, addEventListener() {} };
+function resolveTheme(preference) {
+  return preference === 'system' ? (systemThemeQuery.matches ? 'dark' : 'light') : preference;
 }
+function applyAppearance(preferences = {}) {
+  const theme = ['light', 'dark', 'system'].includes(preferences.theme) ? preferences.theme : 'system';
+  document.documentElement.dataset.theme = resolveTheme(theme);
+  $('#appearance').value = theme;
+}
+systemThemeQuery.addEventListener('change', () => {
+  if ($('#appearance').value === 'system') document.documentElement.dataset.theme = resolveTheme('system');
+});
 function restoreAppearance(user = 'guest') {
   appearanceUser = user;
   try {
@@ -51,7 +58,7 @@ function restoreAppearance(user = 'guest') {
   }
 }
 function saveAppearance() {
-  const preferences = { theme: $('#appearance').value, density: $('#density').value };
+  const preferences = { theme: $('#appearance').value };
   applyAppearance(preferences);
   try {
     localStorage.setItem(`noticare.admin.appearance.${appearanceUser}`, JSON.stringify(preferences));
@@ -618,7 +625,6 @@ $('#logout').onclick = () => {
 $('#preview-model').onclick = () => navigate('model');
 $('#refresh').onclick = () => ($('#filters') ? loadRecords() : navigate(section));
 $('#appearance').onchange = saveAppearance;
-$('#density').onchange = saveAppearance;
 $('#auto-refresh').onchange = (event) => updateAutoRefresh(event.target.checked);
 restoreAppearance();
 renderNav();
