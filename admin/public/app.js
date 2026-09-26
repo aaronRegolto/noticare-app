@@ -377,7 +377,12 @@ function renderDatasetLibrary(catalog) {
     status.textContent = 'Validating and importing…';
     const current = generation;
     try {
-      const csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+      let csv;
+      try {
+        csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+      } catch {
+        throw new Error('This file is not valid UTF-8. Re-save it as "CSV UTF-8" and try again.');
+      }
       const imported = await api('/api/datasets/import', { method: 'POST', body: JSON.stringify({ filename, csv }) });
       if (current !== generation) return;
       $('#import-dialog').close();
@@ -389,7 +394,7 @@ function renderDatasetLibrary(catalog) {
     } catch (error) {
       status.textContent =
         error instanceof TypeError
-          ? 'Unable to read a UTF-8 CSV or connect to the server. Check the file and connection.'
+          ? 'Unable to connect to the server. Check that the admin server is running.'
           : error.message;
     } finally {
       button.disabled = false;
