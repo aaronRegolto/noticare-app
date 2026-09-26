@@ -94,7 +94,7 @@ test('workspace navigation can be filtered and cleared with Escape', () => {
     filter.dispatchEvent(new Event('input'));
     assert.deepEqual(
       [...document.querySelectorAll('#nav [data-section]')].map((button) => button.textContent),
-      ['ML & datasets', 'Dataset library'],
+      ['Dataset library'],
     );
     filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     assert.equal(filter.value, '');

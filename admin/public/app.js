@@ -7,7 +7,7 @@ const sections = {
   community_hourly_stats: 'Hourly statistics',
   profiles: 'Profiles',
   rule_sets: 'Rule sets',
-  model: 'ML & datasets',
+  model: 'Machine Learning',
   datasets: 'Dataset library',
   connection: 'Connection status',
 };
@@ -233,7 +233,7 @@ async function navigate(next) {
       const model = await api('/api/model');
       if (current !== generation) return;
       $('#content').innerHTML =
-        `<article class="panel"><h2>Active model</h2><div class="facts"><div><small>Version</small>${escape(model.model_provenance.version)}</div><div><small>Model file</small>${escape(model.model_provenance.keras_file)}</div></div></article>`;
+        `<article class="panel"><h2>Active model</h2><div class="facts"><div><small>Version</small>${escape(model.model_provenance.version)}</div><div><small>Model file</small>${escape(model.model_provenance.keras_file)}</div><div><small>Architecture</small>Byte-level CNN text classifier</div></div><p>This model reads a message as raw UTF-8 bytes rather than words. Each byte becomes a number, padded or truncated to a fixed ${escape(model.technical_specifications.input_shape[0])}-byte length, and a convolutional neural network scans that byte sequence for patterns associated with phishing and spam. Working at the byte level lets it handle misspellings, mixed English/Tagalog text, emoji, and unusual formatting without needing a fixed vocabulary. It runs entirely on-device; no message content leaves the phone.</p></article>`;
       $('#content').insertAdjacentHTML(
         'afterbegin',
         `<div class="toolbar"><button id="browse-datasets" ${token ? '' : 'disabled'}>Browse dataset library</button><button id="browse-discoveries" ${token ? '' : 'disabled'}>View phishing detections</button>${token ? '' : '<span class="muted">Sign in to browse records.</span>'}</div>`,
