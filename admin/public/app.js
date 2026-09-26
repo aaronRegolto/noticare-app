@@ -211,7 +211,7 @@ async function navigate(next) {
   $('#title').textContent = sections[section];
   $('#subtitle').textContent =
     section === 'model'
-      ? 'Training provenance and reported evaluation results from the bundled model.'
+      ? 'The machine learning model currently bundled with the app.'
       : section === 'overview'
         ? 'A live view of community scan activity. Demo events are excluded.'
         : 'Browse stored metadata. Dates and date filters use UTC; exports include the current page.';
