@@ -1,2 +1,4 @@
 *.csv
 *.CSV
+!UCI_SMS_Spam.csv
+!NCSU_SMS_Phishing.csv
