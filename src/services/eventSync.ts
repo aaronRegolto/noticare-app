@@ -109,7 +109,7 @@ export async function queueThreatEvent(
   return event.clientEventId;
 }
 
-async function activeUserId(): Promise<string> {
+export async function activeUserId(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const userId = data.session?.user.id;
   if (!userId) throw new Error('Sign in before syncing anonymous community metadata.');
@@ -120,7 +120,7 @@ function deviceKeyForUser(userId: string) {
   return `${DEVICE_ID_KEY_PREFIX}.${userId}`;
 }
 
-async function registerDevice(ruleVersion: string): Promise<string> {
+export async function registerDevice(ruleVersion: string): Promise<string> {
   const userId = await activeUserId();
   const deviceKey = deviceKeyForUser(userId);
   const cachedDeviceId = await SecureStore.getItemAsync(deviceKey);

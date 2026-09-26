@@ -4,6 +4,8 @@ export type MonitoringState = 'active' | 'off' | 'permission_required' | 'servic
 
 export type ThreatLevel = 'safe' | 'suspicious' | 'dangerous';
 
+export type SubscriptionTier = 'free' | 'pro';
+
 export type ThreatReason = {
   code: string;
   label: string;
@@ -28,6 +30,8 @@ export type LocalThreatResult = {
 
 export type MonitoringStatus = {
   status: MonitoringState;
+  /** Mirrored from PayMongo via setSubscriptionTier; drives the free-tier automatic-scan quota and History retention cap natively. */
+  subscriptionTier: SubscriptionTier;
   scanningEnabled: boolean;
   fullScreenWarnings: boolean;
   notificationAccessGranted: boolean;
@@ -40,6 +44,19 @@ export type MonitoringStatus = {
   historyStorageStatus: 'available' | 'unavailable';
   lastContentStatus: 'idle' | 'processed' | 'content_unavailable';
   appNotificationsGranted: boolean;
+  /** False means Android's battery manager can kill NotiCare in the background and miss messages. */
+  batteryOptimizationExempt: boolean;
+  /** False (Android 14+ only) means the full-screen danger warning falls back to a heads-up banner. */
+  fullScreenIntentPermitted: boolean;
+  /** False means Dangerous-message alerts stay silent while the phone is in Do Not Disturb. */
+  dndBypassGranted: boolean;
+  /**
+   * The true all-time blocked count, independent of how many detail records are currently kept —
+   * only the newest `historyRetentionLimit` records per account are retained on-device so storage
+   * and read/write cost stay bounded no matter how long NotiCare has been protecting the device.
+   */
+  lifetimeBlockedCount: number;
+  historyRetentionLimit: number;
 };
 
 export type HistorySummary = {
@@ -80,13 +97,31 @@ export type PendingTelemetryEvent = {
   occurredAt: number;
 };
 
+/**
+ * A "Block & Report" tap queued by the real-time listener. Unlike
+ * PendingTelemetryEvent, this intentionally carries the message text and
+ * sender — see EncryptedCommunityReportQueue for why that's safe here.
+ */
+export type PendingCommunityReport = {
+  id: string;
+  messageText: string;
+  sampleSender: string | null;
+  indicatorCodes: string[];
+  ruleVersion: string;
+  createdAt: number;
+};
+
 type NotificationListenerNativeModule = {
   requestNotificationListenerAccess(): Promise<boolean>;
   openAppNotificationSettings(): Promise<boolean>;
+  requestIgnoreBatteryOptimizations?(): Promise<boolean>;
+  requestFullScreenIntentPermission?(): Promise<boolean>;
+  requestNotificationPolicyAccess?(): Promise<boolean>;
   getMonitoringStatus(): Promise<MonitoringStatus>;
   setScanningEnabled(enabled: boolean): Promise<MonitoringStatus>;
   setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatus>;
   setHistoryOwner(ownerId: string | null): Promise<MonitoringStatus>;
+  setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringStatus>;
   scanText(text: string): Promise<LocalThreatResult>;
   getHistory(): Promise<HistorySummary[]>;
   getHistoryRecord(id: string): Promise<HistoryRecord | null>;
@@ -95,6 +130,9 @@ type NotificationListenerNativeModule = {
   clearHistory(): Promise<boolean>;
   getPendingTelemetry(): Promise<PendingTelemetryEvent[]>;
   ackTelemetry(ids: string[]): Promise<number>;
+  getPendingCommunityReports?(): Promise<PendingCommunityReport[]>;
+  ackCommunityReports?(ids: string[]): Promise<number>;
+  notifyCommunityReportResult?(isNew: boolean, reportCount: number): Promise<boolean>;
 };
 
 const nativeModule = NativeModules.NotificationListenerModule as NotificationListenerNativeModule | undefined;
@@ -126,6 +164,33 @@ export function openAppNotificationSettings(): Promise<boolean> {
   return requireAndroidNativeModule().openAppNotificationSettings();
 }
 
+/**
+ * Prompts Android's "ignore battery optimizations" dialog for NotiCare. Older installed builds
+ * may not have this native method yet, so it resolves to false instead of throwing.
+ */
+export async function requestIgnoreBatteryOptimizations(): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  return (await module.requestIgnoreBatteryOptimizations?.()) ?? false;
+}
+
+/**
+ * Opens the Android 14+ screen where the user can re-allow full-screen danger warnings. Older
+ * installed builds, or Android versions below 14, resolve to false instead of throwing.
+ */
+export async function requestFullScreenIntentPermission(): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  return (await module.requestFullScreenIntentPermission?.()) ?? false;
+}
+
+/**
+ * Opens the system screen where the user can let NotiCare's danger alerts sound/vibrate even
+ * while the phone is in Do Not Disturb. Older installed builds resolve to false instead of throwing.
+ */
+export async function requestNotificationPolicyAccess(): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  return (await module.requestNotificationPolicyAccess?.()) ?? false;
+}
+
 /** Reads the persisted DataStore preference plus live permission/service state. */
 export function getMonitoringStatus(): Promise<MonitoringStatus> {
   return requireAndroidNativeModule().getMonitoringStatus();
@@ -152,6 +217,11 @@ export function setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatu
  */
 export function setHistoryOwner(ownerId: string | null): Promise<MonitoringStatus> {
   return requireAndroidNativeModule().setHistoryOwner(ownerId);
+}
+
+/** Mirrors the PayMongo-derived tier into native so the free-tier scan quota is enforced offline. */
+export function setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringStatus> {
+  return requireAndroidNativeModule().setSubscriptionTier(tier);
 }
 
 /** Runs the same offline Kotlin evaluator used by background monitoring. */
@@ -197,4 +267,22 @@ export function getPendingTelemetry(): Promise<PendingTelemetryEvent[]> {
 /** Removes acknowledged telemetry event IDs after authenticated upload succeeds. */
 export function ackTelemetry(ids: string[]): Promise<number> {
   return requireAndroidNativeModule().ackTelemetry(ids);
+}
+
+/** Reads "Block & Report" taps queued while the app was closed or offline. */
+export async function getPendingCommunityReports(): Promise<PendingCommunityReport[]> {
+  const module = requireAndroidNativeModule();
+  return (await module.getPendingCommunityReports?.()) ?? [];
+}
+
+/** Removes acknowledged community-report IDs after the upload succeeds. */
+export async function ackCommunityReports(ids: string[]): Promise<number> {
+  const module = requireAndroidNativeModule();
+  return (await module.ackCommunityReports?.(ids)) ?? 0;
+}
+
+/** Shows the async "your reported message was new" / report-count follow-up notification. */
+export async function notifyCommunityReportResult(isNew: boolean, reportCount: number): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  return (await module.notifyCommunityReportResult?.(isNew, reportCount)) ?? false;
 }

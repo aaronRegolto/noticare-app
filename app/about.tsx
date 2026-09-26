@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
@@ -10,7 +10,7 @@ export default function AboutScreen() {
   const version = Constants.expoConfig?.version ?? '1.0.0';
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={12}>
           <Ionicons name="arrow-back" color="#fff" size={25} />
@@ -25,7 +25,7 @@ export default function AboutScreen() {
         <Text style={styles.name}>NotiCare</Text>
         <Text style={styles.tagline}>Smishing Shield · Version {version}</Text>
         <View style={styles.card}>
-          <Text style={styles.title}>Android-only SMS notification protection</Text>
+          <Text style={styles.title}>SMS protection for Android</Text>
           <Text style={styles.copy}>
             NotiCare checks available notifications from your current default Messages app. It uses offline rules to
             identify common smishing patterns and never becomes your default SMS app.
@@ -38,7 +38,9 @@ export default function AboutScreen() {
             Android or the Messages app may not permit notification suppression.
           </Text>
         </View>
-        <Text style={styles.footer}>Made for safer, more informed decisions online.</Text>
+        <Text style={styles.footer}>
+          NotiCare is built to help you spot scam texts before you act on them.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );

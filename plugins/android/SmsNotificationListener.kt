@@ -1,8 +1,10 @@
 package __NOTICARE_PACKAGE__.bridge
 
 import android.app.Notification
+import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import java.security.MessageDigest
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
@@ -51,11 +53,20 @@ object ThreatDecisionCoordinator {
  */
 class SmsNotificationListener : NotificationListenerService() {
   private val scanScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val logTag = "NotiCareListener"
 
   override fun onCreate() {
     super.onCreate()
     NotiCareNotifications.ensureChannels(this)
     ThreatDecisionCoordinator.attach(this)
+    // Android does not reliably re-invoke onListenerConnected() after this process is
+    // killed and restarted (for example under memory pressure) even though the system
+    // still considers the listener bound. Without a fresh bind, ScanRuntime's connected
+    // flag would stay false forever in the new process, showing "Service disconnected"
+    // even though notifications are actually still flowing. requestRebind() forces
+    // Android to tear down and recreate the binding, which reliably re-fires
+    // onListenerConnected() for this process.
+    requestRebind(ComponentName(this, SmsNotificationListener::class.java))
   }
 
   override fun onListenerConnected() {
@@ -77,40 +88,90 @@ class SmsNotificationListener : NotificationListenerService() {
 
   override fun onNotificationPosted(sbn: StatusBarNotification) {
     super.onNotificationPosted(sbn)
+    Log.d(logTag, "onNotificationPosted pkg=${sbn.packageName}")
     scanScope.launch { processPostedNotification(sbn) }
   }
 
   private suspend fun processPostedNotification(sbn: StatusBarNotification) {
     // 1. The persisted switch is checked before package/content processing.
-    if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) return
-    val ownerScope = RealtimeScanPreferences.historyOwnerScope(applicationContext) ?: return
+    if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) {
+      Log.d(logTag, "drop: scanning disabled")
+      return
+    }
+    val ownerScope = RealtimeScanPreferences.historyOwnerScope(applicationContext)
+    if (ownerScope == null) {
+      Log.d(logTag, "drop: no signed-in owner scope")
+      return
+    }
 
     // 2. Resolve the device's current default SMS provider for every event.
     // This automatically handles default-Messages-app changes.
-    val defaultSmsPackage = ScanRuntime.defaultSmsPackage(applicationContext) ?: return
+    val defaultSmsPackage = ScanRuntime.defaultSmsPackage(applicationContext)
+    if (defaultSmsPackage == null) {
+      Log.d(logTag, "drop: no default SMS package resolved")
+      return
+    }
     val sourcePackage = sbn.packageName ?: return
 
     // 3. Reject all non-default-SMS and NotiCare notifications BEFORE extras.
-    if (sourcePackage != defaultSmsPackage || sourcePackage == packageName) return
+    if (sourcePackage != defaultSmsPackage || sourcePackage == packageName) {
+      Log.d(logTag, "drop: source=$sourcePackage default=$defaultSmsPackage")
+      return
+    }
 
     val notification = sbn.notification ?: return
-    if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+    if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+      Log.d(logTag, "drop: group summary notification")
+      return
+    }
 
     // Extras are intentionally read only after the package guard above.
     val text = runCatching { NotificationTextExtractor.extractText(notification) }.getOrNull()
     if (text.isNullOrBlank()) {
+      Log.d(logTag, "drop: no readable text extras (hidden/redacted preview?)")
       ScanRuntime.markContentUnavailable()
       return
     }
 
     val sender = runCatching { NotificationTextExtractor.extractSender(notification) }.getOrNull()
+    if (sender.isNullOrBlank()) {
+      // Real SMS/RCS notifications always carry a contact name or number as the
+      // title. A missing sender means this is an app-status notification (sync,
+      // background work, RCS setup, etc.), not an actual message — skip it so it
+      // doesn't get scanned and logged to History as an "Unknown sender" message.
+      Log.d(logTag, "drop: no sender extracted (likely a non-message status notification)")
+      return
+    }
     val fingerprint = fingerprint("$sourcePackage\n${sender.orEmpty()}", text)
-    if (NotificationDeduplicator.isDuplicate(sbn.key, fingerprint)) return
+    if (NotificationDeduplicator.isDuplicate(sbn.key, fingerprint)) {
+      Log.d(logTag, "drop: duplicate of a recently processed notification")
+      return
+    }
+    Log.d(logTag, "processing: textLength=${text.length} hasSender=${sender != null}")
+
+    // Only the free tier's automatic-scan quota gates real-time scanning; Pro
+    // remains unlimited, and manual paste-text scanning (a separate code path
+    // in NotificationListenerModule.scanText) is never limited.
+    val tier = RealtimeScanPreferences.subscriptionTier(applicationContext)
+    if (tier == "free" && !RealtimeScanPreferences.checkAndConsumeFreeScanQuota(applicationContext)) {
+      Log.d(logTag, "drop: free tier monthly scan quota exceeded")
+      if (RealtimeScanPreferences.shouldShowQuotaExceededNotice(applicationContext)) {
+        NotiCareNotifications.showQuotaExceeded(applicationContext)
+      }
+      return
+    }
 
     val result = V3RiskEvaluator.evaluate(applicationContext, text)
     // Do not attribute an in-flight scan to a newly signed-in profile.
-    if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != ownerScope) return
-    if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) return
+    if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != ownerScope) {
+      Log.d(logTag, "drop: owner scope changed mid-scan")
+      return
+    }
+    if (!RealtimeScanPreferences.isScanningEnabled(applicationContext)) {
+      Log.d(logTag, "drop: scanning turned off mid-scan")
+      return
+    }
+    Log.d(logTag, "evaluated: level=${result.level} score=${result.score}")
     val saved = EncryptedHistoryStore.saveScanned(
       context = applicationContext,
       ownerScope = ownerScope,
@@ -123,9 +184,11 @@ class SmsNotificationListener : NotificationListenerService() {
       sourcePackage = sourcePackage,
       ruleVersion = result.ruleVersion,
       level = result.level,
+      retentionLimit = EncryptedHistoryStore.retentionLimitPerAccount(tier),
     )
     val recordId = (saved as? EncryptedHistoryStore.SaveResult.Saved)?.id
     ScanRuntime.markProcessed()
+    Log.d(logTag, "saved=${saved::class.simpleName} recordId=${recordId != null}")
 
     when (result.level) {
       ThreatLevel.SAFE -> EncryptedTelemetryQueue.enqueue(applicationContext, result, false, sbn.postTime)
@@ -157,10 +220,12 @@ class SmsNotificationListener : NotificationListenerService() {
       recordId = recordId,
     )
     ThreatDecisionCoordinator.add(pending)
-    NotiCareNotifications.showDangerChoice(applicationContext, pending)
-    if (RealtimeScanPreferences.useFullScreenWarnings(applicationContext)) {
-      NotiCareNotifications.openWarningScreen(applicationContext, pending.token)
-    }
+    // Full-screen warnings are a Pro feature. Re-checking the tier here (rather
+    // than trusting the stored preference alone) covers a stale preference left
+    // over from a downgrade, or a client that skipped the Settings-screen gate.
+    val fullScreen = RealtimeScanPreferences.useFullScreenWarnings(applicationContext) &&
+      RealtimeScanPreferences.subscriptionTier(applicationContext) == "pro"
+    NotiCareNotifications.showDangerChoice(applicationContext, pending, fullScreen)
   }
 
   fun applyDecision(pending: PendingThreat, block: Boolean) {
@@ -187,8 +252,23 @@ class SmsNotificationListener : NotificationListenerService() {
         runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
           .getOrElse { ScanRuntime.markStorageUnavailable(); false }
       } ?: false
+      // "Block & Report" always saves locally first (works fully offline) and is
+      // uploaded later by the JS bridge once the app is online — see
+      // EncryptedCommunityReportQueue and flushNativeCommunityReports().
+      EncryptedCommunityReportQueue.enqueue(
+        applicationContext,
+        pending.message,
+        pending.sender,
+        pending.result.reasons.map(ThreatReason::code),
+        pending.result.ruleVersion,
+      )
       NotiCareNotifications.showBlocked(
-        applicationContext, pending.recordId.takeIf { historySaved }, pending.result.score, historySaved, pending.result.level.wireValue,
+        applicationContext,
+        pending.recordId.takeIf { historySaved },
+        pending.result.score,
+        historySaved,
+        pending.result.level.wireValue,
+        reported = true,
       )
     }
   }

@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -17,7 +17,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : 'Unable to continue. Check your connection and try again.';
   if (/unsupported phone provider|phone provider/i.test(message)) {
-    return 'Phone sign-in is not configured yet. Enable Phone Auth and add an SMS provider in Supabase, then try again.';
+    return 'Phone sign-in is not configured yet. Contact your administrator, then try again.';
   }
   if (/rate|too many/i.test(message)) return 'Too many requests. Please wait before requesting another code.';
   if (/expired/i.test(message)) return 'That code has expired. Request a new one and try again.';
@@ -76,7 +76,7 @@ export default function LoginScreen() {
       'Choose country code',
       isDevelopmentPhoneLogin
         ? 'Local development sign-in creates a profile only on this device. No SMS is sent.'
-        : 'Phone verification is handled securely by Supabase.',
+        : 'Phone verification is handled securely.',
       PHONE_COUNTRIES.map((option) => ({
         text: `${option.flag} ${option.name} (${option.dialCode})`,
         onPress: () => {
@@ -141,8 +141,8 @@ export default function LoginScreen() {
             <>
               <Text style={styles.title}>Set up NotiCare</Text>
               <Text style={styles.copy}>
-                Add your Supabase URL and anonymous key to a local .env file before signing in. Your phone number is
-                used only for authentication.
+                NotiCare has not been connected to its backend service yet. Contact your administrator before signing
+                in.
               </Text>
             </>
           ) : step === 'phone' ? (
@@ -192,7 +192,7 @@ export default function LoginScreen() {
                       : 'Sending code…'
                     : isDevelopmentPhoneLogin
                       ? 'Continue'
-                      : 'Send OTP'}
+                      : 'Send code'}
                 </Text>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </Pressable>

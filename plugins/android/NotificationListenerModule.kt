@@ -1,6 +1,7 @@
 package __NOTICARE_PACKAGE__
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.facebook.react.bridge.Arguments
@@ -12,12 +13,15 @@ import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import __NOTICARE_PACKAGE__.bridge.BlockedHistoryRecord
+import __NOTICARE_PACKAGE__.bridge.EncryptedCommunityReportQueue
 import __NOTICARE_PACKAGE__.bridge.EncryptedHistoryStore
 import __NOTICARE_PACKAGE__.bridge.EncryptedTelemetryQueue
 import __NOTICARE_PACKAGE__.bridge.ExtractedUrl
+import __NOTICARE_PACKAGE__.bridge.NotiCareNotifications
 import __NOTICARE_PACKAGE__.bridge.RealtimeScanPreferences
 import __NOTICARE_PACKAGE__.bridge.ScanRuntime
 import __NOTICARE_PACKAGE__.bridge.SmishingEvaluator
+import __NOTICARE_PACKAGE__.bridge.SmsNotificationListener
 import __NOTICARE_PACKAGE__.bridge.ThreatReason
 import __NOTICARE_PACKAGE__.bridge.ThreatResult
 import __NOTICARE_PACKAGE__.bridge.V3RiskEvaluator
@@ -56,6 +60,28 @@ class NotificationListenerModule(
     }
   }
 
+  /**
+   * Opens the system screen where the user can let NotiCare's danger alerts sound/vibrate even
+   * while the phone is in Do Not Disturb. Without this, a Dangerous-message alert stays silent
+   * under DND like any other notification.
+   */
+  @ReactMethod
+  fun requestNotificationPolicyAccess(promise: Promise) {
+    try {
+      val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      appContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject(
+        "notification_policy_settings_unavailable",
+        "Unable to open Do Not Disturb access settings.",
+        error,
+      )
+    }
+  }
+
   @ReactMethod
   fun openAppNotificationSettings(promise: Promise) {
     try {
@@ -67,6 +93,56 @@ class NotificationListenerModule(
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("app_notification_settings_unavailable", "Unable to open Android notification settings.", error)
+    }
+  }
+
+  /**
+   * Prompts the system's "ignore battery optimizations" dialog for this app.
+   * Without this exemption, OEM battery managers can kill NotiCare in the
+   * background and miss incoming SMS notifications until Android restarts the
+   * listener service, which can take well over a minute.
+   */
+  @ReactMethod
+  fun requestIgnoreBatteryOptimizations(promise: Promise) {
+    try {
+      val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        data = Uri.parse("package:${appContext.packageName}")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      appContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject(
+        "battery_optimization_settings_unavailable",
+        "Unable to open Android battery optimization settings.",
+        error,
+      )
+    }
+  }
+
+  /**
+   * Opens the Android 14+ screen where the user can re-allow full-screen danger warnings for
+   * NotiCare. Resolves false (never throws) below Android 14, where there is nothing to open.
+   */
+  @ReactMethod
+  fun requestFullScreenIntentPermission(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+        data = Uri.parse("package:${appContext.packageName}")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      appContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject(
+        "full_screen_intent_settings_unavailable",
+        "Unable to open Android full-screen notification settings.",
+        error,
+      )
     }
   }
 
@@ -114,6 +190,19 @@ class NotificationListenerModule(
         monitoringStatusMap()
       }.onSuccess(promise::resolve)
         .onFailure { error -> promise.reject("history_owner_failed", "Unable to update the protected History owner.", error) }
+    }
+  }
+
+  /** Mirrors the RevenueCat-derived tier into native so the real-time listener can enforce it offline. */
+  @ReactMethod
+  fun setSubscriptionTier(tier: String, promise: Promise) {
+    val normalized = tier.takeIf { it in setOf("free", "pro") } ?: "free"
+    bridgeScope.launch {
+      runCatching {
+        RealtimeScanPreferences.setSubscriptionTier(appContext, normalized)
+        monitoringStatusMap()
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("subscription_tier_failed", "Unable to update the subscription tier.", error) }
     }
   }
 
@@ -233,10 +322,61 @@ class NotificationListenerModule(
     }
   }
 
+  /**
+   * Reads "Block & Report" taps queued by the real-time listener while the app
+   * was closed or offline. Unlike getPendingTelemetry, this intentionally
+   * includes message text and sender — see EncryptedCommunityReportQueue.
+   */
+  @ReactMethod
+  fun getPendingCommunityReports(promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        Arguments.createArray().apply {
+          EncryptedCommunityReportQueue.claimPending(appContext).forEach { report ->
+            pushMap(Arguments.createMap().apply {
+              putString("id", report.id)
+              putString("messageText", report.messageText)
+              putNullableString("sampleSender", report.sampleSender)
+              putArray("indicatorCodes", Arguments.createArray().apply { report.indicatorCodes.forEach(::pushString) })
+              putString("ruleVersion", report.ruleVersion)
+              putDouble("createdAt", report.createdAt.toDouble())
+            })
+          }
+        }
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("community_report_queue_unavailable", "Unable to read the local community report queue.", error) }
+    }
+  }
+
+  @ReactMethod
+  fun ackCommunityReports(ids: ReadableArray, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val acknowledged = buildSet {
+          for (index in 0 until ids.size()) ids.getString(index)?.takeIf { it.isNotBlank() }?.let(::add)
+        }
+        EncryptedCommunityReportQueue.acknowledge(appContext, acknowledged)
+      }.onSuccess { removed -> promise.resolve(removed) }
+        .onFailure { error -> promise.reject("community_report_ack_failed", "Unable to acknowledge uploaded community reports.", error) }
+    }
+  }
+
+  /** Shows the async follow-up telling the user whether their reported message was new. */
+  @ReactMethod
+  fun notifyCommunityReportResult(isNew: Boolean, reportCount: Int, promise: Promise) {
+    runCatching {
+      NotiCareNotifications.showCommunityReportResult(appContext, isNew, reportCount)
+    }.onSuccess { promise.resolve(true) }
+      .onFailure { error -> promise.reject("community_report_notify_failed", "Unable to show the community report result.", error) }
+  }
+
   private suspend fun monitoringStatusMap(): WritableMap {
     val enabled = RealtimeScanPreferences.isScanningEnabled(appContext)
     val accessGranted = ScanRuntime.hasNotificationAccess(appContext)
     val serviceConnected = ScanRuntime.isListenerConnected()
+    if (enabled && accessGranted && !serviceConnected) {
+      ScanRuntime.requestListenerRebindIfStale(appContext, SmsNotificationListener::class.java)
+    }
     val defaultSmsPackage = ScanRuntime.defaultSmsPackage(appContext)
     val status = when {
       !enabled -> "off"
@@ -246,18 +386,29 @@ class NotificationListenerModule(
       else -> "active"
     }
 
+    val historyOwnerScope = RealtimeScanPreferences.historyOwnerScope(appContext)
+    val subscriptionTier = RealtimeScanPreferences.subscriptionTier(appContext)
+
     return Arguments.createMap().apply {
       putString("status", status)
+      putString("subscriptionTier", subscriptionTier)
       putBoolean("scanningEnabled", enabled)
       putBoolean("fullScreenWarnings", RealtimeScanPreferences.useFullScreenWarnings(appContext))
       putBoolean("notificationAccessGranted", accessGranted)
       putBoolean("serviceConnected", serviceConnected)
       putNullableString("defaultSmsPackage", defaultSmsPackage)
       putNullableString("defaultSmsAppName", ScanRuntime.defaultSmsAppLabel(appContext, defaultSmsPackage))
-      putBoolean("historyOwnerConfigured", RealtimeScanPreferences.historyOwnerScope(appContext) != null)
+      putBoolean("historyOwnerConfigured", historyOwnerScope != null)
       putBoolean("historyStorageAvailable", EncryptedHistoryStore.storageAvailable(appContext))
       putString("historyStorageStatus", ScanRuntime.storageStatus())
       putString("lastContentStatus", ScanRuntime.lastContentStatus())
+      putBoolean("batteryOptimizationExempt", ScanRuntime.isIgnoringBatteryOptimizations(appContext))
+      putBoolean("fullScreenIntentPermitted", ScanRuntime.canUseFullScreenIntent(appContext))
+      putBoolean("dndBypassGranted", ScanRuntime.canBypassDnd(appContext))
+      // The true all-time count, independent of how many detail records are currently retained
+      // (older ones are pruned past historyRetentionLimit) — see EncryptedHistoryStore for why.
+      putInt("lifetimeBlockedCount", historyOwnerScope?.let { EncryptedHistoryStore.lifetimeBlockedCount(appContext, it) } ?: 0)
+      putInt("historyRetentionLimit", EncryptedHistoryStore.retentionLimitPerAccount(subscriptionTier))
       putBoolean(
         "appNotificationsGranted",
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||

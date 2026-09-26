@@ -7,18 +7,22 @@
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" defer></script>
   </head>
-  <body>
+  <body data-session="signed-out">
     <aside>
       <a class="brand" href="/"
-        ><span>NotiCare<small>Admin</small></span></a
+        ><span>NotiCare<small>Security console</small></span></a
       >
       <p class="nav-label">Workspace</p>
+      <label class="nav-search" for="nav-filter">
+        <span>Find a view</span>
+        <input id="nav-filter" type="search" placeholder="Search workspace" autocomplete="off" />
+      </label>
       <nav id="nav" aria-label="Dashboard navigation"></nav>
       <div class="sidebar-note">Research workspace</div>
     </aside>
     <main>
       <header>
-        <span>Admin dashboard</span>
+        <div class="header-identity"><span class="eyebrow">NotiCare</span><span>Admin dashboard</span></div>
         <div class="header-actions">
           <label class="appearance-label"
             >Appearance<select id="appearance">
@@ -31,13 +35,16 @@
               <option value="comfortable">Comfortable</option>
               <option value="compact">Compact</option>
             </select></label
+          ><label class="live-refresh"><input id="auto-refresh" type="checkbox" /> Live refresh</label
+          ><span id="refresh-status" class="refresh-status" role="status" aria-live="polite"></span
           ><button id="logout" hidden>Sign out</button>
         </div>
       </header>
       <div id="notice" role="status" hidden></div>
       <section id="login" class="panel login">
-        <h1>Sign in</h1>
-        <p>Access your NotiCare dashboard.</p>
+        <span class="login-kicker">ADMIN ACCESS</span>
+        <h1>Welcome back</h1>
+        <p>Sign in to review your security workspace.</p>
         <form id="login-form">
           <label
             >Email<input
@@ -49,8 +56,10 @@
           ><label>Password<input id="password" type="password" autocomplete="current-password" required /></label
           ><button class="primary" type="submit">Sign in</button>
         </form>
-        <p class="muted">Use a Supabase email account with admin access. See admin/README.md for first-time setup.</p>
-        <button id="preview-model">View model documentation</button>
+        <p class="muted login-help">
+          Use a Supabase account with admin access. See admin/README.md for first-time setup.
+        </p>
+        <button id="preview-model" class="text-link">View model documentation</button>
       </section>
       <section id="workspace" hidden>
         <div class="heading">

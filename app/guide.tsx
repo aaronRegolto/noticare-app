@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -14,7 +14,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Signing in with a one-time code',
-    body: 'Choose your country code, enter your mobile number, then tap Send OTP. Enter the six-digit code that arrives by SMS. Your phone number is used for authentication; NotiCare does not upload your full SMS messages.',
+    body: 'Choose your country code, enter your mobile number, then tap Send code. Enter the six-digit verification code that arrives by SMS. Your phone number is used for authentication; NotiCare does not upload your full SMS messages.',
   },
   {
     title: 'Notification access',
@@ -30,11 +30,15 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Choose Block or Ignore',
-    body: 'For a Dangerous message, NotiCare explains the warning signs and asks you to Block or Ignore it. Block suppresses the notification when Android allows it; Ignore leaves it visible. Neither choice deletes the original SMS from your Messages inbox.',
+    body: 'For a Dangerous message, NotiCare explains the warning signs and asks you to Block or Ignore it. Block suppresses the notification (Android may not always allow this); Ignore leaves it visible. Neither choice deletes the original SMS from your Messages app.',
   },
   {
     title: 'Manual Scan',
-    body: 'Long-press an SMS in Messages, tap Copy, return to NotiCare, tap Paste, then choose Scan Message. NotiCare never opens links it finds.',
+    body: 'Long-press an SMS in Messages, tap Copy, return to NotiCare, tap Paste, then choose Scan message. NotiCare never opens links it finds.',
+  },
+  {
+    title: 'Report & Block and viral phishing messages',
+    body: 'For a Dangerous result, tapping Report & Block saves the message on this device and, once online, shares its exact text so other NotiCare users can be warned about the same scam. Its score starts low and rises toward 100 as more people report the identical message — the Dashboard’s "Most Reported Phishing Messages" list ranks the messages spreading the widest. This is the only action in NotiCare that uploads message text; Mark as safe never uploads anything.',
   },
   {
     title: 'Messages inbox',
@@ -45,12 +49,12 @@ const topics: GuideTopic[] = [
     body: 'Full SMS content, sender numbers, notification titles, and raw links stay on your device. Community reporting contains only anonymous classification metadata.',
   },
   {
-    title: 'Notification-permission troubleshooting',
+    title: 'Notification permission troubleshooting',
     body: 'If scanning says Permission required, open Android Notification Access from Dashboard settings. Turn on NotiCare, then return to the app. Android may show the service as disconnected for a short time after access is granted.',
   },
   {
     title: 'Hidden notification previews',
-    body: 'If Messages hides the preview text on your lock screen, NotiCare cannot safely guess the content. Unlock your device and check Messages directly. A status of content unavailable does not mean a message is Safe.',
+    body: 'If Messages hides the preview text on your lock screen, NotiCare cannot safely guess the content and shows "Content redacted" instead. That status does not mean the message is Safe — unlock your device and check Messages directly.',
   },
   {
     title: 'Offline troubleshooting',
@@ -85,7 +89,7 @@ export default function GuideScreen() {
 
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={12}>
           <Ionicons name="arrow-back" size={25} color="#fff" />
@@ -98,7 +102,7 @@ export default function GuideScreen() {
           <Ionicons name="book-outline" size={27} color="#00B87C" />
           <View>
             <Text style={styles.heroTitle}>How NotiCare protects you</Text>
-            <Text style={styles.heroCopy}>Simple answers to keep you safe.</Text>
+            <Text style={styles.heroCopy}>Answers to common questions about how NotiCare works.</Text>
           </View>
         </View>
         <View style={styles.search}>

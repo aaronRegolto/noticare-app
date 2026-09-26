@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
@@ -15,11 +15,15 @@ const sections = [
   ],
   [
     'What is never uploaded',
-    'NotiCare never uploads message text, notification titles, clipboard contents, OTPs, complete sender numbers, raw URLs, encryption keys, or hardware/advertising IDs.',
+    'Notification titles, clipboard contents, OTPs, complete sender numbers, raw URLs, encryption keys, and hardware/advertising IDs are never uploaded. Message text is never uploaded either — with one exception below.',
+  ],
+  [
+    'Report & Block: the one exception',
+    'Tapping Report & Block on a Dangerous result shares that exact message’s text so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list, and their score rises as more people report the same text. This only happens when you explicitly tap Report & Block — never automatically.',
   ],
   [
     'Your controls',
-    'You can turn scanning off, delete one captured message, clear your local Messages inbox, submit reports without sharing message text, or sign out at any time.',
+    'You can turn scanning off, delete one captured message, clear your local Messages inbox, submit reports without sharing message text (Mark as safe never uploads anything), or sign out at any time.',
   ],
 ];
 
@@ -27,7 +31,7 @@ export default function PrivacyScreen() {
   const router = useRouter();
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={12}>
           <Ionicons name="arrow-back" color="#fff" size={25} />

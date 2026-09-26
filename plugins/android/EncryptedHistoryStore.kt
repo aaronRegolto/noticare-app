@@ -20,8 +20,24 @@ import org.json.JSONObject
 object EncryptedHistoryStore {
   private const val keyAlias = "NotiCareBlockedHistoryKey.v1"
   private const val fileName = "noticare-blocked-history.v1"
+  private const val lifetimeFileName = "noticare-blocked-history-lifetime.v1"
   private const val transformation = "AES/GCM/NoPadding"
   private const val ivLength = 12
+
+  /**
+   * The whole record set is one encrypted JSON blob (see readRecords/writeRecords): every read
+   * decrypts and parses it, and every write re-serializes and re-encrypts it in full. That cost
+   * grows with total record count, so an account that keeps NotiCare active for a long time and
+   * catches many Dangerous messages would otherwise make every scan, list load, and read/delete
+   * tap progressively slower. Capping detail records per account bounds that cost independent of
+   * how long the app has been protecting the device. `lifetimeBlockedCount` tracks the true
+   * all-time total separately (in its own tiny file) so the Dashboard's "Total blocked" stat
+   * keeps counting up correctly even once older detail records have been pruned.
+   */
+  private const val maxRetainedRecordsPerScope = 500
+
+  /** Free tier's smaller cap; Pro uses [maxRetainedRecordsPerScope]. */
+  private const val maxRetainedRecordsPerScopeFree = 20
 
   sealed class SaveResult {
     data class Saved(val id: String) : SaveResult()
@@ -41,6 +57,7 @@ object EncryptedHistoryStore {
     sourcePackage: String,
     ruleVersion: String,
     level: ThreatLevel,
+    retentionLimit: Int = maxRetainedRecordsPerScope,
   ): SaveResult {
     if (message.isBlank()) return SaveResult.Unavailable("content_unavailable")
 
@@ -60,8 +77,9 @@ object EncryptedHistoryStore {
         level = level,
         blocked = false,
       )
-      val records = readRecords(context).toMutableList().apply { add(record) }
-      writeRecords(context, records)
+      val merged = readRecords(context).toMutableList().apply { add(record) }
+      writeRecords(context, pruneOldestBeyondCap(merged, ownerScope, retentionLimit))
+      incrementLifetimeBlocked(context, ownerScope)
       SaveResult.Saved(record.id)
     }.getOrElse { error ->
       ScanRuntime.markStorageUnavailable()
@@ -125,6 +143,65 @@ object EncryptedHistoryStore {
       writeRecords(context, retained)
     }
     return removed
+  }
+
+  /** How many detail records an account keeps before the oldest are pruned. Shown in Settings so pruning is never a silent surprise. */
+  fun retentionLimitPerAccount(tier: String): Int =
+    if (tier == "free") maxRetainedRecordsPerScopeFree else maxRetainedRecordsPerScope
+
+  /**
+   * The true all-time blocked count for this account, independent of how many detail records are
+   * currently retained. Falls back to counting existing records for accounts that saved history
+   * before this counter existed, so an upgrade never appears to reset someone's total to zero.
+   */
+  @Synchronized
+  fun lifetimeBlockedCount(context: Context, ownerScope: String): Int =
+    readLifetimeCounts(context)[ownerScope] ?: list(context, ownerScope).size
+
+  @Synchronized
+  private fun incrementLifetimeBlocked(context: Context, ownerScope: String) {
+    val counts = readLifetimeCounts(context).toMutableMap()
+    val current = counts[ownerScope] ?: list(context, ownerScope).size
+    counts[ownerScope] = current + 1
+    writeLifetimeCounts(context, counts)
+  }
+
+  /** Keeps only the newest [retentionLimit] records for the scope that just wrote a new one (or downgraded); every other account's records are untouched. */
+  private fun pruneOldestBeyondCap(
+    records: List<BlockedHistoryRecord>,
+    ownerScope: String,
+    retentionLimit: Int,
+  ): List<BlockedHistoryRecord> {
+    val scoped = records.filter { it.ownerScope == ownerScope }
+    if (scoped.size <= retentionLimit) return records
+    val keepIds = scoped.sortedByDescending { it.receivedAt }.take(retentionLimit).map { it.id }.toSet()
+    return records.filter { it.ownerScope != ownerScope || it.id in keepIds }
+  }
+
+  private fun lifetimeFile(context: Context) = File(context.filesDir, lifetimeFileName)
+
+  private fun readLifetimeCounts(context: Context): Map<String, Int> {
+    val file = lifetimeFile(context)
+    if (!file.exists()) return emptyMap()
+    val encoded = file.readText(Charsets.UTF_8)
+    if (encoded.isBlank()) return emptyMap()
+    val json = JSONObject(decrypt(encoded))
+    return buildMap {
+      json.keys().forEach { scope -> put(scope, json.optInt(scope, 0)) }
+    }
+  }
+
+  private fun writeLifetimeCounts(context: Context, counts: Map<String, Int>) {
+    val json = JSONObject().apply {
+      counts.forEach { (scope, count) -> put(scope, count) }
+    }
+    val target = lifetimeFile(context)
+    val temporary = File(context.filesDir, "$lifetimeFileName.tmp")
+    temporary.writeText(encrypt(json.toString()), Charsets.UTF_8)
+    if (!temporary.renameTo(target)) {
+      temporary.delete()
+      throw IllegalStateException("Unable to atomically replace encrypted NotiCare lifetime counters")
+    }
   }
 
   @Synchronized

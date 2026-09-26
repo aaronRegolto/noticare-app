@@ -45,6 +45,51 @@ export function signInError(error) {
     401,
   );
 }
+/**
+ * Pushes newly inserted, non-demo Suspicious/Dangerous threat_events rows to the browser the
+ * instant `record_threat_event` commits them, via a per-connection Supabase Realtime subscription
+ * authorized as the requesting admin's own JWT — the same RLS ("admins can read all rows") that
+ * already governs /api/records applies here too, so this can never surface rows that admin
+ * couldn't already read over REST. Requires the `threat_events` table to be added to the
+ * `supabase_realtime` publication (see the 20260917000100 migration); if that migration has not
+ * been applied yet, the subscription simply never receives events (fails open to "no live
+ * updates", not to broader access).
+ */
+function streamDiscoveries(req, res, accessToken) {
+  const realtime = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    accessToken: async () => accessToken,
+  });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+  });
+  res.write('retry: 5000\n\n');
+
+  const channel = realtime
+    .channel(`admin-discoveries-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'threat_events', filter: 'is_demo=eq.false' },
+      (payload) => {
+        const row = payload.new;
+        if (!['suspicious', 'dangerous'].includes(row?.threat_level)) return;
+        res.write(`event: discovery\ndata: ${JSON.stringify(row)}\n\n`);
+      },
+    )
+    .subscribe();
+
+  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
+  const cleanup = () => {
+    clearInterval(heartbeat);
+    void realtime.removeChannel(channel);
+  };
+  req.on('close', cleanup);
+  res.on('error', cleanup);
+}
+
 async function body(req, limit = 8192) {
   const chunks = [];
   let length = 0;
@@ -103,6 +148,18 @@ export const server = createServer(async (req, res) => {
       if (access.error || access.data !== true)
         throw fail('Admin access required. Apply the admin migration and add your user ID to admin_users.', 403);
       return send({ token: data.session.access_token, expiresAt: data.session.expires_at, userId: data.user.id });
+    }
+    if (path.pathname === '/api/stream/discoveries' && req.method === 'GET') {
+      // EventSource cannot set an Authorization header, so the token travels as a query
+      // parameter instead. It is validated the same way (is_admin) as every other endpoint and
+      // is never logged; nothing here differs from the REST access-control model above.
+      const streamToken = path.searchParams.get('token');
+      if (!streamToken) throw fail('Sign in to continue', 401);
+      const db = client(`Bearer ${streamToken}`);
+      const access = await db.rpc('is_admin');
+      if (access.error || access.data !== true)
+        throw fail('Session expired or admin access unavailable. Sign in again.', 403);
+      return streamDiscoveries(req, res, streamToken);
     }
     if (!req.headers.authorization?.startsWith('Bearer ')) throw fail('Sign in to continue', 401);
     const db = client(req.headers.authorization);
@@ -193,7 +250,9 @@ export const server = createServer(async (req, res) => {
   }
 });
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  server.listen(Number(process.env.ADMIN_PORT || 4173), '127.0.0.1', () =>
-    console.log(`NotiCare Admin: http://localhost:${process.env.ADMIN_PORT || 4173}`),
-  );
+  const port = Number(process.env.PORT || process.env.ADMIN_PORT || 4173);
+  // Local dev stays loopback-only by default; set ADMIN_HOST=0.0.0.0 to accept
+  // connections from outside the machine (required behind a PaaS/proxy).
+  const host = process.env.ADMIN_HOST || '127.0.0.1';
+  server.listen(port, host, () => console.log(`NotiCare Admin: http://${host}:${port}`));
 }

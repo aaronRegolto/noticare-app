@@ -1,13 +1,23 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import Svg, { Line, Rect } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Line, Rect } from 'react-native-svg';
 
 import type { CommunityRange } from '@/backend/supabase/types/database.types';
+import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
+import { useSubscription } from '@/src/providers/SubscriptionProvider';
+import { DASHBOARD_TOUR_KEY, useFirstVisitTour } from '@/src/hooks/use-first-visit-tour';
+import { messagesTabRef, setActiveTourTab } from '@/src/navigation/tabBarRefs';
 import { getCommunityStats, summarizeCommunity, type CommunityPoint } from '@/src/services/community';
+import {
+  flushNativeCommunityReports,
+  flushQueuedPhishingReports,
+  getViralPhishingRanking,
+  type ViralPhishingEntry,
+} from '@/src/services/communityReports';
 import { flushNativeTelemetry, flushQueuedThreatEvents } from '@/src/services/eventSync';
 import { logError } from '@/src/services/logger';
 import {
@@ -19,9 +29,8 @@ import {
   type HistorySummary,
   type MonitoringStatus,
 } from '@/src/services/notificationListener';
-
-const navy = '#1E2D43';
-const emerald = '#00B87C';
+import { useAppTheme } from '@/src/theme/ThemeProvider';
+import type { ThemeColors } from '@/src/theme/palette';
 
 type CommunityState = {
   points: CommunityPoint[];
@@ -30,20 +39,72 @@ type CommunityState = {
   error: string | null;
 };
 
-function ShieldMark({ size = 28, dark = false }: { size?: number; dark?: boolean }) {
+type ViralState = {
+  entries: ViralPhishingEntry[];
+  source: 'network' | 'cache' | null;
+  loading: boolean;
+  error: string | null;
+};
+
+function timeAgo(iso: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function ViralEntryRow({
+  entry,
+  rank,
+  first = false,
+  colors,
+}: {
+  entry: ViralPhishingEntry;
+  rank: number;
+  first?: boolean;
+  colors: ThemeColors;
+}) {
+  const styles = useThemedStyles(colors);
   return (
-    <View style={[styles.shieldMark, { width: size + 14, height: size + 14 }, dark && styles.shieldMarkDark]}>
-      <Ionicons name="shield-checkmark-outline" size={size} color={dark ? '#fff' : emerald} />
+    <View style={[styles.viralRow, first && styles.viralRowFirst]}>
+      <View style={styles.viralRank}>
+        <Text style={styles.viralRankText}>#{rank}</Text>
+      </View>
+      <View style={styles.flex}>
+        <Text numberOfLines={2} style={styles.viralMessage}>
+          {entry.messageText}
+        </Text>
+        <View style={styles.viralMetaRow}>
+          <Text style={styles.viralMeta}>
+            {entry.reportCount} {entry.reportCount === 1 ? 'report' : 'reports'} · {timeAgo(entry.lastReportedAt)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.viralScoreBox}>
+        <Text style={styles.viralScoreValue}>{entry.viralScore}</Text>
+        <Text style={styles.viralScoreMax}>/100</Text>
+      </View>
     </View>
   );
 }
 
-function statusDetails(status: MonitoringStatus | null) {
+function ShieldMark({ size = 28, dark = false, colors }: { size?: number; dark?: boolean; colors: ThemeColors }) {
+  const styles = useThemedStyles(colors);
+  return (
+    <View style={[styles.shieldMark, { width: size + 14, height: size + 14 }, dark && styles.shieldMarkDark]}>
+      <Ionicons name="shield-checkmark-outline" size={size} color={dark ? '#fff' : colors.accent} />
+    </View>
+  );
+}
+
+function statusDetails(status: MonitoringStatus | null, colors: ThemeColors) {
   if (!status)
     return {
-      title: 'ANDROID BUILD REQUIRED',
-      description: 'Install an Android development or release build to use real-time scanning.',
-      color: '#C77700',
+      title: 'ANDROID APP REQUIRED',
+      description: 'Real-time scanning is not available in this preview. Install the Android app to use it.',
+      color: colors.warning,
       active: false,
     };
   switch (status.status) {
@@ -51,35 +112,35 @@ function statusDetails(status: MonitoringStatus | null) {
       return {
         title: 'MONITORING ACTIVE',
         description: `Checking ${status.defaultSmsAppName ?? 'your Messages app'} only.`,
-        color: emerald,
+        color: colors.accent,
         active: true,
       };
     case 'off':
       return {
         title: 'MONITORING OFF',
-        description: 'Turn on Real-Time Scanning when you are ready.',
-        color: '#D4DDE8',
+        description: 'Real-Time Scanning is currently off.',
+        color: colors.headerTextMuted,
         active: false,
       };
     case 'permission_required':
       return {
         title: 'PERMISSION REQUIRED',
         description: 'Allow Android Notification Access to turn on scanning.',
-        color: '#FFB020',
+        color: colors.warning,
         active: false,
       };
     case 'service_disconnected':
       return {
         title: 'SERVICE DISCONNECTED',
         description: 'Android has not connected the notification listener yet.',
-        color: '#FFB020',
+        color: colors.warning,
         active: false,
       };
     case 'sms_app_unavailable':
       return {
         title: 'MESSAGES APP UNAVAILABLE',
         description: 'Set a default SMS app in Android settings first.',
-        color: '#FF6B6B',
+        color: colors.danger,
         active: false,
       };
   }
@@ -97,7 +158,16 @@ function dayLabel(point: CommunityPoint, range: CommunityRange) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
 }
 
-function CommunityChart({ points, range }: { points: CommunityPoint[]; range: CommunityRange }) {
+function CommunityChart({
+  points,
+  range,
+  colors,
+}: {
+  points: CommunityPoint[];
+  range: CommunityRange;
+  colors: ThemeColors;
+}) {
+  const styles = useThemedStyles(colors);
   const bars = points.slice(-12);
   const maximum = Math.max(1, ...bars.map((point) => point.blocked_count));
   const width = 328;
@@ -106,7 +176,7 @@ function CommunityChart({ points, range }: { points: CommunityPoint[]; range: Co
   const gap = 7;
   const barWidth = Math.max(8, (width - gap * Math.max(0, bars.length - 1)) / Math.max(1, bars.length));
   return (
-    <View accessibilityLabel="Chart of anonymously aggregated blocked dangerous messages">
+    <View accessibilityLabel="Chart of anonymized, aggregated blocked-message counts">
       <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         {[0, 1, 2].map((index) => (
           <Line
@@ -115,7 +185,7 @@ function CommunityChart({ points, range }: { points: CommunityPoint[]; range: Co
             x2={width}
             y1={22 + index * 47}
             y2={22 + index * 47}
-            stroke="#E4EBF2"
+            stroke={colors.border}
             strokeWidth="1"
           />
         ))}
@@ -131,7 +201,7 @@ function CommunityChart({ points, range }: { points: CommunityPoint[]; range: Co
               width={barWidth}
               height={barHeight}
               rx="3"
-              fill={value ? emerald : '#D9E4EE'}
+              fill={value ? colors.accent : colors.border}
             />
           );
         })}
@@ -155,13 +225,16 @@ function Metric({
   value,
   hint,
   green = false,
+  colors,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   value: string;
   hint: string;
   green?: boolean;
+  colors: ThemeColors;
 }) {
+  const styles = useThemedStyles(colors);
   return (
     <View style={styles.metricCard}>
       <View style={[styles.metricIcon, green && styles.metricIconGreen]}>
@@ -176,11 +249,40 @@ function Metric({
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
+  const { tier: subscriptionTier } = useSubscription();
   const [monitoring, setMonitoring] = useState<MonitoringStatus | null>(null);
   const [savingSwitch, setSavingSwitch] = useState(false);
   const [history, setHistory] = useState<HistorySummary[]>([]);
   const [range, setRange] = useState<CommunityRange>('today');
   const [community, setCommunity] = useState<CommunityState>({ points: [], source: null, loading: true, error: null });
+  const [viral, setViral] = useState<ViralState>({ entries: [], source: null, loading: true, error: null });
+  const tour = useFirstVisitTour(DASHBOARD_TOUR_KEY);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  const settingsButtonRef = useRef<View>(null);
+  const scanToggleRef = useRef<View>(null);
+  const communityCardRef = useRef<View>(null);
+
+  // Scrolls a tour target to the same fixed band below the header on every step, unconditionally.
+  // An "only scroll if not already visible" check sounds cheaper, but it means each step's framing
+  // depends on wherever the previous step happened to leave the scroll position — which is how a
+  // sliver of the prior card ended up lingering right above the highlighted one. Scrolling is
+  // instant (not animated) so there is no animation-duration race with the measurement that follows.
+  // Uses `measureInWindow` (arch-agnostic) rather than `measureLayout`, whose relative-node
+  // argument behaves differently between React Native's old and new architectures.
+  const scrollTargetIntoView = useCallback((targetRef: React.RefObject<View | null>) => {
+    const node = targetRef.current;
+    if (!node) return;
+    node.measureInWindow((_x, y) => {
+      const targetOffsetFromHeader = 110;
+      const delta = y - targetOffsetFromHeader;
+      if (Math.abs(delta) < 4) return; // near enough; skip a no-op scroll
+      scrollRef.current?.scrollTo({ y: Math.max(0, scrollOffsetRef.current + delta), animated: false });
+    });
+  }, []);
 
   const refreshMonitoringAndHistory = useCallback(async () => {
     if (!isNativeMonitoringAvailable()) {
@@ -208,28 +310,50 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const refreshViralRanking = useCallback(async () => {
+    setViral((current) => ({ ...current, loading: true, error: null }));
+    try {
+      const { entries, source } = await getViralPhishingRanking(10);
+      setViral({ entries, source, loading: false, error: null });
+    } catch (error) {
+      logError('viral-ranking-load-failed', error);
+      setViral((current) => ({
+        ...current,
+        loading: false,
+        error: 'Unable to load the most-reported phishing messages.',
+      }));
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
       void refreshCommunity(range);
+      // The ranking RPC is Pro-gated server-side; skip the call entirely for
+      // Free so it doesn't error on every dashboard visit.
+      if (subscriptionTier === 'pro') void refreshViralRanking();
       void flushQueuedThreatEvents();
       void flushNativeTelemetry();
-    }, [range, refreshCommunity, refreshMonitoringAndHistory]),
+      void flushQueuedPhishingReports();
+      void flushNativeCommunityReports();
+      tour.checkNow();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [range, refreshCommunity, refreshMonitoringAndHistory, refreshViralRanking, subscriptionTier]),
   );
 
   const changeScanning = useCallback(
     async (enabled: boolean) => {
       if (!isNativeMonitoringAvailable()) {
         Alert.alert(
-          'Android development build required',
-          'Expo Go cannot run NotiCare’s Kotlin notification listener. Build and install the Android development build first.',
+          'Android app required',
+          'Real-time scanning is not available in this preview. Install the Android app to turn it on.',
         );
         return;
       }
       if (enabled && !monitoring?.notificationAccessGranted) {
         Alert.alert(
           'Allow Notification Access?',
-          'NotiCare must receive Android notification events before it can check the default Messages app. It ignores every other app before reading any content.',
+          'NotiCare needs Android Notification Access to check your default Messages app. It ignores every other app.',
           [
             { text: 'Not now', style: 'cancel' },
             {
@@ -255,15 +379,15 @@ export default function DashboardScreen() {
         const next = await setScanningEnabled(enabled);
         setMonitoring(next);
         if (enabled && next.status !== 'active')
-          Alert.alert('Scanning is not active yet', statusDetails(next).description);
+          Alert.alert('Scanning could not turn on', statusDetails(next, colors).description);
       } catch (error) {
         logError('scan-switch-failed', error);
-        Alert.alert('Unable to change scanning', 'Please try again after checking Android settings.');
+        Alert.alert('Unable to change scanning', 'Check Android’s notification settings and try again.');
       } finally {
         setSavingSwitch(false);
       }
     },
-    [monitoring],
+    [monitoring, colors],
   );
 
   const summary = useMemo(() => summarizeCommunity(community.points), [community.points]);
@@ -273,7 +397,7 @@ export default function DashboardScreen() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const blockedToday = history.filter((record) => record.receivedAt >= todayStart).length;
   const blockedThisMonth = history.filter((record) => record.receivedAt >= monthStart).length;
-  const monitor = statusDetails(monitoring);
+  const monitor = statusDetails(monitoring, colors);
   const ranges: [CommunityRange, string][] = [
     ['today', 'Today'],
     ['last_7_days', '7 days'],
@@ -281,356 +405,532 @@ export default function DashboardScreen() {
     ['last_6_months', '6 months'],
   ];
 
+  const tourSteps: TourStep[] = useMemo(
+    () => [
+      {
+        key: 'scan-toggle',
+        title: 'Real-Time Scanning',
+        description:
+          'This switch turns Real-Time Scanning on or off. When it is on, NotiCare checks new SMS notifications from your default Messages app in the background.',
+        targetRef: scanToggleRef,
+        spotlightOffset: { y: 32 },
+      },
+      {
+        key: 'community',
+        title: 'Community Threat Assessment',
+        description:
+          'These anonymous, aggregated counts show how many messages were rated Dangerous, Suspicious, or Safe — never your own message contents.',
+        targetRef: communityCardRef,
+        beforeMeasure: () => scrollTargetIntoView(communityCardRef),
+        // Align the Android ScrollView measurement with the rendered card.
+        spotlightOffset: { y: 48 },
+      },
+      {
+        key: 'messages',
+        title: 'Messages',
+        description:
+          'Blocked notifications are saved in your encrypted, on-device Messages inbox. Open this tab anytime to review what NotiCare caught.',
+        targetRef: messagesTabRef,
+        // The real tab button renders an elevated outline while this step is active.
+        // Avoid a second SVG cut-out: navigator coordinates can drift from its visible button.
+        hideCutout: true,
+        onEnter: () => setActiveTourTab('messages'),
+        onExit: () => setActiveTourTab(null),
+      },
+      {
+        key: 'settings',
+        title: 'Settings',
+        description:
+          'Manage permissions, choose a warning style, switch between light and dark themes, and pick an accent color.',
+        targetRef: settingsButtonRef,
+        shape: 'circle',
+        // Header press targets report above their visible Android position; align to the hamburger.
+        spotlightOffset: { y: 48 },
+      },
+    ],
+    [scrollTargetIntoView],
+  );
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar style="light" />
-      <View style={styles.appBar}>
-        <ShieldMark size={25} />
-        <View style={styles.brandCopy}>
-          <Text style={styles.brand}>NotiCare</Text>
-          <Text style={styles.tagline}>Smishing Shield</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          accessibilityLabel="Open settings"
-          style={styles.menuButton}
-          hitSlop={10}
-        >
-          <Ionicons name="menu" color="#fff" size={29} />
-        </Pressable>
-      </View>
-      <ScrollView
-        style={styles.contentArea}
-        contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.statusCard}>
-          <View style={styles.statusHeading}>
-            <View style={styles.statusHeadingCopy}>
-              <Text style={styles.statusTitle}>NotiCare Smishing Shield</Text>
-              <Text style={styles.statusDate}>Your Android SMS protection</Text>
-            </View>
-            <ShieldMark size={25} dark />
+    // SpotlightTour is a sibling of SafeAreaView, not a child of it: SafeAreaView pads for the
+    // top inset, which would shift the overlay's coordinate origin away from the true window
+    // origin that `measureInWindow` (used to find each tour target) measures against.
+    <>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.appBar}>
+          <ShieldMark size={25} colors={colors} />
+          <View style={styles.brandCopy}>
+            <Text style={styles.brand}>NotiCare</Text>
+            <Text style={styles.tagline}>Smishing Shield</Text>
           </View>
-          <View style={styles.monitorPanel}>
-            <View style={styles.monitorTop}>
-              <View style={styles.flex}>
-                <Text style={styles.panelLabel}>SYSTEM STATUS</Text>
-                <Text style={[styles.panelStatus, { color: monitor.color }]}>{monitor.title}</Text>
-              </View>
-              <View style={[styles.liveDot, { backgroundColor: monitor.color }]} />
-            </View>
-            <Text style={styles.monitorDescription}>{monitor.description}</Text>
-            <View style={styles.panelDivider} />
-            <View style={styles.scanRow}>
-              <View style={styles.scanLabel}>
-                <Ionicons name="power-outline" size={18} color="#D9E1EE" />
-                <Text style={styles.scanText}>Real-time Scan</Text>
-              </View>
-              <Text style={styles.onText}>{monitoring?.scanningEnabled ? 'ON' : 'OFF'}</Text>
-              <Switch
-                value={Boolean(monitoring?.scanningEnabled)}
-                disabled={savingSwitch}
-                onValueChange={(value) => void changeScanning(value)}
-                trackColor={{ false: '#8391A4', true: emerald }}
-                thumbColor="#fff"
-                accessibilityLabel="Turn real-time scanning on or off"
-              />
-            </View>
-          </View>
-          <Text style={styles.blockedNote}>
-          </Text>
-        </View>
-
-        <View style={styles.matrixCard}>
-          <View style={styles.matrixHeader}>
-            <Ionicons name="warning-outline" size={22} color="#FF9F0A" />
-            <Text style={styles.matrixTitle}>Community Threat Assessment</Text>
-            <Pressable
-              onPress={() =>
-                Alert.alert(
-                  'Threat levels',
-                  'Dangerous: strong rule-based phishing evidence. Suspicious: warning signs or the on-device prototype need caution. Safe: lower estimated risk, never a guarantee. Counts are aggregated and anonymous.',
-                )
-              }
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Explain community threat levels"
-            >
-              <Ionicons name="information-circle-outline" size={20} color="#617A9B" />
-            </Pressable>
-          </View>
-          <View style={styles.matrixBody}>
-            {community.loading ? (
-              <Text style={styles.muted}>Loading anonymous community data…</Text>
-            ) : community.error ? (
-              <View>
-                <Text style={styles.errorText}>{community.error}</Text>
-                <Pressable
-                  onPress={() => void refreshCommunity(range)}
-                  style={styles.retryButton}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.retryText}>Retry</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.aggregateNotice}>
-                  {community.source === 'cache'
-                    ? 'Showing cached anonymous aggregate data (offline).'
-                    : 'Anonymous aggregate data only — never individual messages.'}
-                </Text>
-                <View style={styles.summaryCards}>
-                  <View style={[styles.summaryCard, styles.dangerSummary]}>
-                    <Ionicons name="shield-outline" size={18} color="#B42318" />
-                    <Text style={styles.summaryName}>Dangerous</Text>
-                    <Text style={[styles.summaryValue, { color: '#B42318' }]}>{summary.dangerous}</Text>
-                    <Text style={styles.summaryPercent}>{percentage(summary.dangerous, total)}</Text>
-                  </View>
-                  <View style={[styles.summaryCard, styles.warningSummary]}>
-                    <Ionicons name="warning-outline" size={18} color="#A35C00" />
-                    <Text style={styles.summaryName}>Suspicious</Text>
-                    <Text style={[styles.summaryValue, { color: '#A35C00' }]}>{summary.suspicious}</Text>
-                    <Text style={styles.summaryPercent}>{percentage(summary.suspicious, total)}</Text>
-                  </View>
-                  <View style={[styles.summaryCard, styles.safeSummary]}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#007D59" />
-                    <Text style={styles.summaryName}>Safe</Text>
-                    <Text style={[styles.summaryValue, { color: '#007D59' }]}>{summary.safe}</Text>
-                    <Text style={styles.summaryPercent}>{percentage(summary.safe, total)}</Text>
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.chartCard}>
-          <View style={styles.chartTitleRow}>
-            <View>
-              <Text style={styles.chartTitle}>Dangerous SMS successfully blocked</Text>
-              <Text style={styles.chartCopy}>Anonymous community aggregate</Text>
-            </View>
-            <Text style={styles.chartTotal}>{summary.blocked}</Text>
-          </View>
-          <View style={styles.rangeRow}>
-            {ranges.map(([key, label]) => (
-              <Pressable
-                key={key}
-                onPress={() => {
-                  setRange(key);
-                  void refreshCommunity(key);
-                }}
-                style={[styles.rangeButton, range === key && styles.rangeButtonActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: range === key }}
-              >
-                <Text style={[styles.rangeText, range === key && styles.rangeTextActive]}>{label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {community.loading ? (
-            <View style={styles.chartPlaceholder}>
-              <Text style={styles.muted}>Loading chart…</Text>
-            </View>
-          ) : community.error ? (
-            <View style={styles.chartPlaceholder}>
-              <Text style={styles.muted}>No chart data available.</Text>
-            </View>
-          ) : community.points.length ? (
-            <CommunityChart points={community.points} range={range} />
-          ) : (
-            <View style={styles.chartPlaceholder}>
-              <Ionicons name="bar-chart-outline" size={32} color="#ABC0D5" />
-              <Text style={styles.muted}>No anonymous blocked-message data for this range yet.</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.localTitleRow}>
-          <Text style={styles.localTitle}>Your protected device</Text>
-          <Pressable onPress={() => router.push('/history')} accessibilityRole="button">
-            <Text style={styles.historyLink}>View Messages</Text>
+          <Pressable
+            ref={settingsButtonRef}
+            onPress={() => router.push('/settings')}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            style={styles.menuButton}
+            hitSlop={10}
+          >
+            <Ionicons name="menu" color="#fff" size={29} />
           </Pressable>
         </View>
-        <View style={styles.metrics}>
-          <Metric icon="shield-outline" title="Blocked today" value={String(blockedToday)} hint="This device" />
-          <Metric
-            icon="trending-down"
-            title="Blocked this month"
-            value={String(blockedThisMonth)}
-            hint="This device"
-            green
-          />
-          <Metric
-            icon="archive-outline"
-            title="Total blocked"
-            value={String(history.length)}
-            hint="Protected History"
-          />
-        </View>
-        <Pressable onPress={() => router.push('/guide')} style={styles.guideCard} accessibilityRole="button">
-          <Ionicons name="book-outline" size={22} color="#006DAB" />
-          <View style={styles.flex}>
-            <Text style={styles.guideTitle}>Need help staying safe?</Text>
-            <Text style={styles.guideText}>Read the beginner-friendly User Guide.</Text>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.contentArea}
+          contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
+          showsVerticalScrollIndicator={false}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+        >
+          <View style={styles.statusCard}>
+            <View style={styles.statusHeading}>
+              <View style={styles.statusHeadingCopy}>
+                <Text style={styles.statusTitle}>NotiCare Smishing Shield</Text>
+                <Text style={styles.statusDate}>Your Android SMS protection</Text>
+              </View>
+              <ShieldMark size={25} dark colors={colors} />
+            </View>
+            <View style={styles.monitorPanel}>
+              <View style={styles.monitorTop}>
+                <View style={styles.flex}>
+                  <Text style={styles.panelLabel}>SYSTEM STATUS</Text>
+                  <Text style={[styles.panelStatus, { color: monitor.color }]}>{monitor.title}</Text>
+                </View>
+                <View style={[styles.liveDot, { backgroundColor: monitor.color }]} />
+              </View>
+              <Text style={styles.monitorDescription}>{monitor.description}</Text>
+              <View style={styles.panelDivider} />
+              <View style={styles.scanRow}>
+                <View style={styles.scanLabel}>
+                  <Ionicons name="power-outline" size={18} color={colors.headerTextMuted} />
+                  <Text style={styles.scanText}>Real-Time Scanning</Text>
+                </View>
+                <View ref={scanToggleRef} style={styles.scanControl} collapsable={false}>
+                  <Text style={styles.onText}>{monitoring?.scanningEnabled ? 'ON' : 'OFF'}</Text>
+                  <Switch
+                    value={Boolean(monitoring?.scanningEnabled)}
+                    disabled={savingSwitch}
+                    onValueChange={(value) => void changeScanning(value)}
+                    trackColor={{ false: '#8391A4', true: colors.accent }}
+                    thumbColor="#fff"
+                    accessibilityLabel="Turn real-time scanning on or off"
+                  />
+                </View>
+              </View>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#6784A1" />
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
+
+          <View style={styles.matrixCard} ref={communityCardRef} collapsable={false}>
+            <View style={styles.matrixHeader}>
+              <Ionicons name="warning-outline" size={22} color={colors.warning} />
+              <Text style={styles.matrixTitle}>Community Threat Assessment</Text>
+              <Pressable
+                onPress={() =>
+                  Alert.alert(
+                    'Threat levels',
+                    'Dangerous: strong evidence of phishing. Suspicious: some warning signs, but not enough to confirm a scam. Safe: lower estimated risk — never a guarantee. All counts are anonymous and aggregated.',
+                  )
+                }
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Explain community threat levels"
+              >
+                <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <View style={styles.matrixBody}>
+              {community.loading ? (
+                <Text style={styles.muted}>Loading anonymous community data…</Text>
+              ) : community.error ? (
+                <View>
+                  <Text style={styles.errorText}>{community.error}</Text>
+                  <Pressable
+                    onPress={() => void refreshCommunity(range)}
+                    style={styles.retryButton}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.retryText}>Retry</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.aggregateNotice}>
+                    {community.source === 'cache'
+                      ? 'Showing cached anonymous aggregate data (offline).'
+                      : 'Anonymous aggregate data only — never individual messages.'}
+                  </Text>
+                  <View style={styles.summaryCards}>
+                    <View style={[styles.summaryCard, styles.dangerSummary]}>
+                      <Ionicons name="shield-outline" size={18} color={colors.danger} />
+                      <Text style={styles.summaryName}>Dangerous</Text>
+                      <Text style={[styles.summaryValue, { color: colors.danger }]}>{summary.dangerous}</Text>
+                      <Text style={styles.summaryPercent}>{percentage(summary.dangerous, total)}</Text>
+                    </View>
+                    <View style={[styles.summaryCard, styles.warningSummary]}>
+                      <Ionicons name="warning-outline" size={18} color={colors.warning} />
+                      <Text style={styles.summaryName}>Suspicious</Text>
+                      <Text style={[styles.summaryValue, { color: colors.warning }]}>{summary.suspicious}</Text>
+                      <Text style={styles.summaryPercent}>{percentage(summary.suspicious, total)}</Text>
+                    </View>
+                    <View style={[styles.summaryCard, styles.safeSummary]}>
+                      <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
+                      <Text style={styles.summaryName}>Safe</Text>
+                      <Text style={[styles.summaryValue, { color: colors.success }]}>{summary.safe}</Text>
+                      <Text style={styles.summaryPercent}>{percentage(summary.safe, total)}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.chartCard}>
+            <View style={styles.chartTitleRow}>
+              <View>
+                <Text style={styles.chartTitle}>Dangerous SMS successfully blocked</Text>
+                <Text style={styles.chartCopy}>Anonymous community aggregate</Text>
+              </View>
+              <Text style={styles.chartTotal}>{summary.blocked}</Text>
+            </View>
+            <View style={styles.rangeRow}>
+              {ranges.map(([key, label]) => (
+                <Pressable
+                  key={key}
+                  onPress={() => {
+                    setRange(key);
+                    void refreshCommunity(key);
+                  }}
+                  style={[styles.rangeButton, range === key && styles.rangeButtonActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: range === key }}
+                >
+                  <Text style={[styles.rangeText, range === key && styles.rangeTextActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {community.loading ? (
+              <View style={styles.chartPlaceholder}>
+                <Text style={styles.muted}>Loading chart…</Text>
+              </View>
+            ) : community.error ? (
+              <View style={styles.chartPlaceholder}>
+                <Text style={styles.muted}>No chart data available.</Text>
+              </View>
+            ) : community.points.length ? (
+              <CommunityChart points={community.points} range={range} colors={colors} />
+            ) : (
+              <View style={styles.chartPlaceholder}>
+                <Ionicons name="bar-chart-outline" size={32} color={colors.textMuted} />
+                <Text style={styles.muted}>No anonymous blocked-message data for this range yet.</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.viralCard}>
+            <View style={styles.matrixHeader}>
+              <Ionicons name="flame-outline" size={22} color={colors.danger} />
+              <Text style={styles.matrixTitle}>Most Reported Phishing Messages</Text>
+              <Pressable
+                onPress={() =>
+                  Alert.alert(
+                    'Viral phishing messages',
+                    'When someone taps Report & Block on a Dangerous result, that exact message text is shared here so other NotiCare users can recognize it. Its score rises toward 100 as more people report the same message.',
+                  )
+                }
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Explain the viral phishing ranking"
+              >
+                <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <View style={styles.matrixBody}>
+              {subscriptionTier !== 'pro' ? (
+                <View>
+                  <Text style={styles.muted}>
+                    Viral phishing ranking is a Pro feature. Upgrade to see which scam messages are spreading most
+                    widely. Reporting phishing with Block & Report is free for everyone.
+                  </Text>
+                  <Pressable onPress={() => router.push('/paywall')} style={styles.retryButton} accessibilityRole="button">
+                    <Text style={styles.retryText}>Upgrade to Pro</Text>
+                  </Pressable>
+                </View>
+              ) : viral.loading ? (
+                <Text style={styles.muted}>Loading reported messages…</Text>
+              ) : viral.error ? (
+                <View>
+                  <Text style={styles.errorText}>{viral.error}</Text>
+                  <Pressable onPress={() => void refreshViralRanking()} style={styles.retryButton} accessibilityRole="button">
+                    <Text style={styles.retryText}>Retry</Text>
+                  </Pressable>
+                </View>
+              ) : viral.entries.length ? (
+                <>
+                  {viral.source === 'cache' ? (
+                    <Text style={styles.aggregateNotice}>Showing cached data (offline).</Text>
+                  ) : null}
+                  {viral.entries.map((entry, index) => (
+                    <ViralEntryRow key={entry.reportId} entry={entry} rank={index + 1} first={index === 0} colors={colors} />
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.muted}>
+                  No phishing messages have been reported yet. Reported messages appear here once other NotiCare users
+                  confirm the same text.
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.localTitleRow}>
+            <Text style={styles.localTitle}>On this device</Text>
+            <Pressable onPress={() => router.push('/history')} accessibilityRole="button">
+              <Text style={styles.historyLink}>View Messages</Text>
+            </Pressable>
+          </View>
+          <View style={styles.metrics}>
+            <Metric
+              icon="shield-outline"
+              title="Blocked today"
+              value={String(blockedToday)}
+              hint="This device"
+              colors={colors}
+            />
+            <Metric
+              icon="trending-down"
+              title="Blocked this month"
+              value={String(blockedThisMonth)}
+              hint="This device"
+              green
+              colors={colors}
+            />
+            <Metric
+              icon="archive-outline"
+              title="Total blocked"
+              // The lifetime count, not history.length: only the newest messages are kept as full
+              // detail records on-device (see Settings), but this stat keeps counting all-time.
+              value={String(monitoring?.lifetimeBlockedCount ?? history.length)}
+              hint="All time"
+              colors={colors}
+            />
+          </View>
+          <Pressable onPress={() => router.push('/guide')} style={styles.guideCard} accessibilityRole="button">
+            <Ionicons name="book-outline" size={22} color={colors.link} />
+            <View style={styles.flex}>
+              <Text style={styles.guideTitle}>New to NotiCare?</Text>
+              <Text style={styles.guideCopy}>Read the User Guide.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+      <SpotlightTour steps={tourSteps} visible={tour.visible} onDone={tour.dismiss} colors={colors} />
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  // The safe-area inset is part of the navy app header, not the page surface.
-  // This keeps Android's status icons visible over the header on edge-to-edge devices.
-  safeArea: { flex: 1, backgroundColor: navy },
-  contentArea: { flex: 1, backgroundColor: '#F7F9FC' },
-  appBar: {
-    height: 66,
-    backgroundColor: navy,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 10,
-    elevation: 10,
-  },
-  shieldMark: { borderRadius: 10, backgroundColor: '#334258', alignItems: 'center', justifyContent: 'center' },
-  shieldMarkDark: { backgroundColor: emerald },
-  brandCopy: { marginLeft: 10 },
-  brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
-  tagline: { color: '#CFD7E3', fontSize: 12, marginTop: 1 },
-  menuButton: { marginLeft: 'auto', padding: 4 },
-  flex: { flex: 1 },
-  content: { padding: 10, gap: 16 },
-  statusCard: {
-    backgroundColor: '#273850',
-    borderRadius: 14,
-    padding: 19,
-    shadowColor: '#12233C',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  statusHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  statusHeadingCopy: { flex: 1, paddingRight: 8 },
-  statusTitle: { color: '#FFF', fontSize: 22, fontWeight: '800' },
-  statusDate: { color: '#CBD5E3', marginTop: 5, fontSize: 13 },
-  monitorPanel: {
-    backgroundColor: '#405168',
-    borderColor: '#627187',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 17,
-  },
-  monitorTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  panelLabel: { color: '#D3DBE5', fontSize: 11 },
-  panelStatus: { fontSize: 16, fontWeight: '800', marginTop: 5 },
-  liveDot: { width: 11, height: 11, borderRadius: 6 },
-  monitorDescription: { color: '#D9E4F0', fontSize: 12, marginTop: 8, lineHeight: 17 },
-  panelDivider: { backgroundColor: '#67768A', height: 1, marginVertical: 13 },
-  scanRow: { flexDirection: 'row', alignItems: 'center' },
-  scanLabel: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
-  scanText: { color: '#E0E6EE', fontSize: 13 },
-  onText: { color: '#FFF', fontWeight: '700', fontSize: 12, marginRight: 10 },
-  blockedNote: { color: '#C7D5E5', fontSize: 11, lineHeight: 16, marginTop: 12 },
-  matrixCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#EDF0F4',
-    shadowColor: '#1E2D43',
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  matrixHeader: {
-    flexDirection: 'row',
-    gap: 9,
-    alignItems: 'center',
-    backgroundColor: '#F2F6FB',
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-  },
-  matrixTitle: { fontWeight: '700', fontSize: 17, color: '#111827', flex: 1 },
-  matrixBody: { padding: 16 },
-  aggregateNotice: { color: '#6B83A3', fontSize: 12, lineHeight: 17 },
-  summaryCards: { flexDirection: 'row', gap: 8, marginTop: 13 },
-  summaryCard: { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, minHeight: 112 },
-  dangerSummary: { backgroundColor: '#FFF0F0', borderColor: '#FFD0D0' },
-  warningSummary: { backgroundColor: '#FFF8E9', borderColor: '#FFE1A6' },
-  safeSummary: { backgroundColor: '#ECFCF5', borderColor: '#B7F0D7' },
-  summaryName: { color: '#516B89', fontWeight: '700', fontSize: 11, marginTop: 5 },
-  summaryValue: { fontWeight: '800', fontSize: 22, marginTop: 6 },
-  summaryPercent: { color: '#6F88A7', fontSize: 11, marginTop: 1 },
-  muted: { color: '#7187A6', textAlign: 'center', lineHeight: 19, fontSize: 13 },
-  errorText: { color: '#B42318', lineHeight: 19, fontSize: 13 },
-  retryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#EDF4FA',
-    borderRadius: 8,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    marginTop: 10,
-  },
-  retryText: { color: '#006DAB', fontWeight: '800', fontSize: 12 },
-  chartCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#E7EDF3' },
-  chartTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  chartTitle: { color: '#243F5E', fontWeight: '800', fontSize: 15 },
-  chartCopy: { color: '#7087A6', fontSize: 12, marginTop: 3 },
-  chartTotal: { color: emerald, fontWeight: '800', fontSize: 23 },
-  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14, marginBottom: 13 },
-  rangeButton: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 7, backgroundColor: '#F0F4F8' },
-  rangeButtonActive: { backgroundColor: navy },
-  rangeText: { color: '#5E7695', fontSize: 11, fontWeight: '700' },
-  rangeTextActive: { color: '#fff' },
-  chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 1, marginTop: -12 },
-  chartLabel: { color: '#7990AC', fontSize: 10 },
-  chartPlaceholder: { height: 130, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  localTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-  localTitle: { color: '#314866', fontWeight: '800', fontSize: 16 },
-  historyLink: { color: '#006DAB', fontWeight: '700', fontSize: 12 },
-  metrics: { flexDirection: 'row', gap: 8 },
-  metricCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    minHeight: 142,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    shadowColor: '#1E2D43',
-    shadowOpacity: 0.09,
-    shadowRadius: 7,
-    elevation: 2,
-  },
-  metricIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 22,
-    backgroundColor: navy,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 7,
-  },
-  metricIconGreen: { backgroundColor: emerald },
-  metricTitle: { color: '#314461', fontWeight: '700', fontSize: 11, textAlign: 'center' },
-  metricValue: { color: navy, fontSize: 23, fontWeight: '800', marginTop: 5 },
-  metricValueGreen: { color: '#00885F' },
-  metricHint: { color: '#7087A8', fontSize: 10, marginTop: 2, textAlign: 'center' },
-  guideCard: {
-    backgroundColor: '#ECF5FC',
-    borderRadius: 13,
-    padding: 14,
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-  },
-  guideTitle: { color: '#1D4264', fontWeight: '800' },
-  guideText: { color: '#607B99', fontSize: 12, marginTop: 2 },
-});
+function useThemedStyles(colors: ThemeColors) {
+  return useMemo(() => createStyles(colors), [colors]);
+}
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    // The safe-area inset is part of the dark app header, not the page surface.
+    // This keeps Android's status icons visible over the header on edge-to-edge devices.
+    safeArea: { flex: 1, backgroundColor: colors.headerBg },
+    contentArea: { flex: 1, backgroundColor: colors.background },
+    appBar: {
+      height: 66,
+      backgroundColor: colors.headerBg,
+      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      zIndex: 10,
+      elevation: 10,
+    },
+    shieldMark: {
+      borderRadius: 10,
+      backgroundColor: colors.headerSurface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shieldMarkDark: { backgroundColor: colors.accent },
+    brandCopy: { marginLeft: 10 },
+    brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+    tagline: { color: colors.headerTextMuted, fontSize: 12, marginTop: 1 },
+    menuButton: { marginLeft: 'auto', padding: 4 },
+    flex: { flex: 1 },
+    content: { padding: 10, gap: 16 },
+    statusCard: {
+      backgroundColor: colors.headerSurface,
+      borderRadius: 14,
+      padding: 19,
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    statusHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    statusHeadingCopy: { flex: 1, paddingRight: 8 },
+    statusTitle: { color: '#FFF', fontSize: 22, fontWeight: '800' },
+    statusDate: { color: colors.headerTextMuted, marginTop: 5, fontSize: 13 },
+    monitorPanel: {
+      backgroundColor: colors.scheme === 'dark' ? '#26344A' : '#405168',
+      borderColor: colors.scheme === 'dark' ? '#3C4C66' : '#627187',
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 14,
+      marginTop: 17,
+    },
+    monitorTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    panelLabel: { color: colors.headerTextMuted, fontSize: 11 },
+    panelStatus: { fontSize: 16, fontWeight: '800', marginTop: 5 },
+    liveDot: { width: 11, height: 11, borderRadius: 6 },
+    monitorDescription: { color: colors.headerTextMuted, fontSize: 12, marginTop: 8, lineHeight: 17 },
+    panelDivider: { backgroundColor: colors.border, height: 1, marginVertical: 13 },
+    scanRow: { flexDirection: 'row', alignItems: 'center' },
+    scanLabel: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
+    scanText: { color: '#E0E6EE', fontSize: 13 },
+    scanControl: { flexDirection: 'row', alignItems: 'center', height: 24 },
+    onText: { color: '#FFF', fontWeight: '700', fontSize: 12, marginRight: 10 },
+    matrixCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOpacity: 0.07,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    matrixHeader: {
+      flexDirection: 'row',
+      gap: 9,
+      alignItems: 'center',
+      backgroundColor: colors.surfaceAlt,
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+    },
+    matrixTitle: { fontWeight: '700', fontSize: 17, color: colors.textPrimary, flex: 1 },
+    matrixBody: { padding: 16 },
+    aggregateNotice: { color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
+    summaryCards: { flexDirection: 'row', gap: 8, marginTop: 13 },
+    summaryCard: { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, minHeight: 112 },
+    dangerSummary: { backgroundColor: colors.dangerSoft, borderColor: colors.danger + '33' },
+    warningSummary: { backgroundColor: colors.warningSoft, borderColor: colors.warning + '33' },
+    safeSummary: { backgroundColor: colors.successSoft, borderColor: colors.success + '33' },
+    summaryName: { color: colors.textSecondary, fontWeight: '700', fontSize: 11, marginTop: 5 },
+    summaryValue: { fontWeight: '800', fontSize: 22, marginTop: 6 },
+    summaryPercent: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
+    muted: { color: colors.textMuted, textAlign: 'center', lineHeight: 19, fontSize: 13 },
+    errorText: { color: colors.danger, lineHeight: 19, fontSize: 13 },
+    retryButton: {
+      alignSelf: 'flex-start',
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 8,
+      paddingHorizontal: 13,
+      paddingVertical: 9,
+      marginTop: 10,
+    },
+    retryText: { color: colors.link, fontWeight: '800', fontSize: 12 },
+    chartCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    chartTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+    chartTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 15 },
+    chartCopy: { color: colors.textMuted, fontSize: 12, marginTop: 3 },
+    chartTotal: { color: colors.accent, fontWeight: '800', fontSize: 23 },
+    rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14, marginBottom: 13 },
+    rangeButton: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 7, backgroundColor: colors.surfaceAlt },
+    rangeButtonActive: { backgroundColor: colors.headerBg },
+    rangeText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+    rangeTextActive: { color: '#fff' },
+    chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 1, marginTop: -12 },
+    chartLabel: { color: colors.textMuted, fontSize: 10 },
+    chartPlaceholder: { height: 130, alignItems: 'center', justifyContent: 'center', gap: 8 },
+    viralCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOpacity: 0.07,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    viralRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 11,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    viralRowFirst: { borderTopWidth: 0 },
+    viralRank: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viralRankText: { color: colors.textSecondary, fontWeight: '800', fontSize: 11 },
+    viralMessage: { color: colors.textPrimary, fontSize: 13, lineHeight: 18 },
+    viralMetaRow: { flexDirection: 'row', marginTop: 4 },
+    viralMeta: { color: colors.textMuted, fontSize: 11 },
+    viralScoreBox: { flexDirection: 'row', alignItems: 'flex-end' },
+    viralScoreValue: { color: colors.danger, fontWeight: '800', fontSize: 18 },
+    viralScoreMax: { color: colors.textMuted, fontSize: 11, marginBottom: 2 },
+    localTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+    localTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
+    historyLink: { color: colors.link, fontWeight: '700', fontSize: 12 },
+    metrics: { flexDirection: 'row', gap: 8 },
+    metricCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      minHeight: 142,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 8,
+      shadowColor: '#000',
+      shadowOpacity: 0.09,
+      shadowRadius: 7,
+      elevation: 2,
+    },
+    metricIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 22,
+      backgroundColor: colors.headerBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 7,
+    },
+    metricIconGreen: { backgroundColor: colors.accent },
+    metricTitle: { color: colors.textSecondary, fontWeight: '700', fontSize: 11, textAlign: 'center' },
+    metricValue: { color: colors.textPrimary, fontSize: 23, fontWeight: '800', marginTop: 5 },
+    metricValueGreen: { color: colors.success },
+    metricHint: { color: colors.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' },
+    guideCard: {
+      backgroundColor: colors.accentSoft,
+      borderRadius: 13,
+      padding: 14,
+      flexDirection: 'row',
+      gap: 10,
+      alignItems: 'center',
+    },
+    guideTitle: { color: colors.textPrimary, fontWeight: '800' },
+    guideCopy: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
+  });
+}

@@ -39,3 +39,33 @@ export function countryFromPhone(value: string): PhoneCountry {
 export function localPartForCountry(value: string, country: PhoneCountry) {
   return value.startsWith(country.dialCode) ? value.slice(country.dialCode.length) : value.replace(/^\+/, '');
 }
+
+// Best-effort mapping of a PH mobile number's 3-digit prefix (the digits right after +639) to the
+// network that originally issued it. The Philippines has had mobile number portability since 2021,
+// so a ported number can display the wrong network here — this is a hint for display only, never
+// used for anything security- or billing-relevant. Smart and TNT share the same underlying PLDT/Smart
+// network and their prefix ranges overlap, so they're reported together rather than guessed apart.
+const GLOBE_PREFIXES = new Set([
+  '817', '904', '905', '906', '915', '916', '917', '926', '927', '935', '936', '937', '945', '953',
+  '954', '955', '956', '965', '966', '967', '975', '976', '977', '978', '994', '997',
+]);
+const SMART_TNT_PREFIXES = new Set([
+  '813', '907', '908', '909', '910', '912', '913', '914', '918', '919', '920', '921', '928', '929',
+  '930', '931', '932', '933', '938', '939', '940', '946', '947', '948', '949', '950', '951', '961',
+  '963', '968', '969', '970', '981', '982', '983', '984', '985', '986', '987', '988', '989', '992',
+  '998', '999',
+]);
+// DITO's allocated prefixes aren't included here — unlike the long-established
+// Globe and Smart/TNT ranges above, current DITO prefix data couldn't be
+// verified with confidence, so a DITO number simply shows no carrier badge
+// rather than risk displaying the wrong one.
+
+/** Returns a best-effort PH network label ("Globe" or "Smart/TNT") for a +639 number, or null. */
+export function detectPhilippineCarrier(value: string): string | null {
+  const match = /^\+639(\d{2})\d{7}$/.exec(value);
+  if (!match) return null;
+  const prefix = `9${match[1]}`;
+  if (GLOBE_PREFIXES.has(prefix)) return 'Globe';
+  if (SMART_TNT_PREFIXES.has(prefix)) return 'Smart/TNT';
+  return null;
+}

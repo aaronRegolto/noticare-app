@@ -1,25 +1,32 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/providers/AuthProvider';
+import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
+import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
+import { detectPhilippineCarrier } from '@/src/features/auth/phone';
+import { logError } from '@/src/services/logger';
+import { isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
 import {
   clearHistory,
   getMonitoringStatus,
   isNativeMonitoringAvailable,
   openAppNotificationSettings,
+  requestFullScreenIntentPermission,
+  requestIgnoreBatteryOptimizations,
   requestNotificationListenerAccess,
+  requestNotificationPolicyAccess,
   setScanningEnabled,
   setFullScreenWarnings,
   type MonitoringStatus,
 } from '@/src/services/notificationListener';
-
-const navy = '#1E2D43';
-const emerald = '#00B87C';
+import { useAppTheme } from '@/src/theme/ThemeProvider';
+import type { ThemeColors } from '@/src/theme/palette';
 
 function maskPhone(phone: string | undefined) {
   if (!phone) return 'Signed in securely';
@@ -29,36 +36,70 @@ function maskPhone(phone: string | undefined) {
   return lastFour ? `${countryCode} ••• ••• ${lastFour}` : 'Signed in securely';
 }
 
-function humanStatus(status: MonitoringStatus | null) {
-  if (!status) return { title: 'Checking status', tone: '#687E9D', message: 'Reading Android monitoring status…' };
+function humanStatus(status: MonitoringStatus | null, colors: ThemeColors) {
+  if (!status)
+    return { title: 'Checking status', tone: colors.textMuted, message: 'Reading Android monitoring status…' };
   switch (status.status) {
     case 'active':
       return {
         title: 'Active',
-        tone: emerald,
+        tone: colors.accent,
         message: `Monitoring ${status.defaultSmsAppName ?? 'your default Messages app'}.`,
       };
     case 'off':
-      return { title: 'Off', tone: '#687E9D', message: 'Real-Time Scanning is turned off on this device.' };
+      return { title: 'Off', tone: colors.textMuted, message: 'Real-Time Scanning is turned off on this device.' };
     case 'permission_required':
       return {
         title: 'Permission required',
-        tone: '#C77700',
+        tone: colors.warning,
         message: 'Allow Android Notification Access to enable scanning.',
       };
     case 'service_disconnected':
       return {
         title: 'Service disconnected',
-        tone: '#C77700',
+        tone: colors.warning,
         message: 'Android has not connected the notification listener yet.',
       };
     case 'sms_app_unavailable':
       return {
         title: 'Messages app unavailable',
-        tone: '#B42318',
+        tone: colors.danger,
         message: 'Choose a default SMS app in Android settings first.',
       };
   }
+}
+
+function PhoneChip({
+  phone,
+  primary = false,
+  colors,
+  onRemove,
+}: {
+  phone: string;
+  primary?: boolean;
+  colors: ThemeColors;
+  onRemove?: () => void;
+}) {
+  const styles = useThemedStyles(colors);
+  const carrier = detectPhilippineCarrier(phone);
+  return (
+    <View style={[styles.phoneChip, primary && styles.phoneChipPrimary]}>
+      <View>
+        <Text style={styles.phoneChipNumber}>{maskPhone(phone)}</Text>
+        <Text style={styles.phoneChipMeta}>{primary ? 'Primary' : 'Linked'}{carrier ? ` · ${carrier}` : ''}</Text>
+      </View>
+      {onRemove ? (
+        <Pressable
+          onPress={onRemove}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${phone}`}
+        >
+          <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 function SettingRow({
@@ -67,40 +108,76 @@ function SettingRow({
   subtitle,
   onPress,
   destructive = false,
+  colors,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle?: string;
   onPress: () => void;
   destructive?: boolean;
+  colors: ThemeColors;
 }) {
+  const styles = useThemedStyles(colors);
   return (
     <Pressable onPress={onPress} style={styles.settingRow} accessibilityRole="button">
       <View style={[styles.settingIcon, destructive && styles.settingIconDanger]}>
-        <Ionicons name={icon} size={20} color={destructive ? '#B42318' : '#386080'} />
+        <Ionicons name={icon} size={20} color={destructive ? colors.danger : colors.link} />
       </View>
       <View style={styles.settingCopy}>
         <Text style={[styles.settingTitle, destructive && styles.dangerText]}>{title}</Text>
         {subtitle ? <Text style={styles.settingSubtitle}>{subtitle}</Text> : null}
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#90A1B7" />
+      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
     </Pressable>
   );
 }
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { session, signOut } = useAuth();
+  const { session, signOut, isDevelopmentPhoneLogin } = useAuth();
+  const { tier: subscriptionTier } = useSubscription();
+  const { colors, mode, accent, setMode, setAccent } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const [status, setStatus] = useState<MonitoringStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [linkedPhones, setLinkedPhones] = useState<string[]>([]);
+
+  const refreshLinkedPhones = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const rows = await listLinkedPhones();
+      setLinkedPhones(rows.map((row) => row.phone_e164));
+    } catch (error) {
+      logError('linked-phones-load-failed', error);
+    }
+  }, []);
+
+  const confirmUnlinkPhone = useCallback(
+    (phone: string) => {
+      Alert.alert('Remove this number?', `${phone} will no longer be able to sign in to this account.`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void unlinkPhone(phone)
+              .then(() => refreshLinkedPhones())
+              .catch((error) => {
+                logError('unlink-phone-failed', error);
+                Alert.alert('Unable to remove number', 'Please try again.');
+              });
+          },
+        },
+      ]);
+    },
+    [refreshLinkedPhones],
+  );
 
   const refreshStatus = useCallback(async () => {
     if (!isNativeMonitoringAvailable()) {
       setStatus(null);
-      setStatusError(
-        'Install an Android development or release build to manage real-time scanning. Expo Go cannot load NotiCare’s native listener.',
-      );
+      setStatusError('Real-time scanning is not available in this preview. Install the Android app to manage it.');
       return;
     }
     try {
@@ -117,7 +194,8 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshStatus();
-    }, [refreshStatus]),
+      void refreshLinkedPhones();
+    }, [refreshStatus, refreshLinkedPhones]),
   );
 
   const changeScanning = useCallback(
@@ -125,15 +203,15 @@ export default function SettingsScreen() {
       if (saving) return;
       if (!isNativeMonitoringAvailable()) {
         Alert.alert(
-          'Android development build required',
-          'Expo Go cannot run NotiCare’s Kotlin notification listener. Build and install the Android development build first.',
+          'Android app required',
+          'Real-time scanning is not available in this preview. Install the Android app to turn it on.',
         );
         return;
       }
       if (enabled && !status?.notificationAccessGranted) {
         Alert.alert(
-          'Notification Access needed',
-          'NotiCare needs Android Notification Access before it can examine notifications from your Messages app.',
+          'Allow Notification Access?',
+          'NotiCare needs Android Notification Access to check notifications from your Messages app.',
           [
             { text: 'Not now', style: 'cancel' },
             {
@@ -155,19 +233,31 @@ export default function SettingsScreen() {
       try {
         const next = await setScanningEnabled(enabled);
         setStatus(next);
-        if (enabled && next.status !== 'active') Alert.alert('Scanning is not active yet', humanStatus(next).message);
+        if (enabled && next.status !== 'active')
+          Alert.alert('Scanning could not turn on', humanStatus(next, colors).message);
       } catch {
-        Alert.alert('Unable to save preference', 'Please try again after checking Android settings.');
+        Alert.alert('Unable to update scanning', 'Check Android’s notification settings and try again.');
       } finally {
         setSaving(false);
       }
     },
-    [saving, status],
+    [saving, status, colors],
   );
 
   const changeWarningStyle = useCallback(
     async (fullScreen: boolean) => {
       if (saving || !status) return;
+      if (fullScreen && subscriptionTier !== 'pro') {
+        Alert.alert(
+          'Full-screen warnings are a Pro feature',
+          'Upgrade to NotiCare Pro for immersive, full-screen phishing warnings instead of a banner alert.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'See Pro', onPress: () => router.push('/paywall') },
+          ],
+        );
+        return;
+      }
       setSaving(true);
       try {
         setStatus(await setFullScreenWarnings(fullScreen));
@@ -177,22 +267,22 @@ export default function SettingsScreen() {
         setSaving(false);
       }
     },
-    [saving, status],
+    [saving, status, subscriptionTier, router],
   );
 
   const confirmClearHistory = useCallback(() => {
     Alert.alert(
-      'Clear protected History?',
-      'This permanently deletes all captured message copies in NotiCare. The original SMS messages remain in your Messages app.',
+      'Clear your message history?',
+      'This permanently deletes all captured messages. The original SMS messages stay in your Messages app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear History',
+          text: 'Clear history',
           style: 'destructive',
           onPress: () => {
             void clearHistory()
-              .then(() => Alert.alert('History cleared', 'Protected local History has been deleted.'))
-              .catch(() => Alert.alert('Unable to clear History', 'Protected local History could not be cleared.'));
+              .then(() => Alert.alert('History cleared', 'Your message history has been deleted.'))
+              .catch(() => Alert.alert('Unable to clear history', 'Your message history could not be cleared.'));
           },
         },
       ],
@@ -202,11 +292,11 @@ export default function SettingsScreen() {
   const confirmSignOut = useCallback(() => {
     Alert.alert(
       'Sign out?',
-      'Real-Time Scanning will be turned off. Kept History stays encrypted and locked to this account; another account on this phone cannot view it.',
+      'Real-Time Scanning will turn off. Any history you keep stays encrypted and locked to this account — other accounts on this phone can’t see it.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign out & keep History',
+          text: 'Sign out and keep history',
           onPress: () => {
             void setScanningEnabled(false)
               .catch(() => undefined)
@@ -216,7 +306,7 @@ export default function SettingsScreen() {
           },
         },
         {
-          text: 'Sign out & delete History',
+          text: 'Sign out and delete history',
           style: 'destructive',
           onPress: () => {
             void setScanningEnabled(false)
@@ -232,10 +322,13 @@ export default function SettingsScreen() {
     );
   }, [signOut]);
 
-  const current = statusError ? { title: 'Unavailable', tone: '#B42318', message: statusError } : humanStatus(status);
+  const current = statusError
+    ? { title: 'Unavailable', tone: colors.danger, message: statusError }
+    : humanStatus(status, colors);
+
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -250,13 +343,47 @@ export default function SettingsScreen() {
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.profile}>
-          <View style={styles.profileIcon}>
-            <Ionicons name="person-outline" size={24} color={navy} />
-          </View>
-          <View>
+          <View style={styles.profileHeaderRow}>
+            <View style={styles.profileIcon}>
+              <Ionicons name="person-outline" size={24} color={colors.textPrimary} />
+            </View>
             <Text style={styles.profileTitle}>Your account</Text>
-            <Text style={styles.profilePhone}>{maskPhone(session?.user.phone)}</Text>
           </View>
+          <View style={styles.phoneChipsRow}>
+            {session?.user.phone ? (
+              <PhoneChip phone={session.user.phone} primary colors={colors} />
+            ) : (
+              <Text style={styles.profilePhone}>{maskPhone(session?.user.phone)}</Text>
+            )}
+            {linkedPhones.map((phone) => (
+              <PhoneChip key={phone} phone={phone} colors={colors} onRemove={() => confirmUnlinkPhone(phone)} />
+            ))}
+            {!isDevelopmentPhoneLogin ? (
+              <Pressable
+                onPress={() => router.push('/link-phone')}
+                style={styles.addPhoneChip}
+                accessibilityRole="button"
+                accessibilityLabel="Add another phone number"
+              >
+                <Ionicons name="add" size={18} color={colors.accent} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        <Text style={styles.sectionLabel}>PLAN</Text>
+        <View style={styles.card}>
+          <SettingRow
+            icon="star-outline"
+            title={subscriptionTier === 'free' ? 'Free plan' : 'Pro plan'}
+            subtitle={
+              subscriptionTier === 'free'
+                ? '10 automatic scans/month · Upgrade for unlimited protection'
+                : 'Unlimited scans, full history, viral phishing ranking'
+            }
+            onPress={() => router.push('/paywall')}
+            colors={colors}
+          />
         </View>
 
         <Text style={styles.sectionLabel}>REAL-TIME PROTECTION</Text>
@@ -273,8 +400,8 @@ export default function SettingsScreen() {
               value={Boolean(status?.scanningEnabled)}
               disabled={saving || !status}
               onValueChange={(value) => void changeScanning(value)}
-              trackColor={{ false: '#AFBBCB', true: '#62D6B0' }}
-              thumbColor={status?.scanningEnabled ? emerald : '#fff'}
+              trackColor={{ false: '#AFBBCB', true: colors.accent }}
+              thumbColor={status?.scanningEnabled ? colors.accent : '#fff'}
               accessibilityLabel="Turn real-time scanning on or off"
             />
           </View>
@@ -286,12 +413,12 @@ export default function SettingsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Retry Android monitoring status"
             >
-              <Ionicons name="refresh-outline" size={17} color="#006DAB" />
+              <Ionicons name="refresh-outline" size={17} color={colors.link} />
               <Text style={styles.retryStatusText}>Retry status</Text>
             </Pressable>
           ) : null}
           <View style={styles.messagesApp}>
-            <Ionicons name="chatbubble-outline" size={19} color="#426484" />
+            <Ionicons name="chatbubble-outline" size={19} color={colors.textSecondary} />
             <View style={styles.flex}>
               <Text style={styles.messagesTitle}>Current Messages app</Text>
               <Text style={styles.messagesValue}>
@@ -306,26 +433,86 @@ export default function SettingsScreen() {
               style={styles.permissionButton}
               accessibilityRole="button"
             >
-              <Text style={styles.permissionText}>Allow NotiCare warning notifications</Text>
+              <Text style={styles.permissionText}>Turn on warning notifications</Text>
             </Pressable>
           ) : null}
           {status?.historyStorageAvailable === false ? (
             <Text style={styles.storageWarning}>
-              Protected local History is unavailable. No raw message content will be saved until secure storage is
-              working.
+              Message history is unavailable right now. Full message content will not be saved until this is fixed.
             </Text>
+          ) : null}
+          {status?.batteryOptimizationExempt === false ? (
+            <View style={styles.batteryWarning}>
+              <Text style={styles.batteryWarningText}>
+                Android’s battery manager can pause NotiCare in the background and delay or miss new messages. Allow
+                NotiCare to run unrestricted to keep scanning reliable.
+              </Text>
+              <Pressable
+                onPress={() => void requestIgnoreBatteryOptimizations().then(() => void refreshStatus())}
+                style={styles.batteryWarningButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.batteryWarningButtonText}>Allow background activity</Text>
+              </Pressable>
+            </View>
           ) : null}
         </View>
 
-        <Text style={styles.sectionLabel}>WARNING APPEARANCE</Text>
+        <Text style={styles.sectionLabel}>ALERT STYLE</Text>
         <View style={styles.appearanceCard}>
           <Text style={styles.appearanceTitle}>How should phishing warnings appear?</Text>
-          <Text style={styles.appearanceSubtitle}>Choose the alert style that feels right for you.</Text>
+          <Text style={styles.appearanceSubtitle}>
+            Choose the alert style that feels right for you.
+            {subscriptionTier !== 'pro' ? ' Full-screen warnings require NotiCare Pro.' : ''}
+          </Text>
           <WarningAppearanceSelector
             value={status?.fullScreenWarnings ? 'full-screen' : 'banner'}
             disabled={saving || !status}
             onChange={(mode) => void changeWarningStyle(mode === 'full-screen')}
           />
+          {status?.fullScreenWarnings && status.fullScreenIntentPermitted === false ? (
+            <View style={styles.batteryWarning}>
+              <Text style={styles.batteryWarningText}>
+                Android is currently blocking full-screen warnings for NotiCare, so dangerous messages will only show
+                as a banner. Allow full-screen notifications to restore the immersive warning.
+              </Text>
+              <Pressable
+                onPress={() => void requestFullScreenIntentPermission().then(() => void refreshStatus())}
+                style={styles.batteryWarningButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.batteryWarningButtonText}>Allow full-screen notifications</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {status?.dndBypassGranted === false ? (
+            <View style={styles.batteryWarning}>
+              <Text style={styles.batteryWarningText}>
+                Dangerous-message alerts currently stay silent while your phone is in Do Not Disturb. Allow Do Not
+                Disturb access so NotiCare can still sound and vibrate for phishing warnings.
+              </Text>
+              <Pressable
+                onPress={() => void requestNotificationPolicyAccess().then(() => void refreshStatus())}
+                style={styles.batteryWarningButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.batteryWarningButtonText}>Allow Do Not Disturb access</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={styles.sectionLabel}>APPEARANCE</Text>
+        <View style={styles.appearanceCard}>
+          <Text style={styles.appearanceTitle}>Theme</Text>
+          <Text style={styles.appearanceSubtitle}>Choose Light, Dark, or match your device automatically.</Text>
+          <ThemeModeSelector value={mode} onChange={setMode} colors={colors} />
+
+          <Text style={[styles.appearanceTitle, styles.accentTitle]}>Accent color</Text>
+          <Text style={styles.appearanceSubtitle}>
+            Personalize buttons, links, and charts. Danger/warning/safe colors never change.
+          </Text>
+          <AccentSwatchPicker value={accent} onChange={setAccent} colors={colors} />
         </View>
 
         <Text style={styles.sectionLabel}>HELP & PRIVACY</Text>
@@ -335,6 +522,7 @@ export default function SettingsScreen() {
             title="User Guide"
             subtitle="Learn how to use NotiCare safely"
             onPress={() => router.push('/guide')}
+            colors={colors}
           />
           <View style={styles.divider} />
           <SettingRow
@@ -342,24 +530,34 @@ export default function SettingsScreen() {
             title="Privacy information"
             subtitle="What stays on your device"
             onPress={() => router.push('/privacy')}
+            colors={colors}
           />
           <View style={styles.divider} />
           <SettingRow
             icon="information-circle-outline"
             title="About NotiCare"
-            subtitle="Android-only smishing protection"
+            subtitle="SMS protection for Android"
             onPress={() => router.push('/about')}
+            colors={colors}
           />
         </View>
 
         <Text style={styles.sectionLabel}>LOCAL DATA</Text>
+        {status?.historyRetentionLimit ? (
+          <Text style={styles.retentionNote}>
+            NotiCare keeps your most recent {status.historyRetentionLimit.toLocaleString()} messages in full detail on
+            this device. Older messages are automatically removed to keep the app fast. Your all-time &ldquo;Total
+            blocked&rdquo; count on the Dashboard is not affected.
+          </Text>
+        ) : null}
         <View style={styles.card}>
           <SettingRow
             icon="trash-outline"
-            title="Clear Messages Inbox"
-            subtitle="Delete all captured message copies in NotiCare"
+            title="Clear message history"
+            subtitle="Delete all captured messages"
             onPress={confirmClearHistory}
             destructive
+            colors={colors}
           />
         </View>
         <View style={styles.card}>
@@ -369,6 +567,7 @@ export default function SettingsScreen() {
             subtitle="Turn off scanning for this profile"
             onPress={confirmSignOut}
             destructive
+            colors={colors}
           />
         </View>
       </ScrollView>
@@ -376,120 +575,179 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F6F8FC' },
-  header: {
-    minHeight: 64,
-    backgroundColor: navy,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: { color: '#fff', fontWeight: '800', fontSize: 18 },
-  headerSpacer: { width: 25 },
-  content: { padding: 16, paddingBottom: 36 },
-  profile: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    backgroundColor: '#ECF5FC',
-    borderRadius: 14,
-    padding: 16,
-  },
-  profileIcon: {
-    height: 48,
-    width: 48,
-    borderRadius: 24,
-    backgroundColor: '#D6E6F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileTitle: { color: navy, fontWeight: '800', fontSize: 16 },
-  profilePhone: { color: '#607A9B', marginTop: 3 },
-  sectionLabel: {
-    color: '#7186A4',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-    marginTop: 23,
-    marginBottom: 8,
-  },
-  card: { backgroundColor: '#fff', borderRadius: 13, borderWidth: 1, borderColor: '#E3EAF2', overflow: 'hidden' },
-  scanRow: { padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  scanLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  statusDot: { width: 11, height: 11, borderRadius: 6 },
-  cardTitle: { color: '#263F5E', fontWeight: '800', fontSize: 15 },
-  cardSubtitle: { color: '#637B99', fontSize: 12, marginTop: 2 },
-  statusCopy: { color: '#617A99', lineHeight: 19, paddingHorizontal: 16, paddingBottom: 14 },
-  retryStatusButton: {
-    alignSelf: 'flex-start',
-    marginHorizontal: 16,
-    marginBottom: 14,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: 8,
-    backgroundColor: '#ECF5FC',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  retryStatusText: { color: '#006DAB', fontWeight: '800', fontSize: 12 },
-  messagesApp: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: '#F3F7FB',
-    borderRadius: 9,
-    padding: 12,
-    flexDirection: 'row',
-    gap: 9,
-  },
-  flex: { flex: 1 },
-  messagesTitle: { color: '#53708E', fontSize: 11, fontWeight: '800' },
-  messagesValue: { color: '#324D6B', fontSize: 12, marginTop: 3 },
-  permissionButton: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#ECF5FC',
-  },
-  permissionText: { color: '#006DAB', fontWeight: '800', fontSize: 12 },
-  storageWarning: {
-    color: '#A15D00',
-    backgroundColor: '#FFF5E4',
-    margin: 16,
-    marginTop: 0,
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  settingRow: { minHeight: 68, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  settingIcon: {
-    height: 37,
-    width: 37,
-    borderRadius: 10,
-    backgroundColor: '#EDF4FA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingIconDanger: { backgroundColor: '#FFF0F0' },
-  settingCopy: { flex: 1 },
-  settingTitle: { color: '#29425F', fontWeight: '700', fontSize: 14 },
-  dangerText: { color: '#B42318' },
-  settingSubtitle: { color: '#7890AD', fontSize: 12, marginTop: 2 },
-  divider: { height: 1, backgroundColor: '#EEF2F6', marginLeft: 64 },
-  appearanceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: '#E3EAF2',
-    padding: 16,
-    gap: 5,
-  },
-  appearanceTitle: { color: navy, fontWeight: '800', fontSize: 17 },
-  appearanceSubtitle: { color: '#6B819D', fontSize: 13, paddingBottom: 12 },
-});
+function useThemedStyles(colors: ThemeColors) {
+  return useMemo(() => createStyles(colors), [colors]);
+}
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    page: { flex: 1, backgroundColor: colors.background },
+    header: {
+      minHeight: 64,
+      backgroundColor: colors.headerBg,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    headerTitle: { color: '#fff', fontWeight: '800', fontSize: 18 },
+    headerSpacer: { width: 25 },
+    content: { padding: 16, paddingBottom: 36 },
+    profile: {
+      gap: 12,
+      backgroundColor: colors.accentSoft,
+      borderRadius: 14,
+      padding: 16,
+    },
+    profileHeaderRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    profileIcon: {
+      height: 48,
+      width: 48,
+      borderRadius: 24,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profileTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
+    profilePhone: { color: colors.textSecondary, marginTop: 3 },
+    phoneChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    phoneChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    phoneChipPrimary: { borderColor: colors.accent },
+    phoneChipNumber: { color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
+    phoneChipMeta: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
+    addPhoneChip: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionLabel: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.7,
+      marginTop: 23,
+      marginBottom: 8,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    scanRow: { padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    scanLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    statusDot: { width: 11, height: 11, borderRadius: 6 },
+    cardTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 15 },
+    cardSubtitle: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
+    statusCopy: { color: colors.textSecondary, lineHeight: 19, paddingHorizontal: 16, paddingBottom: 14 },
+    retryStatusButton: {
+      alignSelf: 'flex-start',
+      marginHorizontal: 16,
+      marginBottom: 14,
+      paddingHorizontal: 11,
+      paddingVertical: 9,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceAlt,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    retryStatusText: { color: colors.link, fontWeight: '800', fontSize: 12 },
+    messagesApp: {
+      marginHorizontal: 16,
+      marginBottom: 16,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 9,
+      padding: 12,
+      flexDirection: 'row',
+      gap: 9,
+    },
+    flex: { flex: 1 },
+    messagesTitle: { color: colors.textSecondary, fontSize: 11, fontWeight: '800' },
+    messagesValue: { color: colors.textPrimary, fontSize: 12, marginTop: 3 },
+    permissionButton: {
+      marginHorizontal: 16,
+      marginBottom: 16,
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceAlt,
+    },
+    permissionText: { color: colors.link, fontWeight: '800', fontSize: 12 },
+    retentionNote: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginBottom: 8,
+    },
+    storageWarning: {
+      color: colors.warning,
+      backgroundColor: colors.warningSoft,
+      margin: 16,
+      marginTop: 0,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    batteryWarning: {
+      margin: 16,
+      marginTop: 0,
+      borderRadius: 8,
+      padding: 10,
+      backgroundColor: colors.warningSoft,
+    },
+    batteryWarningText: { color: colors.warning, fontSize: 12, lineHeight: 17 },
+    batteryWarningButton: {
+      alignSelf: 'flex-start',
+      marginTop: 9,
+      paddingHorizontal: 11,
+      paddingVertical: 8,
+      borderRadius: 7,
+      backgroundColor: colors.surface,
+    },
+    batteryWarningButtonText: { color: colors.warning, fontWeight: '800', fontSize: 12 },
+    settingRow: { minHeight: 68, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    settingIcon: {
+      height: 37,
+      width: 37,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    settingIconDanger: { backgroundColor: colors.dangerSoft },
+    settingCopy: { flex: 1 },
+    settingTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 14 },
+    dangerText: { color: colors.danger },
+    settingSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+    divider: { height: 1, backgroundColor: colors.border, marginLeft: 64 },
+    appearanceCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      borderCurve: 'continuous',
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      gap: 5,
+    },
+    appearanceTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 17 },
+    accentTitle: { marginTop: 20 },
+    appearanceSubtitle: { color: colors.textSecondary, fontSize: 13, paddingBottom: 12 },
+  });
+}

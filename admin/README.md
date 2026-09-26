@@ -13,7 +13,7 @@ Open http://localhost:4173. The server binds to loopback only. Model documentati
 ## Enable live admin access
 
 1. Keep the existing `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` in the root `.env`. The dashboard never needs a service-role key.
-2. Apply the repository's Supabase migrations, including `backend/supabase/migrations/20260907000100_admin_read_access.sql`, to your intended project. Follow `docs/SUPABASE_SETUP.md` for linking and migration commands. Review `db push --dry-run` before applying.
+2. Apply the repository's Supabase migrations, including `backend/supabase/migrations/20260907000100_admin_read_access.sql` and `backend/supabase/migrations/20260917000100_realtime_threat_events.sql`, to your intended project. Follow `docs/SUPABASE_SETUP.md` for linking and migration commands. Review `db push --dry-run` before applying. The second migration adds `threat_events` to Supabase's `supabase_realtime` publication; without it, Phishing detections still works but only via manual/interval refresh, not live push.
 3. In Supabase Authentication, create a confirmed email/password user for the administrator. Email authentication must be enabled. Copy that user's UUID.
 4. As the project owner, run this in the Supabase SQL Editor, replacing the placeholder:
 
@@ -44,10 +44,10 @@ Use the header’s **Appearance** selector to choose Minimal, Sage, or Midnight,
 The layout uses [Carbon’s data table guidance](https://carbondesignsystem.com/components/data-table/usage/) for toolbar organization, pagination, and row spacing, and [Material’s color roles](https://material-web.dev/theming/color/) for consistent light/dark surfaces and text.
 
 - Dataset library: catalog of known sources and CSVs placed in `datasets/`, with row browsing, all-column search, pagination, and page export. See `datasets/README.md` for file requirements. Newly added files are not automatically used for training.
-- Phishing detections: Suspicious/Dangerous events ordered by `received_at`, excluding demo events. Date filters on this view use receipt time in UTC; the original occurrence time is also shown. Refresh to load newly synced events. These are unverified detections, not confirmed phishing samples.
+- Phishing detections: Suspicious/Dangerous events ordered by `received_at`, excluding demo events. Date filters on this view use receipt time in UTC; the original occurrence time is also shown. These are unverified detections, not confirmed phishing samples. While this view is open, it also listens live: a Supabase Realtime subscription (see the `20260917000100` migration) pushes each newly inserted event to the browser the instant `record_threat_event` commits it, so page 1 refreshes itself without waiting for the 30-second poll or a manual click. If you are browsing a later page, a status note tells you a new detection arrived instead of silently changing what is on screen.
 
 - Overview: exact all-time non-demo scan counts and classification distribution.
-- Records: scans, feedback, profiles, devices, daily/hourly statistics, and rule sets; all columns with 50-row pagination, UTC date filters, classification filters where applicable, and current-page CSV export.
+- Records: scans, profiles, daily/hourly statistics, and rule sets; all columns with 50-row pagination, UTC date filters, classification filters where applicable, and current-page CSV export.
 - ML & datasets: reads the existing model metadata directly; provenance, training counts, reported frozen-test evaluation, limitations, and full metadata. It does not recalculate accuracy or invent a confusion matrix.
 - Source files that have not been provided are labelled in the dataset library. Device-encrypted History and raw SMS content are not cloud records and cannot be browsed here.
 

@@ -1,16 +1,32 @@
+import { PlatformPressable } from '@react-navigation/elements';
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+
+import { getActiveTourTab, messagesTabRef, subscribeToActiveTourTab } from '@/src/navigation/tabBarRefs';
+import { useAppTheme } from '@/src/theme/ThemeProvider';
 
 export default function TabLayout() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const activeTourTab = React.useSyncExternalStore(subscribeToActiveTourTab, getActiveTourTab, getActiveTourTab);
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#1E2D43',
-        tabBarInactiveTintColor: '#6E83A2',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
         headerShown: false,
-        tabBarStyle: { paddingTop: 7, borderTopColor: '#E5EAF0', backgroundColor: '#FFFFFF', position: 'relative' },
+        tabBarStyle: {
+          height: 56 + insets.bottom,
+          paddingTop: 7,
+          paddingBottom: Math.max(insets.bottom, 8),
+          borderTopColor: colors.border,
+          backgroundColor: colors.surface,
+          position: 'relative',
+        },
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600', marginTop: -2 },
       }}
     >
@@ -33,6 +49,26 @@ export default function TabLayout() {
         options={{
           title: 'Messages',
           tabBarIcon: ({ color }) => <Ionicons size={22} name="chatbubbles-outline" color={color} />,
+          // PlatformPressable is not a dependable measurement anchor on Android. The non-collapsed
+          // native wrapper gives the Dashboard tour stable bounds for the complete Messages button.
+          tabBarButton: (props) => (
+            <View
+              ref={messagesTabRef}
+              collapsable={false}
+              style={[
+                { flex: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+                activeTourTab === 'messages' && {
+                  backgroundColor: colors.accentSoft,
+                  borderColor: colors.accent,
+                  borderWidth: 2,
+                  elevation: 60,
+                  zIndex: 60,
+                },
+              ]}
+            >
+              <PlatformPressable {...props} />
+            </View>
+          ),
         }}
       />
     </Tabs>

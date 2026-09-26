@@ -80,6 +80,23 @@ function updateManifest(manifest) {
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
     permissions.push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
   }
+  // Lets the app open the system "ignore battery optimizations" prompt for itself. Without this
+  // exemption, OEM battery managers (notably ColorOS/Realme) can kill the app in the background,
+  // taking the bound notification listener down with it until Android restarts the service —
+  // which can take well over a minute and silently misses SMS notifications in the meantime.
+  if (
+    !permissions.some(
+      (entry) => entry?.$?.['android:name'] === 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+    )
+  ) {
+    permissions.push({ $: { 'android:name': 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' } });
+  }
+  // Lets the danger-warning notification launch ThreatWarningActivity directly (full-screen when
+  // the phone is locked or the screen is off, a heads-up banner otherwise) instead of a plain
+  // `startActivity` call from this background service, which Android 10+ blocks almost always.
+  if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.USE_FULL_SCREEN_INTENT')) {
+    permissions.push({ $: { 'android:name': 'android.permission.USE_FULL_SCREEN_INTENT' } });
+  }
   for (const permission of DISALLOWED_PERMISSIONS) {
     permissions.push({
       $: {
@@ -276,6 +293,7 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['NotificationListenerPackage.kt', path.join(sourceRoot, 'NotificationListenerPackage.kt')],
     ['EncryptedHistoryStore.kt', path.join(sourceRoot, 'bridge', 'EncryptedHistoryStore.kt')],
     ['EncryptedTelemetryQueue.kt', path.join(sourceRoot, 'bridge', 'EncryptedTelemetryQueue.kt')],
+    ['EncryptedCommunityReportQueue.kt', path.join(sourceRoot, 'bridge', 'EncryptedCommunityReportQueue.kt')],
     ['NotiCareNotifications.kt', path.join(sourceRoot, 'bridge', 'NotiCareNotifications.kt')],
     ['RealtimeScanPreferences.kt', path.join(sourceRoot, 'bridge', 'RealtimeScanPreferences.kt')],
     ['ScanRuntime.kt', path.join(sourceRoot, 'bridge', 'ScanRuntime.kt')],

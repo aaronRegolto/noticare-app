@@ -3,18 +3,25 @@ const sections = {
   overview: 'Overview',
   threat_events: 'Scan records',
   discoveries: 'Phishing detections',
-  scan_feedback: 'User feedback',
   community_daily_stats: 'Daily statistics',
   community_hourly_stats: 'Hourly statistics',
   profiles: 'Profiles',
-  devices: 'Devices',
   rule_sets: 'Rule sets',
   model: 'ML & datasets',
   datasets: 'Dataset library',
   connection: 'Connection status',
 };
+const navGroups = {
+  statistics: {
+    label: 'Statistics',
+    sections: ['community_daily_stats', 'community_hourly_stats'],
+  },
+};
 let token = null,
   expiryTimer,
+  refreshTimer,
+  discoveryStream,
+  expandedNavGroups = new Set(['statistics']),
   section = 'overview',
   page = 0,
   rows = [],
@@ -52,6 +59,49 @@ function saveAppearance() {
     notice('Appearance changed for this visit. Browser storage is unavailable.');
   }
 }
+function setRefreshStatus(message = '') {
+  $('#refresh-status').textContent = message;
+}
+function refreshCurrentView() {
+  if (!token) return;
+  setRefreshStatus('Refreshing…');
+  const request = $('#filters') ? loadRecords() : navigate(section);
+  request.finally(() => {
+    if (token) setRefreshStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+  });
+}
+/**
+ * Pushes new Suspicious/Dangerous detections into view the instant the mobile app reports them,
+ * instead of waiting for a manual refresh or the 30-second "Live refresh" poll. Only active while
+ * the Phishing detections view itself is open; every other view still relies on refresh/polling.
+ */
+function connectDiscoveryStream() {
+  disconnectDiscoveryStream();
+  if (!token) return;
+  discoveryStream = new EventSource(`/api/stream/discoveries?token=${encodeURIComponent(token)}`);
+  discoveryStream.addEventListener('discovery', () => {
+    if (section !== 'discoveries') return;
+    if (page === 0) {
+      loadRecords();
+      setRefreshStatus('New detection received');
+    } else {
+      setRefreshStatus('New detection received — return to page 1 to view it');
+    }
+  });
+  // EventSource retries automatically per the server's `retry:` hint; a dropped connection here
+  // just means live pushes pause until it reconnects, not that anything is broken or unsafe.
+  discoveryStream.onerror = () => setRefreshStatus('Live updates reconnecting…');
+}
+function disconnectDiscoveryStream() {
+  discoveryStream?.close();
+  discoveryStream = undefined;
+}
+function updateAutoRefresh(enabled) {
+  clearInterval(refreshTimer);
+  refreshTimer = undefined;
+  if (enabled && token) refreshTimer = setInterval(refreshCurrentView, 30_000);
+  $('#auto-refresh').ariaLabel = enabled ? 'Disable live refresh' : 'Enable live refresh';
+}
 function notice(message = '') {
   $('#notice').textContent = message;
   $('#notice').hidden = !message;
@@ -74,21 +124,43 @@ function signOut() {
   restoreAppearance();
   token = null;
   clearTimeout(expiryTimer);
+  updateAutoRefresh(false);
+  disconnectDiscoveryStream();
+  setRefreshStatus();
   generation++;
   rows = [];
   $('#content').replaceChildren();
   $('#workspace').hidden = true;
   $('#login').hidden = false;
   $('#logout').hidden = true;
+  document.body.dataset.session = 'signed-out';
   renderNav();
 }
 function renderNav() {
-  $('#nav').innerHTML = Object.entries(sections)
-    .map(
-      ([id, title]) =>
-        `<button data-section="${id}" class="${id === section ? 'active' : ''}" ${!token && id !== 'model' ? 'disabled' : ''} ${id === section ? 'aria-current="page"' : ''}>${escape(title)}</button>`,
-    )
-    .join('');
+  if (!token) {
+    $('#nav').replaceChildren();
+    return;
+  }
+  const query = $('#nav-filter').value.trim().toLocaleLowerCase();
+  const renderItem = ([id, title]) =>
+    `<button data-section="${id}" class="${id === section ? 'active' : ''}" ${id === section ? 'aria-current="page"' : ''}>${escape(title)}</button>`;
+  const rendered = [];
+  const groupedSections = new Set(Object.values(navGroups).flatMap((group) => group.sections));
+  for (const [id, title] of Object.entries(sections)) {
+    if (groupedSections.has(id) || !title.toLocaleLowerCase().includes(query)) continue;
+    rendered.push(renderItem([id, title]));
+  }
+  for (const [groupId, group] of Object.entries(navGroups)) {
+    const groupSections = group.sections
+      .map((id) => [id, sections[id]])
+      .filter(([, title]) => title.toLocaleLowerCase().includes(query));
+    if (query && !group.label.toLocaleLowerCase().includes(query) && !groupSections.length) continue;
+    const expanded = expandedNavGroups.has(groupId) || Boolean(query);
+    rendered.push(
+      `<div class="nav-group"><button class="nav-group-toggle" data-nav-group="${groupId}" aria-expanded="${expanded}">${escape(group.label)}<span aria-hidden="true">${expanded ? '−' : '+'}</span></button><div class="nav-group-items" ${expanded ? '' : 'hidden'}>${groupSections.map(renderItem).join('')}</div></div>`,
+    );
+  }
+  $('#nav').innerHTML = rendered.join('') || '<p class="nav-empty">No matching views</p>';
 }
 function metric(title, value) {
   return `<article class="metric"><small>${escape(title)}</small><strong>${escape(value)}</strong></article>`;
@@ -131,6 +203,16 @@ function provenanceTable(counts) {
     )
     .join('')}</tbody></table></div>`;
 }
+function openRecords(level = '') {
+  navigate('threat_events').then(() => {
+    const filter = $('#filters')?.elements.level;
+    if (filter && level) {
+      filter.value = level;
+      page = 0;
+      loadRecords();
+    }
+  });
+}
 async function navigate(next) {
   closeRecord();
   $('#logout').hidden = false;
@@ -138,6 +220,8 @@ async function navigate(next) {
   section = next;
   page = 0;
   rows = [];
+  if (section === 'discoveries') connectDiscoveryStream();
+  else disconnectDiscoveryStream();
   const current = ++generation;
   notice();
   renderNav();
@@ -182,12 +266,27 @@ async function navigate(next) {
     } else if (section === 'overview') {
       const stats = await api('/api/overview');
       if (current !== generation) return;
-      $('#content').innerHTML = `<div class="metrics">${Object.entries(stats)
-        .map(([name, count]) => metric(label(name), number(count)))
-        .join(
-          '',
-        )}</div><div class="grid"><article class="panel"><h2>Classification distribution</h2>${['safe', 'suspicious', 'dangerous'].map((name) => `<div class="bar-row"><span class="badge ${name}">${name}</span><meter min="0" max="${Math.max(stats.scans, 1)}" value="${stats[name]}" aria-label="${name} scans">${stats[name]}</meter><span>${stats.scans ? ((stats[name] / stats.scans) * 100).toFixed(1) : '0'}%</span></div>`).join('')}<p>All-time totals · Successfully blocked is a subset of Dangerous.</p></article><article class="panel"><h2>Scan activity</h2><p>Explore stored scan classifications and user corrections, or review the model’s training provenance and evaluation.</p><p>Full SMS text, sender numbers, and raw URLs stay on the device. This workspace shows the metadata stored in Supabase.</p><button id="open-records" class="primary">View records</button></article></div>`;
-      $('#open-records').onclick = () => navigate('threat_events');
+      const scans = Number(stats.scans) || 0;
+      const risky = (Number(stats.suspicious) || 0) + (Number(stats.dangerous) || 0);
+      const riskRate = scans ? ((risky / scans) * 100).toFixed(1) : '0.0';
+      $('#content').innerHTML =
+        `<section class="overview-hero"><div><span class="overview-kicker">LIVE SECURITY PULSE</span><h2>${scans ? `${number(scans)} scans monitored` : 'Your security pulse is ready'}</h2><p>${scans ? `${number(risky)} scans need attention across your community activity.` : 'Scan activity will appear here once the mobile app starts syncing metadata.'}</p><div class="hero-actions"><button id="open-records" class="primary">Review scan records</button><button id="open-discoveries">Review detections</button></div></div><div class="risk-orb" aria-label="${riskRate}% of scans need attention"><strong>${riskRate}%</strong><span>need attention</span></div></section><div class="metrics dashboard-metrics">${Object.entries(
+          stats,
+        )
+          .map(([name, count]) => metric(label(name), number(count)))
+          .join(
+            '',
+          )}</div><div class="overview-grid"><article class="panel distribution-panel"><div class="panel-title"><div><span class="section-kicker">CLASSIFICATION MIX</span><h2>Scan outcomes</h2></div><button id="view-all-scans" class="text-button">View all <span aria-hidden="true">→</span></button></div>${['safe', 'suspicious', 'dangerous'].map((name) => `<button class="bar-row interactive-bar" data-level="${name}" aria-label="View ${name} scans"><span class="badge ${name}">${name}</span><meter min="0" max="${Math.max(scans, 1)}" value="${stats[name]}" aria-label="${name} scans">${stats[name]}</meter><span>${scans ? ((stats[name] / scans) * 100).toFixed(1) : '0'}%</span></button>`).join('')}<p class="panel-note">Select an outcome to filter the scan records. Successfully blocked is a subset of Dangerous.</p></article><article class="panel activity-panel"><span class="section-kicker">WORKSPACE STATUS</span><h2>Ready for review</h2><div class="readiness-list"><div><span class="readiness-icon">✓</span><p><strong>Privacy-first collection</strong><small>SMS content remains on device.</small></p></div><div><span class="readiness-icon">✓</span><p><strong>Metadata is synchronized</strong><small>Use the connection view to verify the latest upload.</small></p></div></div><div class="activity-actions"><button id="open-connection">Connection status</button><button id="open-model">Model & datasets <span aria-hidden="true">→</span></button></div></article></div>`;
+      $('#open-records').onclick = () => openRecords();
+      $('#open-discoveries').onclick = () => navigate('discoveries');
+      $('#view-all-scans').onclick = () => openRecords();
+      $('#open-connection').onclick = () => navigate('connection');
+      $('#open-model').onclick = () => navigate('model');
+      $('#content')
+        .querySelectorAll('[data-level]')
+        .forEach((button) => {
+          button.onclick = () => openRecords(button.dataset.level);
+        });
     } else {
       $('#content').innerHTML =
         `<form class="toolbar" id="filters"><label>From (UTC)<input type="date" name="from"></label><label>Through (UTC)<input type="date" name="to"></label>${['threat_events', 'scan_feedback'].includes(section) ? '<label>Classification<select name="level"><option value="">All classifications</option><option>safe</option><option>suspicious</option><option>dangerous</option></select></label>' : ''}${section === 'threat_events' ? '<label class="check"><input type="checkbox" name="demo" value="true"> Include demo events</label>' : ''}<button type="submit" class="primary">Apply filters</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div>`;
@@ -490,9 +589,11 @@ $('#login-form').onsubmit = async (event) => {
       body: JSON.stringify({ email: $('#email').value.trim(), password: $('#password').value }),
     });
     token = data.token;
+    document.body.dataset.session = 'signed-in';
     restoreAppearance(data.userId || 'guest');
     $('#password').value = '';
     $('#logout').hidden = false;
+    updateAutoRefresh($('#auto-refresh').checked);
     expiryTimer = setTimeout(
       () => {
         signOut();
@@ -509,9 +610,30 @@ $('#login-form').onsubmit = async (event) => {
   }
 };
 $('#nav').onclick = (event) => {
+  const group = event.target.closest('[data-nav-group]');
+  if (group) {
+    const groupId = group.dataset.navGroup;
+    if (expandedNavGroups.has(groupId)) expandedNavGroups.delete(groupId);
+    else expandedNavGroups.add(groupId);
+    renderNav();
+    return;
+  }
   const button = event.target.closest('[data-section]');
   if (button) navigate(button.dataset.section);
 };
+$('#nav-filter').oninput = renderNav;
+$('#nav-filter').onkeydown = (event) => {
+  if (event.key === 'Escape') {
+    event.currentTarget.value = '';
+    renderNav();
+  }
+};
+document.addEventListener('keydown', (event) => {
+  if (event.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+    event.preventDefault();
+    $('#nav-filter').focus();
+  }
+});
 $('#logout').onclick = () => {
   signOut();
   notice('Signed out.');
@@ -520,6 +642,7 @@ $('#preview-model').onclick = () => navigate('model');
 $('#refresh').onclick = () => ($('#filters') ? loadRecords() : navigate(section));
 $('#appearance').onchange = saveAppearance;
 $('#density').onchange = saveAppearance;
+$('#auto-refresh').onchange = (event) => updateAutoRefresh(event.target.checked);
 restoreAppearance();
 renderNav();
 api('/api/config')

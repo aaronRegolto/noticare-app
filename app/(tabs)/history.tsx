@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -9,6 +9,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -16,6 +17,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
+import { useAuth } from '@/src/providers/AuthProvider';
+import { logError } from '@/src/services/logger';
 import {
   clearHistory,
   deleteHistoryRecord,
@@ -27,9 +31,8 @@ import {
   type HistoryRecord,
   type HistorySummary,
 } from '@/src/services/notificationListener';
-import { logError } from '@/src/services/logger';
-import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
-import { useAuth } from '@/src/providers/AuthProvider';
+import { useAppTheme } from '@/src/theme/ThemeProvider';
+import type { ThemeColors } from '@/src/theme/palette';
 
 const navy = '#1E2D43';
 const tones = {
@@ -41,10 +44,12 @@ const inboxFilters: MessageFilter[] = ['all', 'unread', 'safe', 'suspicious', 'd
 
 function Header() {
   const router = useRouter();
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   return (
     <View style={styles.appBar}>
       <View style={styles.shieldMark}>
-        <Ionicons name="shield-checkmark-outline" size={25} color="#00C88B" />
+        <Ionicons name="shield-checkmark-outline" size={25} color={colors.accent} />
       </View>
       <View style={styles.brandCopy}>
         <Text style={styles.brand}>NotiCare</Text>
@@ -82,6 +87,8 @@ function Counter({
   label: string;
   tone: 'danger' | 'safe';
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const color = tone === 'danger' ? '#B42318' : '#007D59';
   const surface = tone === 'danger' ? '#FFE6E7' : '#D9F9E9';
   return (
@@ -95,11 +102,19 @@ function Counter({
   );
 }
 
-function RecordCard({ record, onOpen }: { record: HistorySummary; onOpen: () => void }) {
+const RecordCard = memo(function RecordCard({
+  record,
+  onOpen,
+}: {
+  record: HistorySummary;
+  onOpen: (id: string) => void;
+}) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const tone = tones[record.level];
   return (
     <Pressable
-      onPress={onOpen}
+      onPress={() => onOpen(record.id)}
       style={({ pressed }) => [styles.recordCard, pressed && { backgroundColor: '#F1F6FA' }]}
       accessibilityRole="button"
       accessibilityLabel={`${record.isRead ? '' : 'Unread, '}${tone.label} message from ${messageSender(record)}. Open message`}
@@ -131,7 +146,7 @@ function RecordCard({ record, onOpen }: { record: HistorySummary; onOpen: () => 
       </View>
     </Pressable>
   );
-}
+});
 
 function DetailModal({
   record,
@@ -142,6 +157,8 @@ function DetailModal({
   onClose: () => void;
   onDelete: (id: string) => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   if (!record) return null;
   const tone = tones[record.level];
   return (
@@ -208,7 +225,7 @@ function DetailModal({
           ))}
           {record.urls.length ? (
             <>
-              <Text style={styles.detailLabel}>LINKS FOUND — DO NOT OPEN</Text>
+              <Text style={styles.detailLabel}>LINKS FOUND</Text>
               {record.urls.map((url, index) => (
                 <View style={styles.urlBox} key={`${url.display}-${index}`}>
                   <Ionicons name="link-outline" size={18} color="#A75C00" />
@@ -235,6 +252,8 @@ function DetailModal({
 }
 
 export default function HistoryScreen() {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const router = useRouter();
   const { session } = useAuth();
   const params = useLocalSearchParams<{ recordId?: string }>();
@@ -253,9 +272,7 @@ export default function HistoryScreen() {
   const load = useCallback(async (openRecordId?: string, quiet = false) => {
     const current = ++request.current;
     if (!isNativeMonitoringAvailable()) {
-      setError(
-        'Install an Android development or release build to view protected local History. Expo Go cannot use the encrypted native store.',
-      );
+      setError('This feature is not available in this preview. Install the Android app to view your message history.');
       setLoading(false);
       return;
     }
@@ -279,7 +296,7 @@ export default function HistoryScreen() {
     } catch (loadError) {
       logError('history-load-failed', loadError);
       if (focused.current && current === request.current)
-        setError('Encrypted messages are unavailable on this device. Pull down to try again.');
+        setError('Your message history could not be loaded.');
     } finally {
       if (focused.current && current === request.current) setLoading(false);
     }
@@ -326,17 +343,17 @@ export default function HistoryScreen() {
           if (focused.current && current === detailRequest.current)
             setRecords((items) => items.map((item) => (item.id === id ? { ...item, isRead: true } : item)));
         }
-      } else Alert.alert('Record unavailable', 'This protected History record is no longer available.');
+      } else Alert.alert('Message unavailable', 'This message is no longer available.');
     } catch (openError) {
       logError('history-detail-failed', openError);
-      Alert.alert('Unable to open record', 'The protected record could not be decrypted on this device.');
+      Alert.alert('Unable to open message', 'This message could not be decrypted on this device.');
     }
   }, []);
 
   const removeRecord = useCallback((id: string) => {
     Alert.alert(
-      'Delete this record?',
-      'This permanently deletes the protected local copy. The original SMS remains in your Messages inbox.',
+      'Delete this message?',
+      'This permanently deletes the saved copy on this device. The original SMS stays in your Messages app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -351,7 +368,7 @@ export default function HistoryScreen() {
                 setRecords((current) => current.filter((record) => record.id !== id));
                 setSelected(null);
               })
-              .catch(() => Alert.alert('Unable to delete', 'This protected record could not be deleted.'));
+              .catch(() => Alert.alert('Unable to delete', 'This message could not be deleted.'));
           },
         },
       ],
@@ -360,12 +377,12 @@ export default function HistoryScreen() {
 
   const removeAll = useCallback(() => {
     Alert.alert(
-      'Clear your Messages inbox?',
-      'This permanently deletes captured copies in NotiCare. It does not delete original SMS messages from your Messages app.',
+      'Clear your message history?',
+      'This permanently deletes all captured messages from NotiCare. It will not delete the original texts from your phone’s SMS app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear All',
+          text: 'Clear all',
           style: 'destructive',
           onPress: () => {
             void clearHistory()
@@ -376,7 +393,7 @@ export default function HistoryScreen() {
                 setRecords([]);
                 setSelected(null);
               })
-              .catch(() => Alert.alert('Unable to clear History', 'Protected local History could not be cleared.'));
+              .catch(() => Alert.alert('Unable to clear history', 'Your message history could not be cleared.'));
           },
         },
       ],
@@ -396,164 +413,180 @@ export default function HistoryScreen() {
     }, {});
   }, [query, records, selectedMonth, filter]);
   const months = useMemo(() => [...new Set(records.map((record) => monthName(record.receivedAt)))], [records]);
+  const sections = useMemo(
+    () => Object.entries(monthGroups).map(([title, data]) => ({ title, data })),
+    [monthGroups],
+  );
+  const totalFiltered = useMemo(() => sections.reduce((sum, section) => sum + section.data.length, 0), [sections]);
+
+  const listHeader = (
+    <View style={styles.listHeaderContainer}>
+      <View style={styles.historyIcon}>
+        <Ionicons name="chatbubbles-outline" size={38} color={colors.headerText} />
+      </View>
+      <Text style={styles.heading}>Messages</Text>
+      <Text style={styles.subheading}>SMS notifications captured while scanning is on</Text>
+      <View style={styles.counterRow}>
+        <Counter icon="chatbubbles-outline" value={records.length} label="Captured" tone="safe" />
+        <Counter
+          icon="mail-unread-outline"
+          value={records.filter((record) => !record.isRead).length}
+          label="Unread"
+          tone="safe"
+        />
+      </View>
+      <View style={styles.privacyBanner}>
+        <Ionicons name="lock-closed-outline" size={19} color="#006DAB" />
+        <Text style={styles.privacyText}>
+          Messages are captured only while monitoring is on, and are encrypted on this device. Older SMS and manual
+          scans are not included. Message text is never uploaded.
+        </Text>
+      </View>
+      {isNativeMonitoringAvailable() && !supportsMessageInbox() && (
+        <View style={styles.privacyBanner}>
+          <Text style={styles.privacyText}>
+            Update to the full Android app to see all scanned messages. This version only shows blocked messages.
+          </Text>
+        </View>
+      )}
+      {records.length ? (
+        <>
+          <View style={styles.search}>
+            <Ionicons name="search" size={19} color="#7186A5" />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search sender or message preview"
+              placeholderTextColor="#8294AA"
+              style={styles.searchInput}
+              accessibilityLabel="Search captured message senders and previews"
+            />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
+            {inboxFilters.map((item) => (
+              <Pressable
+                key={item}
+                onPress={() => setFilter(item)}
+                style={[styles.monthChip, filter === item && styles.monthChipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: filter === item }}
+              >
+                <Text style={[styles.monthText, filter === item && styles.monthTextActive]}>
+                  {item.charAt(0).toUpperCase() + item.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
+            <Pressable
+              onPress={() => setSelectedMonth(null)}
+              style={[styles.monthChip, !selectedMonth && styles.monthChipActive]}
+              accessibilityRole="button"
+              accessibilityLabel="Show all history months"
+              accessibilityState={{ selected: !selectedMonth }}
+            >
+              <Text style={[styles.monthText, !selectedMonth && styles.monthTextActive]}>All months</Text>
+            </Pressable>
+            {months.map((month) => (
+              <Pressable
+                key={month}
+                onPress={() => setSelectedMonth(month)}
+                style={[styles.monthChip, selectedMonth === month && styles.monthChipActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${month} history`}
+                accessibilityState={{ selected: selectedMonth === month }}
+              >
+                <Text style={[styles.monthText, selectedMonth === month && styles.monthTextActive]}>{month}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <View style={styles.listHeader}>
+            <Text style={styles.recentHeading}>Messages ({totalFiltered})</Text>
+            <Pressable onPress={removeAll} accessibilityRole="button">
+              <Text style={styles.clearAll}>Clear all</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+
+  const listEmpty = (
+    <View style={styles.emptyWrap}>
+      {loading ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>Loading messages…</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.emptyCard}>
+          <Ionicons name="information-circle-outline" size={36} color="#8BA2C0" />
+          <Text style={styles.emptyTitle}>{error}</Text>
+          <Pressable
+            onPress={() => void load()}
+            style={styles.retryButton}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading messages"
+          >
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : !records.length ? (
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="time-outline" size={35} color="#8DA4C3" />
+          </View>
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptyCopy}>
+            Turn on real-time scanning and allow Notification Access. New scanned SMS notifications will appear here,
+            including Safe, Suspicious, and Dangerous messages.
+          </Text>
+          <Pressable onPress={() => router.push('/settings')} style={styles.scanLink} accessibilityRole="button">
+            <Text style={styles.scanLinkText}>Go to Settings</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>No messages match your filters</Text>
+          <Pressable
+            onPress={() => {
+              setFilter('all');
+              setQuery('');
+              setSelectedMonth(null);
+            }}
+            style={styles.retryButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.retryText}>Reset filters</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar style="light" />
       <Header />
-      <ScrollView
+      <SectionList
         style={styles.contentArea}
         contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-      >
-        <View style={styles.historyIcon}>
-          <Ionicons name="chatbubbles-outline" size={38} color="#fff" />
-        </View>
-        <Text style={styles.heading}>Messages</Text>
-        <Text style={styles.subheading}>Your captured SMS notifications, all in one place</Text>
-        <View style={styles.counterRow}>
-          <Counter icon="chatbubbles-outline" value={records.length} label="Captured" tone="safe" />
-          <Counter
-            icon="mail-unread-outline"
-            value={records.filter((record) => !record.isRead).length}
-            label="Unread"
-            tone="safe"
-          />
-        </View>
-        <View style={styles.privacyBanner}>
-          <Ionicons name="lock-closed-outline" size={19} color="#006DAB" />
-          <Text style={styles.privacyText}>
-            Captured while monitoring is on and encrypted on this phone. Older SMS and manual scans are not included.
-            Message text is never uploaded.
-          </Text>
-        </View>
-        {isNativeMonitoringAvailable() && !supportsMessageInbox() && (
-          <View style={styles.privacyBanner}>
-            <Text style={styles.privacyText}>
-              Rebuild and install the Android app to capture all scanned messages. This installed version only provides
-              blocked history.
-            </Text>
-          </View>
-        )}
-        {records.length ? (
-          <>
-            <View style={styles.search}>
-              <Ionicons name="search" size={19} color="#7186A5" />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search sender or message preview"
-                placeholderTextColor="#8294AA"
-                style={styles.searchInput}
-                accessibilityLabel="Search captured message senders and previews"
-              />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
-              {inboxFilters.map((item) => (
-                <Pressable
-                  key={item}
-                  onPress={() => setFilter(item)}
-                  style={[styles.monthChip, filter === item && styles.monthChipActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: filter === item }}
-                >
-                  <Text style={[styles.monthText, filter === item && styles.monthTextActive]}>
-                    {item.charAt(0).toUpperCase() + item.slice(1)}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
-              <Pressable
-                onPress={() => setSelectedMonth(null)}
-                style={[styles.monthChip, !selectedMonth && styles.monthChipActive]}
-                accessibilityRole="button"
-                accessibilityLabel="Show all history months"
-                accessibilityState={{ selected: !selectedMonth }}
-              >
-                <Text style={[styles.monthText, !selectedMonth && styles.monthTextActive]}>All months</Text>
-              </Pressable>
-              {months.map((month) => (
-                <Pressable
-                  key={month}
-                  onPress={() => setSelectedMonth(month)}
-                  style={[styles.monthChip, selectedMonth === month && styles.monthChipActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Show ${month} history`}
-                  accessibilityState={{ selected: selectedMonth === month }}
-                >
-                  <Text style={[styles.monthText, selectedMonth === month && styles.monthTextActive]}>{month}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <View style={styles.listHeader}>
-              <Text style={styles.recentHeading}>
-                Inbox ({Object.values(monthGroups).reduce((sum, items) => sum + items.length, 0)})
-              </Text>
-              <Pressable onPress={removeAll} accessibilityRole="button">
-                <Text style={styles.clearAll}>Clear All</Text>
-              </Pressable>
-            </View>
-            {Object.entries(monthGroups).map(([month, entries]) => (
-              <View key={month} style={{ alignSelf: 'stretch' }}>
-                <Text style={styles.monthHeading}>{month}</Text>
-                {entries.map((record) => (
-                  <RecordCard key={record.id} record={record} onOpen={() => void openRecord(record.id)} />
-                ))}
-              </View>
-            ))}
-          </>
-        ) : null}
-        {loading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Loading protected History…</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="information-circle-outline" size={36} color="#8BA2C0" />
-            <Text style={styles.emptyTitle}>{error}</Text>
-            <Pressable
-              onPress={() => void load()}
-              style={styles.retryButton}
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading protected History"
-            >
-              <Text style={styles.retryText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : !records.length ? (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="time-outline" size={35} color="#8DA4C3" />
-            </View>
-            <Text style={styles.emptyTitle}>Your inbox starts here</Text>
-            <Text style={styles.emptyCopy}>
-              Turn on real-time scanning and allow Notification Access. New scanned SMS notifications will appear here,
-              including Safe, Suspicious, and Dangerous messages.
-            </Text>
-            <Pressable onPress={() => router.push('/settings')} style={styles.scanLink} accessibilityRole="button">
-              <Text style={styles.scanLinkText}>Open scanning settings</Text>
-            </Pressable>
-          </View>
-        ) : !Object.keys(monthGroups).length ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No messages match your filters.</Text>
-            <Pressable
-              onPress={() => {
-                setFilter('all');
-                setQuery('');
-                setSelectedMonth(null);
-              }}
-              style={styles.retryButton}
-              accessibilityRole="button"
-            >
-              <Text style={styles.retryText}>Reset filters</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </ScrollView>
+        sections={sections}
+        keyExtractor={(record) => record.id}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        renderSectionHeader={({ section }) => <Text style={styles.monthHeading}>{section.title}</Text>}
+        renderItem={({ item }) => <RecordCard record={item} onOpen={openRecord} />}
+        stickySectionHeadersEnabled={false}
+        // ~152px per row (measured from recordCard padding/content) lets getItemLayout skip
+        // on-the-fly measurement, keeping scroll smooth as History grows toward its retention cap.
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+      />
       <DetailModal
         record={selected}
         onClose={() => {
@@ -566,13 +599,18 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function useThemedStyles(colors: ThemeColors) {
+  return useMemo(() => createStyles(colors), [colors]);
+}
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   // Keep the top safe-area inset navy so white Android status icons remain legible.
-  safeArea: { flex: 1, backgroundColor: navy },
-  contentArea: { flex: 1, backgroundColor: '#F7F9FC' },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  contentArea: { flex: 1, backgroundColor: colors.background },
   appBar: {
-    height: 68,
-    backgroundColor: navy,
+    height: 66,
+    backgroundColor: colors.headerBg,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -583,10 +621,10 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   shieldMark: {
-    width: 42,
-    height: 42,
+    width: 39,
+    height: 39,
     borderRadius: 10,
-    backgroundColor: '#334258',
+    backgroundColor: colors.headerSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -594,12 +632,15 @@ const styles = StyleSheet.create({
   brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
   tagline: { color: '#CFD7E3', fontSize: 12, marginTop: 1 },
   menuButton: { marginLeft: 'auto', padding: 4 },
-  content: { alignItems: 'center', paddingTop: 20, paddingHorizontal: 18 },
+  content: { flexGrow: 1, alignItems: 'stretch', paddingTop: 20, paddingHorizontal: 18 },
+  emptyWrap: { flex: 1, alignSelf: 'stretch', justifyContent: 'center' },
+  listHeaderContainer: { alignSelf: 'stretch', alignItems: 'center' },
   historyIcon: {
+    alignSelf: 'center',
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: navy,
+    backgroundColor: colors.headerBg,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#142038',
@@ -607,13 +648,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  heading: { color: '#13243C', fontSize: 24, fontWeight: '800', marginTop: 15 },
-  subheading: { color: '#566F95', fontSize: 14, marginTop: 7, textAlign: 'center' },
-  counterRow: { alignSelf: 'stretch', flexDirection: 'row', gap: 12, marginTop: 16 },
+  heading: { alignSelf: 'center', color: colors.textPrimary, fontSize: 24, fontWeight: '800', marginTop: 15 },
+  subheading: { color: colors.textSecondary, fontSize: 14, marginTop: 7, textAlign: 'center' },
+  counterRow: { alignSelf: 'stretch', flexDirection: 'row', gap: 12, marginTop: 18 },
   counter: {
     flex: 1,
-    minHeight: 96,
-    backgroundColor: '#FFF',
+    minHeight: 100,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -631,35 +672,35 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   counterValue: { fontWeight: '800', fontSize: 23 },
-  counterLabel: { color: '#657D9F', fontSize: 12, marginTop: 3 },
+  counterLabel: { color: colors.textSecondary, fontSize: 12, marginTop: 3 },
   privacyBanner: {
     alignSelf: 'stretch',
     flexDirection: 'row',
-    backgroundColor: '#EDF5FD',
+    backgroundColor: colors.accentSoft,
     borderRadius: 11,
-    padding: 13,
+    padding: 14,
     gap: 9,
-    marginTop: 14,
+    marginTop: 20,
   },
-  privacyText: { color: '#537291', fontSize: 12, lineHeight: 17, flex: 1 },
+  privacyText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, flex: 1 },
   search: {
     alignSelf: 'stretch',
     height: 48,
     marginTop: 17,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#E0E8F1',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  searchInput: { flex: 1, color: '#253F5D', fontSize: 14 },
+  searchInput: { flex: 1, color: colors.textPrimary, fontSize: 14 },
   months: { gap: 8, paddingVertical: 12 },
-  monthChip: { backgroundColor: '#EAF0F6', borderRadius: 16, paddingVertical: 7, paddingHorizontal: 11 },
-  monthChipActive: { backgroundColor: navy },
-  monthText: { color: '#617B9A', fontSize: 12, fontWeight: '700' },
+  monthChip: { backgroundColor: colors.surfaceAlt, borderRadius: 16, paddingVertical: 7, paddingHorizontal: 11 },
+  monthChipActive: { backgroundColor: colors.headerBg },
+  monthText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
   monthTextActive: { color: '#fff' },
   listHeader: {
     alignSelf: 'stretch',
@@ -668,11 +709,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 2,
   },
-  recentHeading: { color: '#344965', fontWeight: '800', fontSize: 15 },
+  recentHeading: { color: colors.textPrimary, fontWeight: '800', fontSize: 15 },
   clearAll: { color: '#B42318', fontWeight: '800', fontSize: 12 },
   monthHeading: {
     alignSelf: 'stretch',
-    color: '#607A9B',
+    color: colors.textSecondary,
     fontWeight: '800',
     fontSize: 13,
     marginTop: 16,
@@ -680,12 +721,12 @@ const styles = StyleSheet.create({
   },
   recordCard: {
     alignSelf: 'stretch',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 0,
     padding: 16,
     marginBottom: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E4EBF2',
+    borderColor: colors.border,
   },
   recordTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   senderRow: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
@@ -693,12 +734,12 @@ const styles = StyleSheet.create({
     height: 42,
     width: 42,
     borderRadius: 14,
-    backgroundColor: '#EEF4FA',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sender: { color: '#29425F', fontWeight: '800', fontSize: 14 },
-  date: { color: '#758DAA', fontSize: 11, marginTop: 2 },
+  sender: { color: colors.textPrimary, fontWeight: '800', fontSize: 14 },
+  date: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   dangerBadge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -711,7 +752,7 @@ const styles = StyleSheet.create({
   },
   dangerBadgeText: { color: '#B42318', fontWeight: '800', fontSize: 9 },
   redactedLabel: { color: '#7186A4', fontWeight: '800', fontSize: 10, letterSpacing: 0.5, marginTop: 13 },
-  redactedPreview: { color: '#526B8A', lineHeight: 20, marginTop: 9, fontSize: 13, marginLeft: 51 },
+  redactedPreview: { color: colors.textSecondary, lineHeight: 20, marginTop: 9, fontSize: 13, marginLeft: 51 },
   recordFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -720,11 +761,11 @@ const styles = StyleSheet.create({
     marginLeft: 51,
   },
   score: { color: '#B42318', fontWeight: '800', fontSize: 12 },
-  signs: { color: '#6F87A6', fontSize: 12 },
+  signs: { color: colors.textMuted, fontSize: 12 },
   emptyCard: {
     alignSelf: 'stretch',
     minHeight: 196,
-    backgroundColor: '#FFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -739,24 +780,24 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#EFF4FA',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  emptyTitle: { color: '#536F93', fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  emptyCopy: { color: '#8197B6', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 },
+  emptyTitle: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyCopy: { color: colors.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 },
   retryButton: {
     marginTop: 14,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    backgroundColor: '#EDF4FA',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
   },
   retryText: { color: '#006DAB', fontWeight: '800' },
   scanLink: { marginTop: 16, paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#E9FAF2', borderRadius: 8 },
   scanLinkText: { color: '#00845D', fontWeight: '800' },
-  modalPage: { flex: 1, backgroundColor: '#F7F9FC' },
+  modalPage: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     minHeight: 62,
     backgroundColor: navy,
@@ -771,7 +812,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 11,
     alignItems: 'center',
-    backgroundColor: '#FFF0F0',
+    backgroundColor: colors.dangerSoft,
     borderRadius: 12,
     padding: 14,
   },
@@ -779,33 +820,33 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFDADC',
+    backgroundColor: colors.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   detailDanger: { color: '#B42318', fontWeight: '800', fontSize: 15 },
-  detailDate: { color: '#7D6770', fontSize: 12, marginTop: 3 },
-  notice: { flexDirection: 'row', gap: 8, backgroundColor: '#EDF5FD', borderRadius: 10, padding: 12, marginTop: 13 },
-  noticeText: { color: '#567693', fontSize: 12, lineHeight: 17, flex: 1 },
+  detailDate: { color: colors.textSecondary, fontSize: 12, marginTop: 3 },
+  notice: { flexDirection: 'row', gap: 8, backgroundColor: colors.accentSoft, borderRadius: 10, padding: 12, marginTop: 13 },
+  noticeText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, flex: 1 },
   detailLabel: {
-    color: '#7186A4',
+    color: colors.textMuted,
     fontWeight: '800',
     fontSize: 11,
     letterSpacing: 0.5,
     marginTop: 20,
     marginBottom: 7,
   },
-  detailValue: { color: '#263F5E', fontWeight: '700' },
+  detailValue: { color: colors.textPrimary, fontWeight: '700' },
   messageBox: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderTopLeftRadius: 4,
     padding: 20,
     boxShadow: '0 2px 8px #1e2d4308',
   },
-  messageText: { color: '#334E6C', fontSize: 16, lineHeight: 25 },
+  messageText: { color: colors.textPrimary, fontSize: 16, lineHeight: 25 },
   reasonRow: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: 12,
     marginBottom: 7,
@@ -813,14 +854,14 @@ const styles = StyleSheet.create({
     gap: 9,
     alignItems: 'flex-start',
     borderWidth: 1,
-    borderColor: '#E9EEF3',
+    borderColor: colors.border,
   },
   reasonCopy: { flex: 1 },
-  reasonTitle: { color: '#334D6B', fontWeight: '800', fontSize: 13 },
-  reasonText: { color: '#7186A3', fontSize: 12, lineHeight: 17, marginTop: 2 },
+  reasonTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 13 },
+  reasonText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
   weight: { color: '#B42318', fontWeight: '800', fontSize: 12 },
   urlBox: {
-    backgroundColor: '#FFF8E9',
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
     flexDirection: 'row',
@@ -828,8 +869,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 7,
   },
-  urlText: { color: '#795400', lineHeight: 18, flex: 1, fontSize: 12 },
-  detailsTable: { backgroundColor: '#fff', borderRadius: 10, padding: 13, borderWidth: 1, borderColor: '#E7EDF3' },
-  tableLabel: { color: '#7186A3', fontSize: 11, marginTop: 4 },
-  tableValue: { color: '#334E6C', fontWeight: '700', fontSize: 12, marginTop: 2, marginBottom: 9 },
-});
+  urlText: { color: colors.warning, lineHeight: 18, flex: 1, fontSize: 12 },
+  detailsTable: { backgroundColor: colors.surface, borderRadius: 10, padding: 13, borderWidth: 1, borderColor: colors.border },
+  tableLabel: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
+  tableValue: { color: colors.textPrimary, fontWeight: '700', fontSize: 12, marginTop: 2, marginBottom: 9 },
+  });
+}

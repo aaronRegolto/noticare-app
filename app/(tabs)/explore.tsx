@@ -1,24 +1,25 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
-import { sendScanFeedback } from '@/src/services/feedback';
+import {
+  getMessageFeedbackRecord,
+  getMessageVirality,
+  markMessageFeedback,
+  reportAndBlockMessage,
+  type PhishingVirality,
+} from '@/src/services/communityReports';
 import { flushQueuedThreatEvents, queueThreatEvent } from '@/src/services/eventSync';
+import { sendScanFeedback } from '@/src/services/feedback';
 import { logError } from '@/src/services/logger';
 import { isNativeMonitoringAvailable, scanTextLocally } from '@/src/services/notificationListener';
+import { useAppTheme } from '@/src/theme/ThemeProvider';
+import type { ThemeColors } from '@/src/theme/palette';
 
 const navy = '#1E2D43';
 const emerald = '#00B87C';
@@ -36,9 +37,9 @@ const levelCopy: Record<
   }
 > = {
   safe: {
-    title: 'Safe for now',
+    title: 'Safe',
     explanation:
-      'No meaningful phishing indicators were found. Keep using normal caution—NotiCare cannot guarantee every scam is detected.',
+      'No significant phishing indicators were found. Stay cautious — NotiCare cannot guarantee every scam is detected.',
     action:
       'If a message asks for money or personal information later, verify it through the organization’s official app or website.',
     color: '#007D59',
@@ -54,7 +55,7 @@ const levelCopy: Record<
     icon: 'warning',
   },
   dangerous: {
-    title: 'Likely smishing',
+    title: 'Dangerous',
     explanation: 'Several strong phishing indicators were found together. Treat this message as dangerous.',
     action:
       'Do not open links or share passwords, PINs, or OTPs. Contact the organization using its official app, website, or verified number.',
@@ -66,10 +67,12 @@ const levelCopy: Record<
 
 function Header() {
   const router = useRouter();
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   return (
     <View style={styles.appBar}>
       <View style={styles.shieldMark}>
-        <Ionicons name="shield-checkmark-outline" size={25} color="#00C88B" />
+        <Ionicons name="shield-checkmark-outline" size={25} color={colors.accent} />
       </View>
       <View style={styles.brandCopy}>
         <Text style={styles.brand}>NotiCare</Text>
@@ -88,71 +91,86 @@ function Header() {
   );
 }
 
-function ScanTutorial({ onHide }: { onHide: () => void }) {
-  const reduceMotion = useReducedMotion();
-  const pulse = useSharedValue(1);
 
-  useEffect(() => {
-    pulse.value = reduceMotion
-      ? 1
-      : withRepeat(withTiming(1.045, { duration: 820, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [pulse, reduceMotion]);
+const NEW_MESSAGE_SCORE = 5;
 
-  const animatedIcon = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
-  const steps = [
-    ['chatbubble-ellipses-outline', 'Long-press', 'Open the SMS in your Messages app and long-press it.'],
-    ['copy-outline', 'Copy', 'Tap Copy. NotiCare does not read your clipboard automatically.'],
-    ['scan-outline', 'Paste & scan', 'Come back here, tap Paste, then choose Scan Message.'],
-  ] as const;
-
-  return (
-    <View style={styles.tutorial} accessibilityLabel="Three-step manual scan tutorial">
-      <View style={styles.tutorialTitleRow}>
-        <View>
-          <Text style={styles.tutorialTitle}>How to scan an SMS</Text>
-          <Text style={styles.tutorialCopy}>A safe, private three-step check</Text>
-        </View>
-        <Pressable onPress={onHide} accessibilityRole="button" accessibilityLabel="Hide scan tutorial" hitSlop={10}>
-          <Ionicons name="close" size={21} color="#637998" />
-        </Pressable>
-      </View>
-      <View style={styles.stepRow}>
-        {steps.map(([icon, title, copy], index) => (
-          <View style={styles.step} key={title}>
-            <Animated.View style={[styles.stepIcon, index === 2 && animatedIcon]}>
-              <Ionicons name={icon} size={23} color={index === 2 ? '#fff' : emerald} />
-            </Animated.View>
-            <Text style={styles.stepNumber}>STEP {index + 1}</Text>
-            <Text style={styles.stepTitle}>{title}</Text>
-            <Text style={styles.stepCopy}>{copy}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
+/** The number and copy shown for a result's score. Safe is always 0 — a viral
+ * score only tracks how many people confirmed a Dangerous message, and nobody
+ * reports a safe one. Dangerous shows the shared community score instead of
+ * the local rule score, since that's the number that actually rises as more
+ * people report the exact same message. */
+function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, viralityLoading: boolean) {
+  if (result.level === 'safe') {
+    return {
+      score: 0,
+      badge: null as string | null,
+      explanation: 'A Safe result has no community reports and no known risk.',
+    };
+  }
+  if (result.level === 'suspicious') {
+    return {
+      score: result.score,
+      badge: null as string | null,
+      explanation: `Scores from 30 to 69 are Suspicious. ${result.score}/100 means some warning signs were found, but not enough to call this a confirmed scam.`,
+    };
+  }
+  if (viralityLoading) {
+    return { score: null, badge: null as string | null, explanation: 'Checking how many other users reported this exact message…' };
+  }
+  if (virality) {
+    const badge = virality.reportCount <= 1 ? 'New' : `${virality.reportCount} reports`;
+    return {
+      score: virality.viralScore,
+      badge,
+      explanation:
+        virality.reportCount <= 1
+          ? `${virality.viralScore}/100 is a starting score for a newly seen message. It rises toward 100 as more NotiCare users report this exact text — tap Report & Block to add your report.`
+          : `${virality.viralScore}/100 reflects ${virality.reportCount} NotiCare users who reported this exact message. The more people who confirm it, the closer it climbs to 100 — a fully viral phishing message.`,
+    };
+  }
+  return {
+    score: NEW_MESSAGE_SCORE,
+    badge: 'New',
+    explanation: `${NEW_MESSAGE_SCORE}/100 is a starting score — this message has not been reported by anyone else yet. Tap Report & Block to warn other NotiCare users if this is phishing.`,
+  };
 }
 
 function ResultCard({
   result,
   onFeedback,
   feedbackState,
+  virality,
+  viralityLoading,
 }: {
   result: ThreatResult;
   onFeedback: (kind: 'safe' | 'dangerous') => void;
-  feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally';
+  feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported';
+  virality: PhishingVirality | null;
+  viralityLoading: boolean;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const display = levelCopy[result.level];
   const scanTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+  const scored = scoreDisplay(result, virality, viralityLoading);
   return (
     <View style={[styles.resultCard, { borderColor: display.color }]} accessibilityLiveRegion="polite">
       <View style={[styles.resultHero, { backgroundColor: display.surface }]}>
         <Ionicons name={display.icon} size={29} color={display.color} />
         <View style={styles.resultHeroCopy}>
-          <Text style={[styles.resultLevel, { color: display.color }]}>{display.title}</Text>
-          <Text style={styles.score}>{result.score}/100 risk score</Text>
+          <View style={styles.resultLevelRow}>
+            <Text style={[styles.resultLevel, { color: display.color }]}>{display.title}</Text>
+            {scored.badge ? (
+              <View style={[styles.newBadge, { backgroundColor: display.color }]}>
+                <Text style={styles.newBadgeText}>{scored.badge}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.score}>{scored.score === null ? '…/100' : `${scored.score}/100`} risk score</Text>
         </View>
       </View>
       <Text style={styles.resultExplanation}>{display.explanation}</Text>
+      <Text style={styles.scoreExplanation}>{scored.explanation}</Text>
       <Text style={styles.resultSectionTitle}>Warning signs found</Text>
       {result.reasons.length ? (
         result.reasons.map((reason) => (
@@ -169,7 +187,7 @@ function ResultCard({
       )}
       {result.urls.length ? (
         <>
-          <Text style={styles.resultSectionTitle}>Links found — do not open</Text>
+          <Text style={styles.resultSectionTitle}>Links found</Text>
           {result.urls.map((url, index) => (
             <View key={`${url.display}-${index}`} style={styles.urlRow}>
               <Ionicons name="link-outline" size={17} color="#A75C00" />
@@ -190,13 +208,21 @@ function ResultCard({
       <Text style={styles.meta}>
         Scanned {scanTime} · Rule set {result.ruleVersion}
       </Text>
-      {feedbackState === 'sent' || feedbackState === 'saved_locally' ? (
+      {feedbackState !== 'idle' && feedbackState !== 'sending' ? (
         <View style={styles.feedbackSent} accessibilityLiveRegion="polite">
           <Ionicons name="checkmark-circle" size={18} color="#007D59" />
           <Text style={styles.feedbackSentText}>
-            {feedbackState === 'saved_locally'
-              ? 'Report saved on this device only. It has not been sent to admin.'
-              : 'Report sent. Your message text was not uploaded.'}
+            {feedbackState === 'already_marked_safe'
+              ? 'You already marked this exact message as safe.'
+              : feedbackState === 'already_reported'
+                ? 'You already reported and blocked this exact message.'
+                : feedbackState === 'saved_locally'
+                  ? result.level === 'dangerous'
+                    ? 'Done'
+                    : 'Saved on this device only — it was not submitted to NotiCare’s servers.'
+                  : result.level === 'dangerous'
+                    ? 'Reported and blocked. This exact message text was shared so other NotiCare users can be warned.'
+                    : 'Report sent. Your message text was not uploaded.'}
           </Text>
         </View>
       ) : (
@@ -216,10 +242,10 @@ function ResultCard({
             onPress={() => onFeedback('dangerous')}
             style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="Report smishing"
+            accessibilityLabel="Report and block this message"
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>Report smishing</Text>
+            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Reporting…' : 'Report & Block'}</Text>
           </Pressable>
         </View>
       )}
@@ -228,33 +254,42 @@ function ResultCard({
 }
 
 export default function ScanScreen() {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(colors);
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<ThreatResult | null>(null);
-  const [tutorialVisible, setTutorialVisible] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent' | 'saved_locally'>('idle');
+  const [feedbackState, setFeedbackState] = useState<
+    'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported'
+  >('idle');
+  const [virality, setVirality] = useState<PhishingVirality | null>(null);
+  const [viralityLoading, setViralityLoading] = useState(false);
   const feedbackBusy = useRef(false);
   const scanVersion = useRef(0);
 
   const onPaste = useCallback(async () => {
     const clipboardText = await Clipboard.getStringAsync();
     if (!clipboardText.trim()) {
-      Alert.alert('Nothing to paste', 'Copy the SMS in your Messages app, then return here and tap Paste.');
+      Alert.alert('Nothing to paste', 'Copy a message in your Messages app, then tap Paste again.');
       return;
     }
     setMessage(clipboardText.slice(0, maxCharacters));
     scanVersion.current++;
     setResult(null);
     setFeedbackState('idle');
+    setVirality(null);
+    setViralityLoading(false);
   }, []);
 
   const handleScan = useCallback(async () => {
     const trimmed = message.trim();
     if (!trimmed || scanning) return;
     setScanning(true);
-    scanVersion.current++;
+    const version = ++scanVersion.current;
     setFeedbackState('idle');
+    setVirality(null);
+    setViralityLoading(false);
     try {
       // In an Android development/release build this calls the same Kotlin
       // evaluator used by the notification listener. Expo Go falls back to the
@@ -274,6 +309,24 @@ export default function ScanScreen() {
           'Your result is ready, but anonymous community metadata could not be saved right now. Your message was not uploaded.',
         );
       }
+      // Only a Dangerous result's community score is looked up: it's the only
+      // level a report can ever raise, and Safe/Suspicious never carry one.
+      if (assessment.level === 'dangerous') {
+        setViralityLoading(true);
+        getMessageVirality(trimmed)
+          .then((found) => {
+            if (version === scanVersion.current) setVirality(found);
+          })
+          .finally(() => {
+            if (version === scanVersion.current) setViralityLoading(false);
+          });
+      }
+      // Re-scanning text you already gave feedback on shows that status
+      // instead of the buttons again, so it can't look like a fresh result.
+      void getMessageFeedbackRecord(trimmed).then((record) => {
+        if (!record || version !== scanVersion.current) return;
+        setFeedbackState(record === 'safe' ? 'already_marked_safe' : 'already_reported');
+      });
     } catch (error) {
       logError('manual-scan-failed', error);
       Alert.alert(
@@ -293,6 +346,15 @@ export default function ScanScreen() {
       setFeedbackState('sending');
       try {
         const status = await sendScanFeedback(kind, result);
+        await markMessageFeedback(message.trim(), kind);
+        if (kind === 'dangerous') {
+          try {
+            const updated = await reportAndBlockMessage(message.trim(), null, result);
+            if (updated && version === scanVersion.current) setVirality(updated);
+          } catch (error) {
+            logError('manual-report-and-block-failed', error);
+          }
+        }
         if (version === scanVersion.current) setFeedbackState(status);
       } catch (error) {
         logError('manual-feedback-failed', error);
@@ -307,7 +369,7 @@ export default function ScanScreen() {
         feedbackBusy.current = false;
       }
     },
-    [feedbackState, result],
+    [feedbackState, message, result],
   );
 
   return (
@@ -321,18 +383,25 @@ export default function ScanScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.scannerIcon}>
-          <Ionicons name="scan-outline" size={37} color="#fff" />
+          <Ionicons name="scan-outline" size={38} color={colors.headerText} />
         </View>
         <Text style={styles.heading}>Text Scanner</Text>
-        <Text style={styles.subheading}>Paste a suspicious SMS here to verify</Text>
-        {tutorialVisible ? (
-          <ScanTutorial onHide={() => setTutorialVisible(false)} />
-        ) : (
-          <Pressable onPress={() => setTutorialVisible(true)} style={styles.helpLink} accessibilityRole="button">
-            <Ionicons name="help-circle-outline" size={18} color="#006DAB" />
-            <Text style={styles.helpLinkText}>Show scan tutorial</Text>
-          </Pressable>
-        )}
+        <Text style={styles.subheading}>Paste a suspicious message to check it for scam warning signs</Text>
+
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryChip}>
+            <Ionicons name="shield-checkmark" size={14} color={colors.accent} />
+            <Text style={styles.summaryChipText}>Privacy-first</Text>
+          </View>
+          <View style={styles.summaryChip}>
+            <Ionicons name="flash" size={14} color={colors.accent} />
+            <Text style={styles.summaryChipText}>Instant scan</Text>
+          </View>
+          <View style={styles.summaryChip}>
+            <Ionicons name="people" size={14} color={colors.accent} />
+            <Text style={styles.summaryChipText}>Community alerts</Text>
+          </View>
+        </View>
 
         <View style={styles.analysisCard}>
           <View style={styles.cardHeader}>
@@ -341,22 +410,26 @@ export default function ScanScreen() {
               {message.length}/{maxCharacters}
             </Text>
           </View>
-          <TextInput
-            value={message}
-            onChangeText={(text) => {
-              setMessage(text.slice(0, maxCharacters));
-              scanVersion.current++;
-              setResult(null);
-              setFeedbackState('idle');
-            }}
-            placeholder="Paste suspicious SMS here..."
-            placeholderTextColor="#7B8AA3"
-            multiline
-            maxLength={maxCharacters}
-            textAlignVertical="top"
-            style={styles.input}
-            accessibilityLabel="SMS message to scan"
-          />
+          <View style={styles.inputWrap}>
+            <TextInput
+              value={message}
+              onChangeText={(text) => {
+                setMessage(text.slice(0, maxCharacters));
+                scanVersion.current++;
+                setResult(null);
+                setFeedbackState('idle');
+                setVirality(null);
+                setViralityLoading(false);
+              }}
+              placeholder="Paste your message here…"
+              placeholderTextColor="#7B8AA3"
+              multiline
+              maxLength={maxCharacters}
+              textAlignVertical="top"
+              style={styles.input}
+              accessibilityLabel="SMS message to scan"
+            />
+          </View>
           <View style={styles.inputActions}>
             <Pressable
               onPress={onPaste}
@@ -364,7 +437,7 @@ export default function ScanScreen() {
               accessibilityRole="button"
               accessibilityLabel="Paste SMS from clipboard"
             >
-              <Ionicons name="clipboard-outline" size={18} color="#006DAB" />
+              <Ionicons name="clipboard-outline" size={18} color={colors.link} />
               <Text style={styles.secondaryText}>Paste</Text>
             </Pressable>
             <Pressable
@@ -373,19 +446,22 @@ export default function ScanScreen() {
                 scanVersion.current++;
                 setResult(null);
                 setFeedbackState('idle');
+                setVirality(null);
+                setViralityLoading(false);
               }}
               disabled={!message}
               style={[styles.secondaryButton, !message && styles.secondaryDisabled]}
               accessibilityRole="button"
               accessibilityLabel="Clear message"
             >
-              <Ionicons name="close-circle-outline" size={18} color="#526B8C" />
+              <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.secondaryText}>Clear</Text>
             </Pressable>
           </View>
           <Text style={styles.privacyText}>
-            <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device. We do not upload its
-            text, sender, or links.
+            <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
+            uploaded — unless you tap Report & Block on a Dangerous result, which shares that exact message so other
+            NotiCare users can be warned about it.
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -399,27 +475,40 @@ export default function ScanScreen() {
             ]}
           >
             <Ionicons name="scan-outline" size={19} color="#fff" />
-            <Text style={styles.scanButtonText}>{scanning ? 'Scanning locally…' : 'Scan Message'}</Text>
+            <Text style={styles.scanButtonText}>{scanning ? 'Scanning locally…' : 'Scan message'}</Text>
           </Pressable>
         </View>
 
-        {result ? <ResultCard result={result} onFeedback={handleFeedback} feedbackState={feedbackState} /> : null}
+        {result ? (
+          <ResultCard
+            result={result}
+            onFeedback={handleFeedback}
+            feedbackState={feedbackState}
+            virality={virality}
+            viralityLoading={viralityLoading}
+          />
+        ) : null}
         <Pressable onPress={() => router.push('/guide')} style={styles.guideLink} accessibilityRole="button">
           <Ionicons name="book-outline" size={19} color="#006DAB" />
-          <Text style={styles.guideLinkText}>Open the complete User Guide</Text>
+          <Text style={styles.guideLinkText}>Open the User Guide</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+function useThemedStyles(colors: ThemeColors) {
+  return useMemo(() => createStyles(colors), [colors]);
+}
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   // Keep the top safe-area inset navy so white Android status icons remain legible.
-  safeArea: { flex: 1, backgroundColor: navy },
-  contentArea: { flex: 1, backgroundColor: '#F7F9FC' },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  contentArea: { flex: 1, backgroundColor: colors.background },
   appBar: {
-    height: 68,
-    backgroundColor: navy,
+    height: 66,
+    backgroundColor: colors.headerBg,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -430,10 +519,10 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   shieldMark: {
-    width: 42,
-    height: 42,
+    width: 39,
+    height: 39,
     borderRadius: 10,
-    backgroundColor: '#334258',
+    backgroundColor: colors.headerSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -443,105 +532,109 @@ const styles = StyleSheet.create({
   menuButton: { marginLeft: 'auto', padding: 4 },
   content: { alignItems: 'center', paddingHorizontal: 10, paddingTop: 26 },
   scannerIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: navy,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#142038',
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  heading: { color: '#13243C', fontSize: 24, fontWeight: '800', marginTop: 16, textAlign: 'center' },
-  subheading: { color: '#566F95', fontSize: 14, marginTop: 8, textAlign: 'center' },
-  tutorial: {
-    alignSelf: 'stretch',
-    backgroundColor: '#EFF8F5',
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 24,
-    borderWidth: 1,
-    borderColor: '#CDEEDC',
-  },
-  tutorialTitleRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  tutorialTitle: { color: '#193754', fontWeight: '800', fontSize: 16 },
-  tutorialCopy: { color: '#627B99', fontSize: 12, marginTop: 3 },
-  stepRow: { flexDirection: 'row', gap: 7, marginTop: 16 },
-  step: { flex: 1, alignItems: 'center' },
-  stepIcon: {
-    width: 43,
-    height: 43,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#BDE8D3',
-    alignItems: 'center',
+  heading: { color: colors.textPrimary, fontSize: 24, fontWeight: '800', marginTop: 16, textAlign: 'center' },
+  subheading: { color: colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 300 },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
+    gap: 8,
+    marginTop: 18,
   },
-  stepNumber: { color: '#00825B', fontWeight: '800', fontSize: 10, marginTop: 8 },
-  stepTitle: { color: '#29425F', fontWeight: '800', fontSize: 12, marginTop: 2 },
-  stepCopy: { color: '#627B99', fontSize: 10, lineHeight: 14, textAlign: 'center', marginTop: 4 },
-  helpLink: { marginTop: 19, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  helpLinkText: { color: '#006DAB', fontWeight: '700' },
+  summaryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  summaryChipText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
   analysisCard: {
     alignSelf: 'stretch',
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 20,
-    marginTop: 24,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: 18,
+    marginTop: 22,
     shadowColor: '#1E2D43',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' },
-  count: { color: '#7186A5', fontSize: 12 },
+  cardTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
+  count: { color: colors.textMuted, fontSize: 12 },
+  inputWrap: {
+    marginTop: 16,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
   input: {
     minHeight: 130,
     maxHeight: 240,
-    backgroundColor: '#F1F4F8',
-    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 14,
     paddingHorizontal: 13,
     paddingTop: 12,
-    color: '#283A52',
+    color: colors.textPrimary,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: 16,
   },
-  inputActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  inputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   secondaryButton: {
     flex: 1,
     height: 42,
     borderWidth: 1,
-    borderColor: '#D9E2EE',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
-  secondaryDisabled: { opacity: 0.5 },
-  secondaryText: { color: '#36506E', fontWeight: '700' },
-  privacyText: { color: '#7086AA', fontSize: 12, lineHeight: 17, marginTop: 13 },
+  secondaryDisabled: { opacity: 0.45 },
+  secondaryText: { color: colors.textSecondary, fontWeight: '700' },
+  privacyText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 13 },
   scanButton: {
-    height: 51,
-    backgroundColor: emerald,
-    borderRadius: 9,
+    height: 52,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
     marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 11,
+    shadowColor: '#0D3C39',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    elevation: 4,
   },
   scanButtonDisabled: { backgroundColor: '#939BA8' },
   scanButtonPressed: { opacity: 0.82 },
   scanButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
   resultCard: {
     alignSelf: 'stretch',
-    backgroundColor: '#FFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 17,
     marginTop: 16,
@@ -553,17 +646,21 @@ const styles = StyleSheet.create({
   },
   resultHero: { borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
   resultHeroCopy: { flex: 1 },
+  resultLevelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   resultLevel: { fontWeight: '800', fontSize: 18 },
-  score: { color: '#506A88', marginTop: 2, fontSize: 13 },
-  resultExplanation: { color: '#536B89', lineHeight: 20, marginTop: 13 },
-  resultSectionTitle: { color: '#263F5E', fontWeight: '800', marginTop: 17, marginBottom: 8 },
+  newBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  newBadgeText: { color: '#fff', fontWeight: '800', fontSize: 10, letterSpacing: 0.4 },
+  score: { color: colors.textSecondary, marginTop: 2, fontSize: 13 },
+  resultExplanation: { color: colors.textSecondary, lineHeight: 20, marginTop: 13 },
+  scoreExplanation: { color: colors.textMuted, lineHeight: 18, marginTop: 8, fontSize: 12.5, fontStyle: 'italic' },
+  resultSectionTitle: { color: colors.textPrimary, fontWeight: '800', marginTop: 17, marginBottom: 8 },
   reasonRow: { flexDirection: 'row', gap: 8, paddingVertical: 7 },
   reasonCopy: { flex: 1 },
-  reasonTitle: { color: '#29425F', fontWeight: '700', fontSize: 13 },
-  reasonText: { color: '#667E9E', fontSize: 12, lineHeight: 17, marginTop: 2 },
-  muted: { color: '#6B83A3', fontSize: 13 },
+  reasonTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
+  reasonText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
+  muted: { color: colors.textMuted, fontSize: 13 },
   urlRow: {
-    backgroundColor: '#FFF8E9',
+    backgroundColor: colors.warningSoft,
     borderRadius: 7,
     padding: 9,
     flexDirection: 'row',
@@ -571,29 +668,29 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: 6,
   },
-  urlText: { color: '#7A5400', flex: 1, fontSize: 12, lineHeight: 17 },
-  actionBox: { backgroundColor: '#F0F5FB', borderRadius: 9, padding: 12, marginTop: 18, flexDirection: 'row', gap: 9 },
+  urlText: { color: colors.warning, flex: 1, fontSize: 12, lineHeight: 17 },
+  actionBox: { backgroundColor: colors.surfaceAlt, borderRadius: 9, padding: 12, marginTop: 18, flexDirection: 'row', gap: 9 },
   actionCopy: { flex: 1 },
   actionTitle: { color: navy, fontWeight: '800', fontSize: 13 },
-  actionText: { color: '#576F8E', fontSize: 12, lineHeight: 17, marginTop: 3 },
-  meta: { color: '#7288A5', fontSize: 11, marginTop: 13 },
+  actionText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  meta: { color: colors.textMuted, fontSize: 11, marginTop: 13 },
   feedbackRow: { flexDirection: 'row', gap: 9, marginTop: 15 },
   feedbackButton: {
     flex: 1,
     minHeight: 41,
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#C9D7E8',
+    borderColor: colors.border,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   feedbackButtonDisabled: { opacity: 0.55 },
-  feedbackText: { color: '#315273', fontWeight: '700', fontSize: 12, textAlign: 'center' },
+  feedbackText: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, textAlign: 'center' },
   feedbackSent: {
     minHeight: 42,
     borderRadius: 8,
-    backgroundColor: '#E9FAF2',
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -604,4 +701,5 @@ const styles = StyleSheet.create({
   feedbackSentText: { color: '#007D59', fontWeight: '700', fontSize: 12, textAlign: 'center' },
   guideLink: { marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10 },
   guideLinkText: { color: '#006DAB', fontWeight: '700' },
-});
+  });
+}

@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   isSupabaseConfigured,
   onAuthStateChange,
+  resolveLoginPhone,
   restoreSession,
   signInWithPhone,
   signOut,
@@ -103,8 +104,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPendingPhone('');
       return 'development_signed_in' as const;
     }
-    await signInWithPhone(phone);
-    setPendingPhone(phone);
+    // If `phone` is a linked secondary number (e.g. the other SIM on a dual-SIM
+    // device), this resolves it to the account's current primary phone first —
+    // Supabase's OTP flow only ever authenticates against the one phone value
+    // it already knows, and the code still arrives on this same device either way.
+    const resolvedPhone = await resolveLoginPhone(phone);
+    await signInWithPhone(resolvedPhone);
+    setPendingPhone(resolvedPhone);
     return 'otp_sent' as const;
   }, []);
 

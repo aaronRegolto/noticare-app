@@ -46,6 +46,7 @@ test('rejects anonymous access to every live data endpoint', async () => {
     '/api/datasets',
     '/api/dataset-rows?file=UCI_SMS_Spam.csv',
     '/api/records?table=threat_events&discoveries=true',
+    '/api/stream/discoveries',
   ]) {
     const response = await fetch(base + path);
     assert.ok([401, 503].includes(response.status));

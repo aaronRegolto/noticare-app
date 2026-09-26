@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
@@ -30,12 +30,12 @@ const pages = [
     icon: 'speedometer-outline' as const,
     title: 'Know the threat levels',
     body: 'Safe means no meaningful warning signs. Suspicious means use caution. Dangerous means strong phishing evidence was found, and NotiCare asks you to Block or Ignore the notification.',
-    note: '“Blocked” does not delete the original SMS from your Messages inbox.',
+    note: 'Blocking a message does not delete the original SMS from your Messages app.',
   },
   {
     icon: 'lock-closed-outline' as const,
     title: 'Your privacy comes first',
-    body: 'Full SMS text, sender details, and links stay on this device. Only anonymous classification counts and warning-sign codes may contribute to community data.',
+    body: 'Full SMS text, sender details, and links stay on this device. Only anonymous classification counts and warning-sign codes may contribute to community data — unless you explicitly tap Report & Block on a Dangerous message, which shares that message’s exact text to warn other users.',
     note: 'You can review the complete guide, turn scanning off, or delete protected local History at any time.',
   },
 ];
@@ -44,7 +44,7 @@ function statusTitle(status: MonitoringStatus | null) {
   if (!status) return 'Checking Android status…';
   if (status.defaultSmsAppName && status.defaultSmsPackage)
     return `${status.defaultSmsAppName} (${status.defaultSmsPackage})`;
-  return 'No default Messages app detected';
+  return 'No default Messages app found';
 }
 
 export default function OnboardingScreen() {
@@ -100,7 +100,7 @@ export default function OnboardingScreen() {
       if (next.status !== 'active') {
         Alert.alert(
           'Almost ready',
-          'NotiCare needs an active Notification Listener and a default Messages app before real-time scanning can be active.',
+          'NotiCare needs notification access and a default Messages app before real-time scanning can turn on.',
         );
       }
     } catch {
@@ -145,7 +145,7 @@ export default function OnboardingScreen() {
               <Text style={styles.outlineButtonText}>Open Notification Access</Text>
             </Pressable>
             <Pressable onPress={() => void refreshStatus()} style={styles.textButton} accessibilityRole="button">
-              <Text style={styles.textButtonText}>I returned — check again</Text>
+              <Text style={styles.textButtonText}>Check again</Text>
             </Pressable>
           </View>
         ) : null}
@@ -169,7 +169,7 @@ export default function OnboardingScreen() {
             >
               <Text style={styles.enableButtonText}>
                 {status?.status === 'active'
-                  ? 'Scanning is Active'
+                  ? 'Scanning is active'
                   : loading
                     ? 'Checking…'
                     : 'Turn on Real-Time Scanning'}
@@ -204,7 +204,7 @@ export default function OnboardingScreen() {
         </View>
         <Pressable onPress={() => router.push('/guide')} style={styles.guideLink} accessibilityRole="button">
           <Ionicons name="book-outline" size={18} color="#006DAB" />
-          <Text style={styles.guideText}>Read the complete User Guide</Text>
+          <Text style={styles.guideText}>Read the User Guide</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

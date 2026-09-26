@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -8,7 +8,8 @@ import { AppErrorBoundary } from '@/src/components/AppErrorBoundary';
 import { AuthProvider, useAuth } from '@/src/providers/AuthProvider';
 import { EventSync } from '@/src/providers/EventSync';
 import { OnboardingProvider, useOnboarding } from '@/src/providers/OnboardingProvider';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { SubscriptionProvider } from '@/src/providers/SubscriptionProvider';
+import { AppThemeProvider, useAppTheme } from '@/src/theme/ThemeProvider';
 
 function RootNavigator() {
   const { session, loading: authLoading } = useAuth();
@@ -28,6 +29,8 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="about" options={{ presentation: 'card' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="link-phone" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="guide" options={{ presentation: 'card' }} />
@@ -37,19 +40,30 @@ function RootNavigator() {
   );
 }
 
+function ThemedNavigation() {
+  const { scheme } = useAppTheme();
+  return (
+    <NavigationThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <RootNavigator />
+      {/* App headers use a fixed dark surface in both modes, so status-bar content stays light. */}
+      <StatusBar style="light" />
+    </NavigationThemeProvider>
+  );
+}
+
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   return (
     <AppErrorBoundary>
-      <AuthProvider>
-        <EventSync />
-        <OnboardingProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <RootNavigator />
-            <StatusBar style="light" />
-          </ThemeProvider>
-        </OnboardingProvider>
-      </AuthProvider>
+      <AppThemeProvider>
+        <AuthProvider>
+          <SubscriptionProvider>
+            <EventSync />
+            <OnboardingProvider>
+              <ThemedNavigation />
+            </OnboardingProvider>
+          </SubscriptionProvider>
+        </AuthProvider>
+      </AppThemeProvider>
     </AppErrorBoundary>
   );
 }

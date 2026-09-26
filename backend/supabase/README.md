@@ -13,6 +13,27 @@ This directory is the Supabase source of truth for NotiCare. The migrations are 
 
 The older `backend/api` PHP endpoints and MySQL schema are not part of this Supabase design. Do not send production mobile data to those placeholder endpoints.
 
+## Edge Functions (PayMongo QRPh billing)
+
+QRPh has no recurring/subscription concept in PayMongo (confirmed against their docs — only card vaulting and Maya support Subscriptions, and this account only has QRPh active). Pro is granted as a fixed-term one-time payment: `profiles.plan='pro'` plus `profiles.pro_expires_at` pushed forward by the interval's length. Nothing auto-charges again — the user pays again to renew, and every Pro check (client and RPC) treats `plan='pro'` as active only while `pro_expires_at` is still in the future (see `20260926000100_pro_expiry.sql`).
+
+| Function                       | Purpose                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `paymongo-create-qrph-payment`  | Creates a one-time QRPh Payment Intent for the chosen interval; returns a QR image to display.   |
+| `paymongo-check-payment`        | Client-side "I've already paid" fallback — re-checks the Payment Intent and grants Pro if paid.  |
+| `paymongo-webhook`              | Verifies PayMongo's `Paymongo-Signature` header; on `payment.paid`, grants Pro for the interval — the primary path (paymongo-check-payment is only a fallback for when this is slow). |
+
+Required secrets (`supabase secrets set --workdir backend NAME=value`):
+
+- `PAYMONGO_SECRET_KEY` — server-side only, never in an `EXPO_PUBLIC_` variable.
+- `PAYMONGO_WEBHOOK_SECRET` — the `secret_key` returned when registering the webhook via `POST /v1/webhooks`.
+- `PRICE_MONTHLY_CENTAVOS`, `PRICE_ANNUAL_CENTAVOS` — the authoritative charged amounts (PHP centavos, e.g. `14900` for ₱149), read server-side only; never trust an amount from the client.
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` are platform-provided automatically.
+
+The app side needs `EXPO_PUBLIC_PAYMONGO_PRICE_MONTHLY` / `_ANNUAL` (display-only strings matching the secrets above — the actual charged amount always comes from the server-side secret).
+
+**Verify before relying on this in production**: the exact JSON path to `metadata` inside a `payment.paid` webhook event (in `paymongo-webhook/index.ts`) is a best-effort guess pending a real confirmed payload — check the logged raw payload against your first real test payment and adjust if the real path differs.
+
 ## Apply migrations
 
 `backend` is the Supabase CLI work directory; it contains this `supabase/` directory and its `config.toml`. Install and authenticate the CLI, then link it to the intended project:
