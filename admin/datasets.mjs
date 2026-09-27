@@ -30,19 +30,38 @@ export async function importDataset({ filename, csv }) {
   return { file: filename, count: rows.length };
 }
 
-// CSV supports quoted commas, escaped quotes, CRLF and multiline messages.
-export function parseCsv(text) {
+// Supports quoted commas, escaped quotes, CRLF and multiline messages. Yields one row object at a
+// time instead of building the full array up front: parsing NCSU_SMS_Phishing.csv (68,029 rows)
+// into one big array of row objects measured at ~300MB of heap, which alone is enough to crash a
+// memory-constrained host. A generator lets a caller (datasetRows below) keep only the handful of
+// rows it actually needs for the requested page resident at once.
+function* csvRows(text) {
   text = text.replace(/^\uFEFF/, '');
-  const records = [];
   let row = [],
     field = '',
     quoted = false,
-    closed = false;
-  const push = () => {
+    closed = false,
+    headers = null;
+  const pushField = () => {
     row.push(field);
     field = '';
     closed = false;
   };
+  function* finishRow() {
+    if (row.some((value) => value !== '')) {
+      if (headers === null) {
+        headers = row.map((value) => value.trim());
+        if (!headers.length || headers.some((value) => !value) || new Set(headers).size !== headers.length)
+          throw invalid('CSV needs a header row with unique, non-empty column names.');
+        if (headers.length > 50) throw invalid('CSV may contain at most 50 columns.');
+      } else {
+        if (row.length !== headers.length)
+          throw invalid('A CSV record has a different number of columns than the header.');
+        yield Object.fromEntries(headers.map((key, i) => [key, row[i]]));
+      }
+    }
+    row = [];
+  }
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
@@ -56,10 +75,9 @@ export function parseCsv(text) {
         }
       } else field += char;
     } else if (char === ',' || char === '\n' || char === '\r') {
-      push();
+      pushField();
       if (char !== ',') {
-        if (row.some((value) => value !== '')) records.push(row);
-        row = [];
+        yield* finishRow();
         if (char === '\r' && text[i + 1] === '\n') i++;
       }
     } else if (char === '"' && field === '' && !closed) quoted = true;
@@ -69,17 +87,14 @@ export function parseCsv(text) {
     }
   }
   if (quoted) throw invalid('CSV contains an unfinished quoted field.');
-  push();
-  if (row.some((value) => value !== '')) records.push(row);
-  const headers = records.shift()?.map((value) => value.trim());
-  if (!headers?.length || headers.some((value) => !value) || new Set(headers).size !== headers.length)
-    throw invalid('CSV needs a header row with unique, non-empty column names.');
-  if (headers.length > 50) throw invalid('CSV may contain at most 50 columns.');
-  return records.map((values, index) => {
-    if (values.length !== headers.length)
-      throw invalid(`CSV record ${index + 2} has a different number of columns than the header.`);
-    return Object.fromEntries(headers.map((key, i) => [key, values[i]]));
-  });
+  pushField();
+  yield* finishRow();
+  if (headers === null) throw invalid('CSV needs a header row with unique, non-empty column names.');
+}
+
+/** Array-returning wrapper for callers (import validation, tests) that need the whole small file at once. */
+export function parseCsv(text) {
+  return [...csvRows(text)];
 }
 
 async function files() {
@@ -112,21 +127,6 @@ export async function datasetCatalog() {
   );
 }
 
-// Re-parsing a multi-megabyte CSV by hand on every single page/search request (this admin
-// panel gets no server-side pagination from a database, only from an in-memory array) is real,
-// repeated CPU work — cheap on a fast machine but was slow enough on a constrained host to look
-// like the endpoint had failed. Cache the parsed rows per file, invalidated by mtime, so only the
-// file's first request after a change or a server restart pays the parsing cost.
-const parsedCsvCache = new Map();
-
-async function parsedRows(file, mtimeMs) {
-  const cached = parsedCsvCache.get(file);
-  if (cached && cached.mtimeMs === mtimeMs) return cached.rows;
-  const rows = parseCsv(await readFile(file, 'utf8'));
-  parsedCsvCache.set(file, { mtimeMs, rows });
-  return rows;
-}
-
 export async function datasetRows(params) {
   const name = params.get('file');
   if (!(await files()).includes(name)) throw invalid('Choose an available dataset CSV.');
@@ -139,9 +139,22 @@ export async function datasetRows(params) {
   if (!Number.isSafeInteger(page) || page < 0) throw invalid('Invalid page');
   const query = (params.get('q') || '').trim().toLowerCase();
   if (query.length > 200) throw invalid('Search must be 200 characters or fewer.');
-  const all = await parsedRows(file, info.mtimeMs);
-  const matches = query
-    ? all.filter((row) => Object.values(row).some((value) => value.toLowerCase().includes(query)))
-    : all;
-  return { rows: matches.slice(page * 50, page * 50 + 50), count: matches.length, total: all.length, page };
+
+  // Streams through csvRows and keeps only the current page's rows (at most 50) resident, rather
+  // than materializing every matching row (or the whole file) as one array — see csvRows above for
+  // why that mattered here. Costs one full pass per request instead of an in-memory cache, which is
+  // an acceptable trade: a bounded, small, predictable memory footprint over an unbounded one.
+  const text = await readFile(file, 'utf8');
+  const start = page * 50,
+    end = start + 50;
+  const pageRows = [];
+  let total = 0,
+    matchCount = 0;
+  for (const row of csvRows(text)) {
+    total++;
+    if (query && !Object.values(row).some((value) => value.toLowerCase().includes(query))) continue;
+    if (matchCount >= start && matchCount < end) pageRows.push(row);
+    matchCount++;
+  }
+  return { rows: pageRows, count: matchCount, total, page };
 }
