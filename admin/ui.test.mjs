@@ -1,7 +1,7 @@
-import { test } from 'node:test';
+import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { JSDOM } from 'jsdom';
+import { test } from 'node:test';
 import { runInContext } from 'node:vm';
 
 function browser() {

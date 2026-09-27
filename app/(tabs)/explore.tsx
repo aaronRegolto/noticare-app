@@ -124,14 +124,14 @@ function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, v
       badge,
       explanation:
         virality.reportCount <= 1
-          ? `${virality.viralScore}/100 is a starting score for a newly seen message. It rises toward 100 as more NotiCare users report this exact text — tap Report & Block to add your report.`
+          ? `${virality.viralScore}/100 is a starting score for a newly seen message. It rises toward 100 as more NotiCare users report this exact text — tap Report to add your report.`
           : `${virality.viralScore}/100 reflects ${virality.reportCount} NotiCare users who reported this exact message. The more people who confirm it, the closer it climbs to 100 — a fully viral phishing message.`,
     };
   }
   return {
     score: NEW_MESSAGE_SCORE,
     badge: 'New',
-    explanation: `${NEW_MESSAGE_SCORE}/100 is a starting score — this message has not been reported by anyone else yet. Tap Report & Block to warn other NotiCare users if this is phishing.`,
+    explanation: `${NEW_MESSAGE_SCORE}/100 is a starting score — this message has not been reported by anyone else yet. Tap Report to warn other NotiCare users if this is phishing.`,
   };
 }
 
@@ -215,13 +215,13 @@ function ResultCard({
             {feedbackState === 'already_marked_safe'
               ? 'You already marked this exact message as safe.'
               : feedbackState === 'already_reported'
-                ? 'You already reported and blocked this exact message.'
+                ? 'You already reported this exact message.'
                 : feedbackState === 'saved_locally'
                   ? result.level === 'dangerous'
                     ? 'Done'
                     : 'Saved on this device only — it was not submitted to NotiCare’s servers.'
                   : result.level === 'dangerous'
-                    ? 'Reported and blocked. This exact message text was shared so other NotiCare users can be warned.'
+                    ? 'Reported. This exact message text was shared so other NotiCare users can be warned.'
                     : 'Report sent. Your message text was not uploaded.'}
           </Text>
         </View>
@@ -242,10 +242,10 @@ function ResultCard({
             onPress={() => onFeedback('dangerous')}
             style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="Report and block this message"
+            accessibilityLabel="Report this message"
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Reporting…' : 'Report & Block'}</Text>
+            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Reporting…' : 'Report'}</Text>
           </Pressable>
         </View>
       )}
@@ -460,7 +460,7 @@ export default function ScanScreen() {
           </View>
           <Text style={styles.privacyText}>
             <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
-            uploaded — unless you tap Report & Block on a Dangerous result, which shares that exact message so other
+            uploaded — unless you tap Report on a Dangerous result, which shares that exact message so other
             NotiCare users can be warned about it.
           </Text>
           <Pressable

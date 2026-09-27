@@ -16,7 +16,6 @@ object V3RiskEvaluator {
   private const val MODEL_ASSET = "noticare_smishing_v3.tflite"
   private const val METADATA_ASSET = "model_metadata.json"
   private const val INPUT_LENGTH = 256
-  private const val VERSION = "3.0.0-corroborated-advisory"
 
   // These generic signals occur in ordinary conversation and promotions too.
   private val weakSignals = setOf("urgency-pressure", "link-or-reply-pressure", "obfuscated-text")
@@ -52,11 +51,14 @@ object V3RiskEvaluator {
       description = "The on-device model supports the specific warning signs listed for this message. Its output alone does not establish smishing.",
       weight = max(0, 30 - rules.score),
     )
+    // ruleVersion must stay exactly rules.ruleVersion: it's checked for an exact
+    // match against the server's seeded rule_sets.version, which never contains
+    // this model's version suffix. Appending it here (as this used to do) made
+    // every Suspicious result reinforced by the model fail that check outright.
     return rules.copy(
       level = ThreatLevel.SUSPICIOUS,
       score = max(rules.score, 30),
       reasons = rules.reasons + reason,
-      ruleVersion = "${rules.ruleVersion}+$VERSION",
     )
   }
 

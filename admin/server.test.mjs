@@ -1,5 +1,5 @@
-import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
 import { server, signInError } from './server.mjs';
 
 test('distinguishes account, confirmation, rate-limit, and service failures without exposing raw errors', () => {

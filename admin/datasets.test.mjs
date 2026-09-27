@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCsv, datasetRows, datasetCatalog, importDataset } from './datasets.mjs';
-import { writeFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { unlink, writeFile } from 'node:fs/promises';
+import { test } from 'node:test';
+import { datasetCatalog, datasetRows, importDataset, parseCsv } from './datasets.mjs';
 
 test('import validates data, opens rows, and refuses overwriting an existing file', async () => {
   const filename = `import-test-${randomUUID()}.csv`;
