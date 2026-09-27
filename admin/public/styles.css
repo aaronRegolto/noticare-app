@@ -13,10 +13,25 @@
 }
 * {
   box-sizing: border-box;
-  scrollbar-width: none;
 }
-*::-webkit-scrollbar {
-  display: none;
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 999px;
+  border: 3px solid var(--surface);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text);
 }
 button {
   transition:
@@ -685,28 +700,9 @@ input[type='checkbox'] {
 }
 .table-wrap {
   overflow: auto;
-  max-height: 70vh;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
-  scrollbar-width: thin;
-  scrollbar-color: var(--muted) transparent;
-}
-.table-wrap::-webkit-scrollbar {
-  display: block;
-  width: 10px;
-  height: 10px;
-}
-.table-wrap::-webkit-scrollbar-track {
-  background: transparent;
-}
-.table-wrap::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 999px;
-  border: 2px solid var(--surface);
-}
-.table-wrap::-webkit-scrollbar-thumb:hover {
-  background: var(--text);
 }
 table {
   border-collapse: collapse;
