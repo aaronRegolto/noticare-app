@@ -117,7 +117,9 @@ async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    signal: AbortSignal.timeout(20000),
+    // Generous enough to survive a free-tier host's cold start plus a first-time CSV parse
+    // (now cached server-side after that) without every other, much faster call feeling different.
+    signal: AbortSignal.timeout(45000),
   });
   const data = await response.json();
   if (!response.ok) {

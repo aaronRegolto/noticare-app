@@ -112,6 +112,21 @@ export async function datasetCatalog() {
   );
 }
 
+// Re-parsing a multi-megabyte CSV by hand on every single page/search request (this admin
+// panel gets no server-side pagination from a database, only from an in-memory array) is real,
+// repeated CPU work — cheap on a fast machine but was slow enough on a constrained host to look
+// like the endpoint had failed. Cache the parsed rows per file, invalidated by mtime, so only the
+// file's first request after a change or a server restart pays the parsing cost.
+const parsedCsvCache = new Map();
+
+async function parsedRows(file, mtimeMs) {
+  const cached = parsedCsvCache.get(file);
+  if (cached && cached.mtimeMs === mtimeMs) return cached.rows;
+  const rows = parseCsv(await readFile(file, 'utf8'));
+  parsedCsvCache.set(file, { mtimeMs, rows });
+  return rows;
+}
+
 export async function datasetRows(params) {
   const name = params.get('file');
   if (!(await files()).includes(name)) throw invalid('Choose an available dataset CSV.');
@@ -124,7 +139,7 @@ export async function datasetRows(params) {
   if (!Number.isSafeInteger(page) || page < 0) throw invalid('Invalid page');
   const query = (params.get('q') || '').trim().toLowerCase();
   if (query.length > 200) throw invalid('Search must be 200 characters or fewer.');
-  const all = parseCsv(await readFile(file, 'utf8'));
+  const all = await parsedRows(file, info.mtimeMs);
   const matches = query
     ? all.filter((row) => Object.values(row).some((value) => value.toLowerCase().includes(query)))
     : all;
