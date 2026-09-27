@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/providers/AuthProvider';
@@ -14,7 +14,9 @@ import { logError } from '@/src/services/logger';
 import { isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
 import {
   getInstalledBrowsers,
+  isDefaultBrowser,
   isNativeLinkHandlerAvailable,
+  requestDefaultBrowser,
   setPreferredBrowser,
   type InstalledBrowser,
 } from '@/src/services/linkHandler';
@@ -150,6 +152,7 @@ export default function SettingsScreen() {
   const [linkedPhones, setLinkedPhones] = useState<string[]>([]);
   const [browsers, setBrowsers] = useState<InstalledBrowser[]>([]);
   const [browsersError, setBrowsersError] = useState<string | null>(null);
+  const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
 
   const refreshLinkedPhones = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -227,13 +230,55 @@ export default function SettingsScreen() {
     [refreshBrowsers],
   );
 
+  const refreshDefaultBrowserStatus = useCallback(async () => {
+    if (!isNativeLinkHandlerAvailable()) {
+      setDefaultBrowserActive(null);
+      return;
+    }
+    try {
+      setDefaultBrowserActive(await isDefaultBrowser());
+    } catch {
+      setDefaultBrowserActive(null);
+    }
+  }, []);
+
+  const fixDefaultBrowser = useCallback(() => {
+    Alert.alert(
+      'Set NotiCare as your default browser?',
+      'To protect you when you tap links, set NotiCare as your default browser. Safe links will still open in your normal browser — NotiCare only steps in to warn you about risky ones first.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Open settings',
+          onPress: () => {
+            void requestDefaultBrowser().catch(() =>
+              Alert.alert('Settings unavailable', 'Android default browser settings could not be opened.'),
+            );
+          },
+        },
+      ],
+    );
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void refreshStatus();
       void refreshLinkedPhones();
       void refreshBrowsers();
-    }, [refreshStatus, refreshLinkedPhones, refreshBrowsers]),
+      void refreshDefaultBrowserStatus();
+    }, [refreshStatus, refreshLinkedPhones, refreshBrowsers, refreshDefaultBrowserStatus]),
   );
+
+  // useFocusEffect alone only re-checks when this screen regains navigation focus. Returning
+  // from Android's default-apps settings while this screen never lost focus (e.g. via the
+  // system back gesture rather than switching apps) still fires an AppState change, so this
+  // covers the "re-check every time the app is opened" requirement onResume would on native Android.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshDefaultBrowserStatus();
+    });
+    return () => subscription.remove();
+  }, [refreshDefaultBrowserStatus]);
 
   const changeScanning = useCallback(
     async (enabled: boolean) => {
@@ -497,6 +542,53 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>SAFE LINK PROTECTION</Text>
         <View style={styles.card}>
+          <Pressable
+            onPress={defaultBrowserActive === false ? fixDefaultBrowser : undefined}
+            style={styles.scanRow}
+            accessibilityRole={defaultBrowserActive === false ? 'button' : undefined}
+            accessibilityLabel={
+              !isNativeLinkHandlerAvailable()
+                ? 'Browser protection is not available in this preview.'
+                : defaultBrowserActive
+                  ? 'Protection on. NotiCare is your default browser.'
+                  : 'Protection off. Tap to set NotiCare as your default browser.'
+            }
+          >
+            <View style={styles.scanLabel}>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: !isNativeLinkHandlerAvailable()
+                      ? colors.textMuted
+                      : defaultBrowserActive
+                        ? colors.accent
+                        : colors.warning,
+                  },
+                ]}
+              />
+              <View>
+                <Text style={styles.cardTitle}>
+                  {!isNativeLinkHandlerAvailable()
+                    ? 'Protection unavailable'
+                    : defaultBrowserActive === null
+                      ? 'Checking…'
+                      : defaultBrowserActive
+                        ? 'Protection ON'
+                        : 'Protection OFF'}
+                </Text>
+                <Text style={styles.cardSubtitle}>
+                  {!isNativeLinkHandlerAvailable()
+                    ? 'Install the Android app to manage this.'
+                    : defaultBrowserActive === null
+                      ? 'Checking…'
+                      : defaultBrowserActive
+                        ? 'NotiCare checks links before they open.'
+                        : 'Tap to fix — set NotiCare as your default browser.'}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
           <View style={styles.scanRow}>
             <View style={styles.scanLabel}>
               <Ionicons name="shield-checkmark-outline" size={19} color={colors.textSecondary} />

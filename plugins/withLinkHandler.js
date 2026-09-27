@@ -115,6 +115,7 @@ const BRIDGE_SOURCE_FILES = [
   'BrowserResolver.kt',
   'BrowserPreferences.kt',
   'LinkForwarder.kt',
+  'DefaultBrowserStatus.kt',
 ];
 const ROOT_SOURCE_FILES = ['LinkHandlerModule.kt', 'LinkHandlerPackage.kt'];
 

@@ -26,6 +26,14 @@ const client = (token) =>
     global: { headers: token ? { Authorization: token } : {} },
   });
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+
+// Best-effort display extraction only — not the app's on-device detection logic. Matches an
+// optional scheme, a dotted host, and an optional path/query, then trims common trailing
+// punctuation a phishing SMS often ends a link with (a period, closing parenthesis, etc).
+const URL_PATTERN = /\b(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?::\d{2,5})?(?:\/[^\s]*)?/gi;
+function extractUrls(text) {
+  return [...new Set((text.match(URL_PATTERN) || []).map((match) => match.replace(/[).,!?'"\]}]+$/, '')))];
+}
 export function signInError(error) {
   const messages = {
     invalid_credentials:
@@ -188,6 +196,47 @@ export const server = createServer(async (req, res) => {
       const { data, count, error } = await query.range(page * 50, page * 50 + 49);
       if (error) throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
       return send({ rows: data, count, page });
+    }
+    if (path.pathname === '/api/phishing-links') {
+      const page = Number(path.searchParams.get('page') || 0);
+      if (!Number.isSafeInteger(page) || page < 0 || page > 1000000) throw fail('Invalid page');
+      const search = (path.searchParams.get('q') || '').trim().toLowerCase();
+      if (search.length > 200) throw fail('Search must be 200 characters or fewer.');
+      // Every row here already only exists because it was an explicit Dangerous-result report
+      // (see the viral_phishing_reports migration), so no separate classification filter is
+      // needed — this is already the "100% dangerous, reported" set the links are drawn from.
+      const { data, error } = await db
+        .from('viral_phishing_reports')
+        .select('message_text,report_count,viral_score,first_reported_at,last_reported_at')
+        .order('last_reported_at', { ascending: false })
+        .limit(2000);
+      if (error) throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
+      const links = new Map();
+      for (const row of data) {
+        for (const url of extractUrls(row.message_text)) {
+          const key = url.toLowerCase();
+          const existing = links.get(key);
+          if (existing) {
+            existing.message_count += 1;
+            existing.report_count += row.report_count;
+            existing.max_viral_score = Math.max(existing.max_viral_score, row.viral_score);
+            if (row.first_reported_at < existing.first_seen) existing.first_seen = row.first_reported_at;
+            if (row.last_reported_at > existing.last_seen) existing.last_seen = row.last_reported_at;
+          } else {
+            links.set(key, {
+              url,
+              message_count: 1,
+              report_count: row.report_count,
+              max_viral_score: row.viral_score,
+              first_seen: row.first_reported_at,
+              last_seen: row.last_reported_at,
+            });
+          }
+        }
+      }
+      let list = [...links.values()].sort((a, b) => (a.last_seen < b.last_seen ? 1 : -1));
+      if (search) list = list.filter((item) => item.url.toLowerCase().includes(search));
+      return send({ rows: list.slice(page * 50, page * 50 + 50), count: list.length, page });
     }
     if (path.pathname === '/api/connection') {
       const checks = await Promise.all(

@@ -46,6 +46,7 @@ test('rejects anonymous access to every live data endpoint', async () => {
     '/api/datasets',
     '/api/dataset-rows?file=UCI_SMS_Spam.csv',
     '/api/reported-messages',
+    '/api/phishing-links',
     '/api/records?table=threat_events&discoveries=true',
     '/api/stream/discoveries',
   ]) {

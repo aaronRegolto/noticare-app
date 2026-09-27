@@ -8,6 +8,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableArray
 import __NOTICARE_PACKAGE__.bridge.BrowserPreferences
 import __NOTICARE_PACKAGE__.bridge.BrowserResolver
+import __NOTICARE_PACKAGE__.bridge.DefaultBrowserStatus
 import __NOTICARE_PACKAGE__.bridge.LinkForwarder
 
 /**
@@ -65,6 +66,27 @@ class LinkHandlerModule(
                 promise.reject("no_browser_installed", "No other browser is installed on this device.")
             is LinkForwarder.ForwardResult.Failed ->
                 promise.reject("open_failed", "Could not open this link in ${result.browserLabel}.")
+        }
+    }
+
+    /** Whether NotiCare is currently the device's default browser. */
+    @ReactMethod
+    fun isDefaultBrowser(promise: Promise) {
+        try {
+            promise.resolve(DefaultBrowserStatus.isDefaultBrowser(appContext))
+        } catch (error: Exception) {
+            promise.reject("default_browser_status_failed", "Unable to read default browser status.", error)
+        }
+    }
+
+    /** Opens Android's role-request dialog (10+) or default-apps settings screen (older). */
+    @ReactMethod
+    fun requestDefaultBrowser(promise: Promise) {
+        try {
+            DefaultBrowserStatus.requestDefaultBrowser(appContext)
+            promise.resolve(true)
+        } catch (error: Exception) {
+            promise.reject("default_browser_request_failed", "Unable to open default browser settings.", error)
         }
     }
 

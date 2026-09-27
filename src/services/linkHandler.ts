@@ -11,6 +11,8 @@ type LinkHandlerNativeModule = {
   getInstalledBrowsers(): Promise<InstalledBrowser[]>;
   setPreferredBrowser(packageName: string): Promise<boolean>;
   openInRealBrowser(url: string): Promise<boolean>;
+  isDefaultBrowser(): Promise<boolean>;
+  requestDefaultBrowser(): Promise<boolean>;
 };
 
 const nativeModule = NativeModules.LinkHandlerModule as LinkHandlerNativeModule | undefined;
@@ -45,4 +47,14 @@ export function setPreferredBrowser(packageName: string): Promise<boolean> {
 /** Forwards a link the user explicitly chose to open despite a warning. Rejects if that fails. */
 export function openInRealBrowser(url: string): Promise<boolean> {
   return requireAndroidNativeModule().openInRealBrowser(url);
+}
+
+/** Whether NotiCare is currently set as the device's default browser. */
+export function isDefaultBrowser(): Promise<boolean> {
+  return requireAndroidNativeModule().isDefaultBrowser();
+}
+
+/** Opens Android's "set as default browser" role request (10+) or default-apps settings (older). */
+export function requestDefaultBrowser(): Promise<boolean> {
+  return requireAndroidNativeModule().requestDefaultBrowser();
 }
