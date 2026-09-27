@@ -332,7 +332,7 @@ function renderDatasetLibrary(catalog) {
   $('#content').innerHTML =
     `<section class="library-hero"><div><span class="library-kicker">RESEARCH COLLECTION</span><h2>Your data. Ready to explore.</h2><p>Connect your original datasets, inspect individual messages, and follow emerging threats.</p><button id="import-new" class="hero-button">＋ Import a dataset</button></div><div class="library-summary"><strong>${available}<span> / ${catalog.length}</span></strong><span>datasets ready to browse</span><small>${catalog.length - available} awaiting source files</small></div></section>
     <div class="library-section-heading"><div><h2>Dataset collection</h2><p>Original sources and additional research files</p></div><button id="library-detections">Phishing detections ↗</button></div>
-    <div class="dataset-catalog">${catalog.map((item, index) => `<article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">${item.source.startsWith('UCI') ? 'UCI' : item.source.startsWith('NCSU') ? 'NC' : 'CSV'}</span><span class="dataset-status ${item.file ? 'ready' : 'pending'}">${item.file ? '● Ready to explore' : '○ Source file needed'}</span></div><h2>${escape(label(item.source))}</h2><span class="dataset-type">${item.provenance_count === null ? 'Additional research dataset' : 'Listed model source'}</span><div class="dataset-count"><strong>${item.provenance_count === null ? 'CSV' : number(item.provenance_count)}</strong><span>${item.provenance_count === null ? 'Imported research file' : 'reported provenance rows'}</span></div><p class="dataset-description">${item.file ? 'Search the provided messages and labels. Importing a file does not verify its contents or retrain the model.' : 'The model records this source, but its message rows are missing. Import the original CSV to unlock browsing.'}</p><div class="dataset-card-footer"><span>${item.file ? 'Available locally' : 'Metadata only'}</span><button class="primary" ${item.file ? `data-dataset="${escape(item.file)}"` : `data-import-index="${index}"`}>${item.file ? 'Browse rows →' : 'Import source CSV'}</button></div></article>`).join('')}</div>
+    <div class="dataset-catalog"><article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">REPORT</span><span class="dataset-status ready">Opt-in submissions</span></div><h2>Reported phishing messages</h2><span class="dataset-type">Community reports</span><div class="dataset-count"><strong>SMS</strong><span>text and links included</span></div><p class="dataset-description">Messages explicitly shared through Report &amp; Block on a Dangerous result. Reports may contain personal information; links are displayed as text only.</p><div class="dataset-card-footer"><span>Admin access</span><button class="primary" id="open-reported-messages">Open collection</button></div></article>${catalog.map((item, index) => `<article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">${item.source.startsWith('UCI') ? 'UCI' : item.source.startsWith('NCSU') ? 'NC' : 'CSV'}</span><span class="dataset-status ${item.file ? 'ready' : 'pending'}">${item.file ? '● Ready to explore' : '○ Source file needed'}</span></div><h2>${escape(label(item.source))}</h2><span class="dataset-type">${item.provenance_count === null ? 'Additional research dataset' : 'Listed model source'}</span><div class="dataset-count"><strong>${item.provenance_count === null ? 'CSV' : number(item.provenance_count)}</strong><span>${item.provenance_count === null ? 'Imported research file' : 'reported provenance rows'}</span></div><p class="dataset-description">${item.file ? 'Search the provided messages and labels. Importing a file does not verify its contents or retrain the model.' : 'The model records this source, but its message rows are missing. Import the original CSV to unlock browsing.'}</p><div class="dataset-card-footer"><span>${item.file ? 'Available locally' : 'Metadata only'}</span><button class="primary" ${item.file ? `data-dataset="${escape(item.file)}"` : `data-import-index="${index}"`}>${item.file ? 'Browse rows →' : 'Import source CSV'}</button></div></article>`).join('')}</div>
     <p class="library-footnote">Provenance counts can overlap. CSV row counts appear when a dataset is opened. Detections remain separate from training data.</p><div id="dataset-browser"></div>
     <dialog id="import-dialog"><form id="import-form"><div class="import-heading"><h2>Import dataset</h2><button type="button" id="close-import" aria-label="Close import">✕</button></div><p>Add a CSV to your local dataset library. Existing files are preserved.</p><label>Dataset filename<input id="import-name" required pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}\\.csv" placeholder="my_research.csv"></label><label class="file-drop">Choose a CSV file<input id="import-file" type="file" accept=".csv,text/csv" required><small>UTF-8 · Header row required · Up to 10 MB</small></label><p id="import-status" role="status"></p><button id="submit-import" class="primary" type="submit">Import and browse</button></form></dialog>`;
   const showImport = (name = '') => {
@@ -343,6 +343,7 @@ function renderDatasetLibrary(catalog) {
   };
   $('#import-new').onclick = () => showImport();
   $('#library-detections').onclick = () => navigate('discoveries');
+  $('#open-reported-messages').onclick = openReportedMessages;
   $('#close-import').onclick = () => $('#import-dialog').close();
   $('#content')
     .querySelectorAll('[data-dataset]')
@@ -401,6 +402,27 @@ function renderDatasetLibrary(catalog) {
     }
   };
 }
+function openReportedMessages() {
+  page = 0;
+  $('#content').innerHTML =
+    `<div class="library-section-heading"><div><h2>Reported phishing messages</h2><p>Only messages explicitly shared through Report &amp; Block are listed here.</p></div><button id="back-to-datasets">← Dataset library</button></div><article class="panel"><p class="muted">These reports contain the submitted message text, including any links. Treat them as untrusted text; links are not opened.</p><form class="toolbar" id="filters"><label>Search all reports<input name="q" type="search" maxlength="200" placeholder="Search message text"></label><input type="hidden" name="reported-messages" value="true"><button class="primary" type="submit">Search</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div></article>`;
+  $('#back-to-datasets').onclick = () => navigate('datasets');
+  $('#filters').onsubmit = (event) => {
+    event.preventDefault();
+    page = 0;
+    loadRecords();
+  };
+  $('#previous').onclick = () => {
+    page--;
+    loadRecords();
+  };
+  $('#next').onclick = () => {
+    page++;
+    loadRecords();
+  };
+  $('#export').onclick = exportRows;
+  loadRecords();
+}
 function openDataset(file) {
   page = 0;
   $('#dataset-browser').innerHTML =
@@ -426,11 +448,12 @@ async function loadRecords() {
   closeRecord();
   const current = ++generation;
   const params = new URLSearchParams(new FormData($('#filters')));
+  const reportedMessages = section === 'datasets' && params.has('reported-messages');
   if (params.get('from') && params.get('to') && params.get('from') > params.get('to')) {
     notice('The start date must be before the end date.');
     return;
   }
-  params.set('table', section === 'discoveries' ? 'threat_events' : section);
+  if (section !== 'datasets') params.set('table', section === 'discoveries' ? 'threat_events' : section);
   if (section === 'discoveries') params.set('discoveries', 'true');
   params.set('page', page);
   rows = [];
@@ -441,7 +464,12 @@ async function loadRecords() {
   $('#count').textContent = '';
   notice();
   try {
-    const data = await api(`${section === 'datasets' ? '/api/dataset-rows' : '/api/records'}?${params}`);
+    const endpoint = reportedMessages
+      ? '/api/reported-messages'
+      : section === 'datasets'
+        ? '/api/dataset-rows'
+        : '/api/records';
+    const data = await api(`${endpoint}?${params}`);
     if (current !== generation) return;
     rows = data.rows;
     renderRecordBrowser();

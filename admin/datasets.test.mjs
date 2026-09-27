@@ -55,6 +55,15 @@ test('CSV preserves multiline messages, commas, escaped quotes and labels', () =
     { message: 'Normal', label: 'ham' },
   ]);
 });
+test('CSV preserves control characters in message fields and rejects ZIP workbooks', async () => {
+  assert.deepEqual(parseCsv('message,label\n"Hello\u0003friend",phishing'), [
+    { message: 'Hello\u0003friend', label: 'phishing' },
+  ]);
+  await assert.rejects(
+    importDataset({ filename: `binary-test-${randomUUID()}.csv`, csv: 'PK\u0003\u0004workbook data' }),
+    { status: 400, message: /Excel workbook or ZIP archive/ },
+  );
+});
 test('malformed rows and ambiguous headers fail rather than mislabelling samples', () => {
   for (const csv of [
     '',

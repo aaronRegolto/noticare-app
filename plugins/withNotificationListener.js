@@ -106,19 +106,26 @@ function updateManifest(manifest) {
     });
   }
   manifest.manifest['uses-permission'] = uniqueByAndroidName(permissions);
-  manifest.manifest.queries = [
-    {
-      intent: [
-        {
-          action: [{ $: { 'android:name': 'android.provider.Telephony.SMS_DELIVER' } }],
-        },
-        {
-          action: [{ $: { 'android:name': 'android.intent.action.SENDTO' } }],
-          data: [{ $: { 'android:scheme': 'smsto' } }],
-        },
-      ],
-    },
-  ];
+  // Merge into the existing <queries> element instead of replacing it outright —
+  // withLinkHandler also adds an <intent> entry there, and unconditionally overwriting
+  // this array (as an earlier version of this plugin did) silently deletes whichever
+  // plugin's manifest mod ran first, regardless of the order in app.config.js.
+  const queriesRoot = asArray(manifest.manifest, 'queries')[0] ?? {};
+  const smsIntents = asArray(queriesRoot, 'intent');
+  const hasSmsDeliverQuery = smsIntents.some((entry) =>
+    entry?.action?.some((action) => action?.$?.['android:name'] === 'android.provider.Telephony.SMS_DELIVER'),
+  );
+  if (!hasSmsDeliverQuery) {
+    smsIntents.push(
+      { action: [{ $: { 'android:name': 'android.provider.Telephony.SMS_DELIVER' } }] },
+      {
+        action: [{ $: { 'android:name': 'android.intent.action.SENDTO' } }],
+        data: [{ $: { 'android:scheme': 'smsto' } }],
+      },
+    );
+  }
+  queriesRoot.intent = smsIntents;
+  manifest.manifest.queries = [queriesRoot];
   const application = manifest.manifest.application?.[0];
   if (!application) return manifest;
 

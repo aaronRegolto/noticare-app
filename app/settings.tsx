@@ -13,6 +13,12 @@ import { detectPhilippineCarrier } from '@/src/features/auth/phone';
 import { logError } from '@/src/services/logger';
 import { isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
 import {
+  getInstalledBrowsers,
+  isNativeLinkHandlerAvailable,
+  setPreferredBrowser,
+  type InstalledBrowser,
+} from '@/src/services/linkHandler';
+import {
   clearHistory,
   getMonitoringStatus,
   isNativeMonitoringAvailable,
@@ -142,6 +148,8 @@ export default function SettingsScreen() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [linkedPhones, setLinkedPhones] = useState<string[]>([]);
+  const [browsers, setBrowsers] = useState<InstalledBrowser[]>([]);
+  const [browsersError, setBrowsersError] = useState<string | null>(null);
 
   const refreshLinkedPhones = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -191,11 +199,40 @@ export default function SettingsScreen() {
     }
   }, []);
 
+  const refreshBrowsers = useCallback(async () => {
+    if (!isNativeLinkHandlerAvailable()) {
+      setBrowsers([]);
+      setBrowsersError('Browser protection is not available in this preview. Install the Android app to manage it.');
+      return;
+    }
+    try {
+      setBrowsers(await getInstalledBrowsers());
+      setBrowsersError(null);
+    } catch {
+      setBrowsers([]);
+      setBrowsersError('Unable to list installed browsers.');
+    }
+  }, []);
+
+  const choosePreferredBrowser = useCallback(
+    async (packageName: string) => {
+      try {
+        await setPreferredBrowser(packageName);
+        await refreshBrowsers();
+      } catch (error) {
+        logError('preferred-browser-failed', error);
+        Alert.alert('Unable to save', 'Please try again.');
+      }
+    },
+    [refreshBrowsers],
+  );
+
   useFocusEffect(
     useCallback(() => {
       void refreshStatus();
       void refreshLinkedPhones();
-    }, [refreshStatus, refreshLinkedPhones]),
+      void refreshBrowsers();
+    }, [refreshStatus, refreshLinkedPhones, refreshBrowsers]),
   );
 
   const changeScanning = useCallback(
@@ -458,6 +495,43 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
+        <Text style={styles.sectionLabel}>SAFE LINK PROTECTION</Text>
+        <View style={styles.card}>
+          <View style={styles.scanRow}>
+            <View style={styles.scanLabel}>
+              <Ionicons name="shield-checkmark-outline" size={19} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.cardTitle}>Open safe links in</Text>
+                <Text style={styles.cardSubtitle}>
+                  {browsers.find((browser) => browser.isPreferred)?.label ?? 'No browser chosen yet'}
+                </Text>
+              </View>
+            </View>
+          </View>
+          {browsersError ? (
+            <Text style={styles.statusCopy}>{browsersError}</Text>
+          ) : browsers.length === 0 ? (
+            <Text style={styles.statusCopy}>
+              No other browser is installed on this device. Install one (e.g. Chrome) to open safe links.
+            </Text>
+          ) : (
+            browsers.map((browser) => (
+              <Pressable
+                key={browser.packageName}
+                onPress={() => void choosePreferredBrowser(browser.packageName)}
+                style={styles.browserRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${browser.label} for safe links`}
+              >
+                <Text style={styles.browserLabel}>{browser.label}</Text>
+                {browser.isPreferred ? (
+                  <Ionicons name="checkmark-circle" size={19} color={colors.accent} />
+                ) : null}
+              </Pressable>
+            ))
+          )}
+        </View>
+
         <Text style={styles.sectionLabel}>ALERT STYLE</Text>
         <View style={styles.appearanceCard}>
           <Text style={styles.appearanceTitle}>How should phishing warnings appear?</Text>
@@ -689,6 +763,16 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.surfaceAlt,
     },
     permissionText: { color: colors.link, fontWeight: '800', fontSize: 12 },
+    browserRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    browserLabel: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
     retentionNote: {
       color: colors.textSecondary,
       fontSize: 12,

@@ -119,3 +119,41 @@ test('daily and hourly statistics share a collapsible navigation group', () => {
     dom.window.close();
   }
 });
+
+test('dataset library opens opted-in phishing messages as untrusted text', async () => {
+  const dom = browser();
+  try {
+    let requestedUrl = '';
+    dom.window.fetch = async (url) => {
+      requestedUrl = String(url);
+      return {
+        ok: true,
+        json: async () => ({
+          rows: [
+            {
+              id: 'report-1',
+              message_text: 'Claim: https://phish.example/path <img src=x onerror=alert(1)>',
+              indicator_codes: ['url-shortener'],
+              rule_version: 'test',
+              report_count: 2,
+              viral_score: 24,
+              first_reported_at: '2026-09-27T00:00:00Z',
+              last_reported_at: '2026-09-27T00:00:00Z',
+            },
+          ],
+          count: 1,
+          page: 0,
+        }),
+      };
+    };
+    dom.window.eval("token = 'test-token'; section = 'datasets'; renderDatasetLibrary([]);");
+    dom.window.document.querySelector('#open-reported-messages').click();
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    assert.match(requestedUrl, /^\/api\/reported-messages\?/);
+    assert.match(dom.window.document.querySelector('#page-table').textContent, /https:\/\/phish\.example\/path/);
+    assert.equal(dom.window.document.querySelector('#page-table img'), null);
+    assert.equal(dom.window.document.querySelector('#page-table a'), null);
+  } finally {
+    dom.window.close();
+  }
+});

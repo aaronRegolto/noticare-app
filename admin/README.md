@@ -13,7 +13,7 @@ Open http://localhost:4173. The server binds to loopback only. Model documentati
 ## Enable live admin access
 
 1. Keep the existing `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` in the root `.env`. The dashboard never needs a service-role key.
-2. Apply the repository's Supabase migrations, including `backend/supabase/migrations/20260907000100_admin_read_access.sql` and `backend/supabase/migrations/20260917000100_realtime_threat_events.sql`, to your intended project. Follow `docs/SUPABASE_SETUP.md` for linking and migration commands. Review `db push --dry-run` before applying. The second migration adds `threat_events` to Supabase's `supabase_realtime` publication; without it, Phishing detections still works but only via manual/interval refresh, not live push.
+2. Apply the repository's Supabase migrations, including `backend/supabase/migrations/20260907000100_admin_read_access.sql`, `backend/supabase/migrations/20260917000100_realtime_threat_events.sql`, and `backend/supabase/migrations/20260927000100_admin_read_viral_phishing_reports.sql`, to your intended project. Follow `docs/SUPABASE_SETUP.md` for linking and migration commands. Review `db push --dry-run` before applying. The realtime migration adds `threat_events` to Supabase's `supabase_realtime` publication; without it, Phishing detections still works but only via manual/interval refresh, not live push.
 3. In Supabase Authentication, create a confirmed email/password user for the administrator. Email authentication must be enabled. Copy that user's UUID.
 4. As the project owner, run this in the Supabase SQL Editor, replacing the placeholder:
 
@@ -37,7 +37,7 @@ Membership is checked for every request, so revocation takes effect without wait
 
 **Connection status** checks access to the shared Supabase tables and displays the latest non-demo uploaded scan. See `docs/SUPABASE_SETUP.md` for the phone-to-admin verification steps. Mobile development now uses real Phone OTP by default; local-only login requires explicit opt-in and cannot sync.
 
-In **Dataset library**, choose **Import source CSV** on a missing source card, or **Import a dataset** for an additional file. Select the original UTF-8 CSV, review its destination filename, and choose **Import and browse**. Imports validate headers and row structure, require admin membership, and refuse to overwrite existing files. Imported files stay in the local `datasets/` folder and are not uploaded to Supabase or added to model training. The source name and provenance count alone cannot reconstruct the original message rows.
+In **Dataset library**, choose **Import source CSV** on a missing source card, or **Import a dataset** for an additional file. Select the original UTF-8 CSV, review its destination filename, and choose **Import and browse**. Imports validate headers and row structure, require admin membership, and refuse to overwrite existing files. Imported files stay in the local `datasets/` folder and are not uploaded to Supabase or added to model training. The source name and provenance count alone cannot reconstruct the original message rows. The **Reported phishing messages** collection lists distinct messages explicitly shared by users through **Report & Block** on a Dangerous result; those rows include the full submitted text and any links. Ordinary detections still upload metadata only. Apply the report-access migration above before opening the collection.
 
 Use the header’s **Appearance** selector to choose Light, Dark, or System (follows the OS/browser color scheme and updates automatically if it changes). Choices apply immediately and are stored per authenticated account in this browser; they do not sync between devices. Signed-out preferences are stored separately. Only appearance preferences are persisted, never login tokens.
 
@@ -49,7 +49,7 @@ The layout uses [Carbon’s data table guidance](https://carbondesignsystem.com/
 - Overview: exact all-time non-demo scan counts and classification distribution.
 - Records: scans, profiles, daily/hourly statistics, and rule sets; all columns with 50-row pagination, UTC date filters, classification filters where applicable, and current-page CSV export.
 - ML & datasets: reads the existing model metadata directly; provenance, training counts, reported frozen-test evaluation, limitations, and full metadata. It does not recalculate accuracy or invent a confusion matrix.
-- Source files that have not been provided are labelled in the dataset library. Device-encrypted History and raw SMS content are not cloud records and cannot be browsed here.
+- Source files that have not been provided are labelled in the dataset library. Device-encrypted History and unreported SMS content are not cloud records. Only messages explicitly submitted through **Report & Block** appear in the reported-message collection.
 
 CSV exports contain only the visible page, use the active filters, and neutralize spreadsheet formula prefixes. Each aggregate table can be browsed separately; overview totals exclude demo records.
 

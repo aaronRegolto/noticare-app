@@ -1,6 +1,6 @@
 # NotiCare Supabase backend
 
-This directory is the Supabase source of truth for NotiCare. The migrations are designed so the cloud database receives anonymous scan metadata only. It must never receive message bodies, full sender numbers, notification titles, raw URLs, clipboard data, OTP contents, Android/hardware identifiers, or encryption keys.
+This directory is the Supabase source of truth for NotiCare. Ordinary scan telemetry contains anonymous classification metadata only; it does not send message bodies, sender numbers, notification titles, raw URLs, clipboard data, OTP contents, Android/hardware identifiers, or encryption keys. The explicit **Report & Block** action on a Dangerous result is the exception: it shares that exact message text, including any links it contains, in `viral_phishing_reports` so other users can recognize the same scam. This upload never happens automatically.
 
 ## Files
 

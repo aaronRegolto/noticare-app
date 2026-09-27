@@ -171,6 +171,24 @@ export const server = createServer(async (req, res) => {
     if (req.method !== 'GET') throw fail('Read-only endpoint', 405);
     if (path.pathname === '/api/datasets') return send(await datasetCatalog());
     if (path.pathname === '/api/dataset-rows') return send(await datasetRows(path.searchParams));
+    if (path.pathname === '/api/reported-messages') {
+      const page = Number(path.searchParams.get('page') || 0);
+      if (!Number.isSafeInteger(page) || page < 0 || page > 1000000) throw fail('Invalid page');
+      const search = (path.searchParams.get('q') || '').trim();
+      if (search.length > 200) throw fail('Search must be 200 characters or fewer.');
+      let query = db
+        .from('viral_phishing_reports')
+        .select(
+          'id,message_text,indicator_codes,rule_version,report_count,viral_score,first_reported_at,last_reported_at',
+          { count: 'exact' },
+        )
+        .order('last_reported_at', { ascending: false })
+        .order('id');
+      if (search) query = query.ilike('message_text', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      const { data, count, error } = await query.range(page * 50, page * 50 + 49);
+      if (error) throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
+      return send({ rows: data, count, page });
+    }
     if (path.pathname === '/api/connection') {
       const checks = await Promise.all(
         ['profiles', 'devices', 'threat_events', 'scan_feedback', 'rule_sets'].map(async (table) => {
