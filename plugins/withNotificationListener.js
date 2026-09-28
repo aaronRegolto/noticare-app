@@ -26,11 +26,10 @@ const LEGACY_SERVICES = new Set([
 
 const LEGACY_ACTIVITIES = new Set(['.WarningOverlayActivity', '.ui.AlertActivity', '.ui.ThreatDetailsActivity']);
 
-// These APIs would either grant broad SMS access or support the removed overlay/
-// accessibility implementation. Keep the removal defensive so a dependency or a
-// stale generated manifest cannot accidentally expand the scanner's scope.
+// These APIs would grant broad SMS access or support an accessibility-based
+// implementation. Keep the removal defensive so a dependency or a stale
+// generated manifest cannot accidentally expand the scanner's scope.
 const DISALLOWED_PERMISSIONS = [
-  'android.permission.SYSTEM_ALERT_WINDOW',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.READ_SMS',
   'android.permission.RECEIVE_SMS',
@@ -41,6 +40,9 @@ const DISALLOWED_PERMISSIONS = [
   'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
 ];
 const DISALLOWED_PERMISSION_SET = new Set(DISALLOWED_PERMISSIONS);
+// Previously disallowed; older prebuilds left removal directives for these in
+// src/debug, which would still strip them from the debug APK.
+const FORMERLY_DISALLOWED_PERMISSIONS = ['android.permission.SYSTEM_ALERT_WINDOW'];
 const TOOLS_NAMESPACE = 'http://schemas.android.com/tools';
 
 function asArray(owner, key) {
@@ -67,7 +69,7 @@ function updateManifest(manifest) {
   // Removing a permission from the generated source manifest does not stop a
   // dependency from adding it during Android manifest merging. Keep explicit
   // removal markers in the app manifest so the packaged APK cannot inherit an
-  // overlay, broad-SMS, accessibility, foreground-service, or app-level
+  // broad-SMS, accessibility, foreground-service, or app-level
   // notification-listener permission.
   manifest.manifest.$ = {
     ...manifest.manifest.$,
@@ -96,6 +98,11 @@ function updateManifest(manifest) {
   // `startActivity` call from this background service, which Android 10+ blocks almost always.
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.USE_FULL_SCREEN_INTENT')) {
     permissions.push({ $: { 'android:name': 'android.permission.USE_FULL_SCREEN_INTENT' } });
+  }
+  // "Display over other apps": lets ThreatWarningOverlay cover whatever app is in use when a
+  // threat is detected. User-granted in Settings, and only used when Full-screen warning is on.
+  if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.SYSTEM_ALERT_WINDOW')) {
+    permissions.push({ $: { 'android:name': 'android.permission.SYSTEM_ALERT_WINDOW' } });
   }
   for (const permission of DISALLOWED_PERMISSIONS) {
     permissions.push({
@@ -257,8 +264,7 @@ function permissionRemovalDirective(permission) {
 
 /**
  * Expo's development-client debug manifest has higher merge priority than the
- * app's main manifest and contributes SYSTEM_ALERT_WINDOW by default. Put the
- * same removals in src/debug so they win at that merge layer too. This keeps
+ * app's main manifest. Put the same removals in src/debug so they win at that merge layer too. This keeps
  * the development APK aligned with the release privacy boundary.
  */
 function patchDebugManifest(androidRoot) {
@@ -271,7 +277,7 @@ function patchDebugManifest(androidRoot) {
   // Normalize existing permission declarations first, then place a single
   // ordered removal block before <application>. Non-clean prebuild preserves
   // src/debug, so this also repairs an older plugin output on the next run.
-  for (const permission of DISALLOWED_PERMISSIONS) {
+  for (const permission of [...DISALLOWED_PERMISSIONS, ...FORMERLY_DISALLOWED_PERMISSIONS]) {
     const permissionPattern = new RegExp(
       `<uses-permission\\b(?=[^>]*\\bandroid:name\\s*=\\s*["']${escapeRegExp(permission)}["'])[^>]*\\/?\\s*>\\s*`,
       'g',
@@ -310,6 +316,8 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['NotificationInput.kt', path.join(sourceRoot, 'bridge', 'NotificationInput.kt')],
     ['ThreatDecisionReceiver.kt', path.join(sourceRoot, 'bridge', 'ThreatDecisionReceiver.kt')],
     ['ThreatWarningActivity.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningActivity.kt')],
+    ['ThreatWarningView.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningView.kt')],
+    ['ThreatWarningOverlay.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningOverlay.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
     ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
     ['V3RiskEvaluatorTest.kt', path.join(testSourceRoot, 'bridge', 'V3RiskEvaluatorTest.kt')],

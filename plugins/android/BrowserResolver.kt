@@ -18,8 +18,12 @@ object BrowserResolver {
     /** Every installed app that can handle an https link, excluding NotiCare itself. */
     fun installedBrowsers(context: Context): List<BrowserApp> {
         val probeIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
         val packageManager = context.packageManager
-        val resolved = packageManager.queryIntentActivities(probeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        // MATCH_ALL is required: once NotiCare is the default browser, Android filters
+        // web-intent query results down to just the default handler, which would leave
+        // nothing after NotiCare excludes itself below.
+        val resolved = packageManager.queryIntentActivities(probeIntent, PackageManager.MATCH_ALL)
         return resolved
             .map { it.activityInfo.packageName }
             .distinct()

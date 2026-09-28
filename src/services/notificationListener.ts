@@ -48,6 +48,11 @@ export type MonitoringStatus = {
   batteryOptimizationExempt: boolean;
   /** False (Android 14+ only) means the full-screen danger warning falls back to a heads-up banner. */
   fullScreenIntentPermitted: boolean;
+  /**
+   * False means full-screen warnings can't cover other apps while the phone is in use, and fall
+   * back to a heads-up banner there. Absent on older installed builds.
+   */
+  overlayPermitted?: boolean;
   /** False means Dangerous-message alerts stay silent while the phone is in Do Not Disturb. */
   dndBypassGranted: boolean;
   /**
@@ -116,6 +121,7 @@ type NotificationListenerNativeModule = {
   openAppNotificationSettings(): Promise<boolean>;
   requestIgnoreBatteryOptimizations?(): Promise<boolean>;
   requestFullScreenIntentPermission?(): Promise<boolean>;
+  requestOverlayPermission?(): Promise<boolean>;
   requestNotificationPolicyAccess?(): Promise<boolean>;
   getMonitoringStatus(): Promise<MonitoringStatus>;
   setScanningEnabled(enabled: boolean): Promise<MonitoringStatus>;
@@ -180,6 +186,15 @@ export async function requestIgnoreBatteryOptimizations(): Promise<boolean> {
 export async function requestFullScreenIntentPermission(): Promise<boolean> {
   const module = requireAndroidNativeModule();
   return (await module.requestFullScreenIntentPermission?.()) ?? false;
+}
+
+/**
+ * Opens Android's "Display over other apps" screen so full-screen warnings can cover whatever app
+ * is in use. Older installed builds resolve to false instead of throwing.
+ */
+export async function requestOverlayPermission(): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  return (await module.requestOverlayPermission?.()) ?? false;
 }
 
 /**

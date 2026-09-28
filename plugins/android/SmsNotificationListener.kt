@@ -225,7 +225,13 @@ class SmsNotificationListener : NotificationListenerService() {
     // over from a downgrade, or a client that skipped the Settings-screen gate.
     val fullScreen = RealtimeScanPreferences.useFullScreenWarnings(applicationContext) &&
       RealtimeScanPreferences.subscriptionTier(applicationContext) == "pro"
-    NotiCareNotifications.showDangerChoice(applicationContext, pending, fullScreen)
+    // While the phone is in use, draw the warning over the current app; the notification stays
+    // as the fallback (without its full-screen intent, so the warning doesn't open twice). When
+    // locked or dark, or without the overlay permission, the full-screen intent takes over.
+    val overlayShown = fullScreen && ThreatWarningOverlay.show(applicationContext, pending) {
+      NotiCareNotifications.showDangerChoice(applicationContext, pending, true)
+    }
+    NotiCareNotifications.showDangerChoice(applicationContext, pending, fullScreen && !overlayShown)
   }
 
   fun applyDecision(pending: PendingThreat, block: Boolean) {

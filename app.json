@@ -44,8 +44,7 @@
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_SMS",
         "android.permission.RECEIVE_SMS",
-        "android.permission.SEND_SMS",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SEND_SMS"
       ]
     },
     "experiments": {

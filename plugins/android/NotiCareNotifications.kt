@@ -79,8 +79,8 @@ object NotiCareNotifications {
    * to already be the foreground app. `setFullScreenIntent` is the OS-sanctioned way to interrupt
    * the user from the background instead — the system launches [ThreatWarningActivity] directly
    * when the screen is off or locked, and shows a prominent heads-up banner when the phone is
-   * awake and in use (Android reserves true full-screen-over-active-use for call-style
-   * notifications; a regular app cannot force that).
+   * awake and in use. Covering the screen while the phone is in use is [ThreatWarningOverlay]'s
+   * job; this notification remains as the actionable fallback either way.
    */
   fun showDangerChoice(context: Context, pending: PendingThreat, fullScreen: Boolean) {
     ensureChannels(context)
@@ -108,15 +108,14 @@ object NotiCareNotifications {
       .apply { if (fullScreen) setFullScreenIntent(warningIntent(context, pending.token), true) }
       .build()
       // Repeats the sound/vibration on a loop until the user acts on it or
-      // dismisses it — the strongest attention-getter available to a regular
-      // app; see the class-level note on why a true forced screen takeover
-      // isn't possible while the phone is actively in use elsewhere. There is
-      // no Builder method for this flag, so it's set on the built Notification.
+      // dismisses it. There is no Builder method for this flag, so it's set on
+      // the built Notification.
       .apply { flags = flags or Notification.FLAG_INSISTENT }
     notificationManager(context)?.notify(pending.token.hashCode(), notification)
   }
 
   fun dismissDangerChoice(context: Context, token: String) {
+    ThreatWarningOverlay.dismiss(context, token)
     notificationManager(context)?.cancel(token.hashCode())
   }
 

@@ -26,6 +26,7 @@ import {
   isNativeMonitoringAvailable,
   openAppNotificationSettings,
   requestFullScreenIntentPermission,
+  requestOverlayPermission,
   requestIgnoreBatteryOptimizations,
   requestNotificationListenerAccess,
   requestNotificationPolicyAccess,
@@ -342,14 +343,25 @@ export default function SettingsScreen() {
       }
       setSaving(true);
       try {
-        setStatus(await setFullScreenWarnings(fullScreen));
+        const next = await setFullScreenWarnings(fullScreen);
+        setStatus(next);
+        if (fullScreen && next.overlayPermitted === false) {
+          Alert.alert(
+            'Allow NotiCare to appear on top',
+            'To cover the screen instantly while you are using another app, NotiCare needs the "Display over other apps" permission. Without it, warnings show as a banner while your phone is in use.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Allow', onPress: () => void requestOverlayPermission().then(() => void refreshStatus()) },
+            ],
+          );
+        }
       } catch {
         Alert.alert('Unable to save warning style', 'Please try again.');
       } finally {
         setSaving(false);
       }
     },
-    [saving, status, subscriptionTier, router],
+    [saving, status, subscriptionTier, router, refreshStatus],
   );
 
   const confirmClearHistory = useCallback(() => {
@@ -636,6 +648,21 @@ export default function SettingsScreen() {
             disabled={saving || !status}
             onChange={(mode) => void changeWarningStyle(mode === 'full-screen')}
           />
+          {status?.fullScreenWarnings && status.overlayPermitted === false ? (
+            <View style={styles.batteryWarning}>
+              <Text style={styles.batteryWarningText}>
+                Full-screen warnings can only cover other apps with the &quot;Display over other apps&quot; permission.
+                Until it is allowed, warnings show as a banner while you are using your phone.
+              </Text>
+              <Pressable
+                onPress={() => void requestOverlayPermission().then(() => void refreshStatus())}
+                style={styles.batteryWarningButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.batteryWarningButtonText}>Allow display over other apps</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {status?.fullScreenWarnings && status.fullScreenIntentPermitted === false ? (
             <View style={styles.batteryWarning}>
               <Text style={styles.batteryWarningText}>

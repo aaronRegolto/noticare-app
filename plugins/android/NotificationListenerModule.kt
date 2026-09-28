@@ -24,6 +24,7 @@ import __NOTICARE_PACKAGE__.bridge.SmishingEvaluator
 import __NOTICARE_PACKAGE__.bridge.SmsNotificationListener
 import __NOTICARE_PACKAGE__.bridge.ThreatReason
 import __NOTICARE_PACKAGE__.bridge.ThreatResult
+import __NOTICARE_PACKAGE__.bridge.ThreatWarningOverlay
 import __NOTICARE_PACKAGE__.bridge.V3RiskEvaluator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -143,6 +144,24 @@ class NotificationListenerModule(
         "Unable to open Android full-screen notification settings.",
         error,
       )
+    }
+  }
+
+  /**
+   * Opens Android's "Display over other apps" screen for NotiCare, which lets the full-screen
+   * warning cover whatever app is in use when a threat is detected.
+   */
+  @ReactMethod
+  fun requestOverlayPermission(promise: Promise) {
+    try {
+      val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+        data = Uri.parse("package:${appContext.packageName}")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      appContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("overlay_settings_unavailable", "Unable to open Android display-over-other-apps settings.", error)
     }
   }
 
@@ -404,6 +423,7 @@ class NotificationListenerModule(
       putString("lastContentStatus", ScanRuntime.lastContentStatus())
       putBoolean("batteryOptimizationExempt", ScanRuntime.isIgnoringBatteryOptimizations(appContext))
       putBoolean("fullScreenIntentPermitted", ScanRuntime.canUseFullScreenIntent(appContext))
+      putBoolean("overlayPermitted", ThreatWarningOverlay.canDrawOverlays(appContext))
       putBoolean("dndBypassGranted", ScanRuntime.canBypassDnd(appContext))
       // The true all-time count, independent of how many detail records are currently retained
       // (older ones are pruned past historyRetentionLimit) — see EncryptedHistoryStore for why.
