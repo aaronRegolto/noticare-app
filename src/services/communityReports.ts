@@ -15,6 +15,8 @@ import { isSupabaseConfigured, supabase } from '@/src/services/supabase';
 
 const REPORT_QUEUE_KEY = 'noticare.phishing-report-queue.v1';
 const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v2';
+// The combined ranking cached before the Manual / Real-time split; still a valid Manual fallback.
+const LEGACY_RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v1';
 const FEEDBACK_RECORD_KEY = 'noticare.manual-feedback-record.v1';
 const MAX_QUEUED_REPORTS = 50;
 const MAX_FEEDBACK_RECORDS = 500;
@@ -128,16 +130,26 @@ async function writeQueue(queue: QueuedReport[], userId: string) {
   await AsyncStorage.setItem(`${REPORT_QUEUE_KEY}.${userId}`, JSON.stringify(queue.slice(-MAX_QUEUED_REPORTS)));
 }
 
+/**
+ * PostgREST's "no function matches these arguments" error: the database hasn't applied the
+ * migration that added p_source (20260928000100_phishing_report_source.sql) yet.
+ */
+function isMissingSourceParameter(error: { code?: string } | null) {
+  return error?.code === 'PGRST202';
+}
+
 async function syncReport(report: QueuedReport, source: ReportSource): Promise<PhishingVirality> {
   const deviceId = await registerDevice(report.ruleVersion);
-  const { data, error } = await supabase.rpc('record_phishing_report', {
+  const args = {
     p_device_id: deviceId,
     p_message_text: report.messageText,
     p_sample_sender: report.sampleSender,
     p_indicator_codes: report.indicatorCodes,
     p_rule_version: report.ruleVersion,
-    p_source: source,
-  });
+  };
+  let { data, error } = await supabase.rpc('record_phishing_report', { ...args, p_source: source });
+  // Older database: record the report without its source rather than leaving it queued.
+  if (isMissingSourceParameter(error)) ({ data, error } = await supabase.rpc('record_phishing_report', args));
   if (error) throw error;
   const row = data?.[0];
   if (!row) throw new Error('The community report service returned no result.');
@@ -298,7 +310,9 @@ function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
 }
 
 async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntry[]> {
-  const raw = await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`);
+  const raw =
+    (await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`)) ??
+    (source === 'manual' ? await AsyncStorage.getItem(LEGACY_RANKING_CACHE_KEY) : null);
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -318,10 +332,14 @@ export async function getViralPhishingRanking(
 ): Promise<{ entries: ViralPhishingEntry[]; source: 'network' | 'cache' }> {
   if (!isSupabaseConfigured) return { entries: await readRankingCache(reportSource), source: 'cache' };
   try {
-    const { data, error } = await supabase.rpc('get_viral_phishing_ranking', {
-      p_limit: limit,
-      p_source: reportSource,
-    });
+    let { data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit, p_source: reportSource });
+    if (isMissingSourceParameter(error)) {
+      // Older database: reports have no source yet, so its combined ranking is the Manual list.
+      if (reportSource === 'realtime') {
+        throw new RankingUnavailableError('Real-time reports appear here once the latest database update is applied.');
+      }
+      ({ data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit }));
+    }
     if (error) throw error;
     const entries: ViralPhishingEntry[] = (data ?? []).map((row) => ({
       reportId: row.report_id,
@@ -336,6 +354,12 @@ export async function getViralPhishingRanking(
     return { entries, source: 'network' };
   } catch (error) {
     logError('viral-phishing-ranking-load-failed', error);
-    return { entries: await readRankingCache(reportSource), source: 'cache' };
+    const cached = await readRankingCache(reportSource);
+    // Without a saved copy, surface the failure instead of an empty list that looks like no data.
+    if (!cached.length) throw error;
+    return { entries: cached, source: 'cache' };
   }
 }
+
+/** A ranking failure whose message is safe and useful to show the user as-is. */
+export class RankingUnavailableError extends Error {}

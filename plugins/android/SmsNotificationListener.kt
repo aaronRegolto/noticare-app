@@ -147,6 +147,19 @@ class SmsNotificationListener : NotificationListenerService() {
       Log.d(logTag, "drop: duplicate of a recently processed notification")
       return
     }
+    // A repeat of a message the user already blocked: hide it and show a quiet banner instead of
+    // a second full-screen warning. It isn't scanned, counted against the free quota, uploaded,
+    // reported, or saved again, so it never shows up twice anywhere.
+    if (BlockedMessageStore.contains(applicationContext, ownerScope, BlockedMessageStore.hash(text))) {
+      val hidden = runCatching {
+        cancelNotification(sbn.key)
+        true
+      }.getOrDefault(false)
+      ScanRuntime.markProcessed()
+      NotiCareNotifications.showBlockedAgain(applicationContext, hidden)
+      Log.d(logTag, "repeat of a blocked message: hidden=$hidden")
+      return
+    }
     Log.d(logTag, "processing: textLength=${text.length} hasSender=${sender != null}")
 
     // Only the free tier's automatic-scan quota gates real-time scanning; Pro
@@ -254,6 +267,7 @@ class SmsNotificationListener : NotificationListenerService() {
       }
 
       EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, true, pending.postedAt)
+      BlockedMessageStore.remember(applicationContext, pending.ownerScope, BlockedMessageStore.hash(pending.message))
       val historySaved = pending.recordId?.let { id ->
         runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
           .getOrElse { ScanRuntime.markStorageUnavailable(); false }

@@ -16,6 +16,7 @@ import {
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
   getViralPhishingRanking,
+  RankingUnavailableError,
   type ReportSource,
   type ViralPhishingEntry,
 } from '@/src/services/communityReports';
@@ -45,6 +46,8 @@ type ViralState = {
   source: 'network' | 'cache' | null;
   loading: boolean;
   error: string | null;
+  /** An expected, non-retryable state (for example, the database update isn't applied yet). */
+  notice?: string | null;
 };
 
 function timeAgo(iso: string) {
@@ -254,6 +257,10 @@ export default function DashboardScreen() {
     } catch (error) {
       logError('viral-ranking-load-failed', error);
       if (reportSource !== viralSourceRef.current) return;
+      if (error instanceof RankingUnavailableError) {
+        setViral({ entries: [], source: null, loading: false, error: null, notice: error.message });
+        return;
+      }
       setViral((current) => ({
         ...current,
         loading: false,
@@ -607,6 +614,8 @@ export default function DashboardScreen() {
                     <Text style={styles.retryText}>Retry</Text>
                   </Pressable>
                 </View>
+              ) : viral.notice ? (
+                <Text style={styles.muted}>{viral.notice}</Text>
               ) : viral.entries.length ? (
                 <>
                   {viral.source === 'cache' ? (

@@ -233,7 +233,7 @@ async function navigate(next) {
     section === 'model'
       ? 'The machine learning model currently bundled with the app.'
       : section === 'overview'
-        ? 'A live view of community scan activity. Demo events are excluded.'
+        ? 'Scan results from every NotiCare user, updated as the app uploads them. Demo scans are excluded.'
         : 'Browse stored metadata. Dates and date filters use UTC; exports include the current page.';
   $('#content').innerHTML = '<div class="empty" role="status">Loading…</div>';
   try {

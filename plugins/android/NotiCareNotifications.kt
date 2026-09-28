@@ -14,6 +14,8 @@ import android.os.Build
 object NotiCareNotifications {
   private const val cautionChannelId = "noticare_caution"
   private const val dangerChannelId = "noticare_danger"
+  private const val repeatChannelId = "noticare_repeat_blocked"
+  private const val repeatNotificationId = 6301
   private const val cautionNotificationId = 6101
   const val actionDecision = "__NOTICARE_PACKAGE__.ACTION_THREAT_DECISION"
   const val extraToken = "threat_token"
@@ -52,6 +54,17 @@ object NotiCareNotifications {
         vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
         enableLights(true)
         setBypassDnd(true)
+      },
+    )
+    // A heads-up banner with the normal notification sound: noticeable, but without the danger
+    // channel's alarm-style sound or Do Not Disturb bypass, since no decision is needed.
+    manager.createNotificationChannel(
+      NotificationChannel(
+        repeatChannelId,
+        "Repeat blocked messages",
+        NotificationManager.IMPORTANCE_HIGH,
+      ).apply {
+        description = "Lets you know when a message you already blocked arrives again."
       },
     )
   }
@@ -112,6 +125,30 @@ object NotiCareNotifications {
       // the built Notification.
       .apply { flags = flags or Notification.FLAG_INSISTENT }
     notificationManager(context)?.notify(pending.token.hashCode(), notification)
+  }
+
+  /** A message the user already blocked arrived again and was handled without a warning. */
+  fun showBlockedAgain(context: Context, hidden: Boolean) {
+    ensureChannels(context)
+    val body = if (hidden) {
+      "A message you blocked earlier arrived again. NotiCare hid it for you, so there's nothing you need to do."
+    } else {
+      "A message you blocked earlier arrived again. Don't open its links or reply to it."
+    }
+    notificationManager(context)?.notify(
+      repeatNotificationId,
+      builder(context, repeatChannelId)
+        .setSmallIcon(context.applicationInfo.icon)
+        .setContentTitle(if (hidden) "Blocked message received again" else "Blocked message received again, not hidden")
+        .setContentText(body)
+        .setStyle(Notification.BigTextStyle().bigText(body))
+        .setContentIntent(historyIntent(context, null))
+        .setAutoCancel(true)
+        .setPriority(Notification.PRIORITY_HIGH)
+        .setCategory(Notification.CATEGORY_STATUS)
+        .setVisibility(Notification.VISIBILITY_PRIVATE)
+        .build(),
+    )
   }
 
   fun dismissDangerChoice(context: Context, token: String) {

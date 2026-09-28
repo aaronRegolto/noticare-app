@@ -323,11 +323,13 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['ThreatWarningActivity.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningActivity.kt')],
     ['ThreatWarningView.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningView.kt')],
     ['ThreatWarningOverlay.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningOverlay.kt')],
+    ['BlockedMessageStore.kt', path.join(sourceRoot, 'bridge', 'BlockedMessageStore.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
     ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
     ['V3RiskEvaluatorTest.kt', path.join(testSourceRoot, 'bridge', 'V3RiskEvaluatorTest.kt')],
     ['NotificationInputTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationInputTest.kt')],
     ['ModelEvaluationTest.kt', path.join(testSourceRoot, 'bridge', 'ModelEvaluationTest.kt')],
+    ['BlockedMessageStoreTest.kt', path.join(testSourceRoot, 'bridge', 'BlockedMessageStoreTest.kt')],
   ];
 
   for (const [templatePath, destinationPath] of mappings) {
