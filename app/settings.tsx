@@ -275,10 +275,13 @@ export default function SettingsScreen() {
   // covers the "re-check every time the app is opened" requirement onResume would on native Android.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshDefaultBrowserStatus();
+      if (state !== 'active') return;
+      void refreshDefaultBrowserStatus();
+      // Also picks up permissions granted in Android settings (e.g. "Display over other apps").
+      void refreshStatus();
     });
     return () => subscription.remove();
-  }, [refreshDefaultBrowserStatus]);
+  }, [refreshDefaultBrowserStatus, refreshStatus]);
 
   const changeScanning = useCallback(
     async (enabled: boolean) => {
@@ -344,23 +347,27 @@ export default function SettingsScreen() {
       try {
         const next = await setFullScreenWarnings(fullScreen);
         setStatus(next);
-        if (fullScreen && next.overlayPermitted === false) {
+        // Go straight to the one Android permission page still missing, so turning on Full-screen
+        // is a single switch for the user. The status refreshes when they come back (AppState).
+        const openPermission =
+          fullScreen && next.overlayPermitted === false
+            ? requestOverlayPermission
+            : fullScreen && next.fullScreenIntentPermitted === false
+              ? requestFullScreenIntentPermission
+              : null;
+        await openPermission?.().catch(() =>
           Alert.alert(
-            'Allow NotiCare to appear on top',
-            'To cover the screen instantly while you are using another app, NotiCare needs the "Display over other apps" permission. Without it, warnings show as a banner while your phone is in use.',
-            [
-              { text: 'Not now', style: 'cancel' },
-              { text: 'Allow', onPress: () => void requestOverlayPermission().then(() => void refreshStatus()) },
-            ],
-          );
-        }
+            'Settings unavailable',
+            'Open Android Settings > Apps > NotiCare and allow "Display over other apps" to use full-screen warnings.',
+          ),
+        );
       } catch {
         Alert.alert('Unable to save warning style', 'Please try again.');
       } finally {
         setSaving(false);
       }
     },
-    [saving, status, subscriptionTier, router, refreshStatus],
+    [saving, status, subscriptionTier, router],
   );
 
   const confirmClearHistory = useCallback(() => {
