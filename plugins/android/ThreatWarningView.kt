@@ -39,8 +39,19 @@ object ThreatWarningView {
       typeface = Typeface.DEFAULT_BOLD
       background = context.rounded(accent, 40f)
     }, LinearLayout.LayoutParams(context.dp(80), context.dp(80)))
-    root.addView(context.label(if (dangerous) "Possible phishing message" else "Suspicious message", 27f, Color.rgb(25, 38, 57), true).withTop(context, 22))
-    root.addView(context.label(if (dangerous) "NotiCare found strong warning signs. Review why before deciding." else "NotiCare found warning signs that need your attention.", 16f, Color.rgb(82, 99, 122), false).withTop(context, 10))
+    val reviewOnly = threat.reviewOnly
+    val title = when {
+      reviewOnly -> "Already blocked"
+      dangerous -> "Possible phishing message"
+      else -> "Suspicious message"
+    }
+    val subtitle = when {
+      reviewOnly -> "You blocked and reported this message before, so NotiCare hid it again. Here's why it was flagged."
+      dangerous -> "NotiCare found strong warning signs. Review why before deciding."
+      else -> "NotiCare found warning signs that need your attention."
+    }
+    root.addView(context.label(title, 27f, Color.rgb(25, 38, 57), true).withTop(context, 22))
+    root.addView(context.label(subtitle, 16f, Color.rgb(82, 99, 122), false).withTop(context, 10))
 
     val risk = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
@@ -120,6 +131,20 @@ object ThreatWarningView {
     val domains = threat.result.urls.mapNotNull { it.normalizedDomain }.distinct().take(3)
     if (domains.isNotEmpty()) {
       root.addView(context.label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, accent, true).withTop(context, 16))
+    }
+    if (reviewOnly) {
+      root.addView(context.label("Nothing else to do. It isn't reported or counted again, and the original SMS stays in your Messages app.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
+      root.addView(Button(context).apply {
+        text = "Close"
+        textSize = 16f
+        setTextColor(Color.WHITE)
+        typeface = Typeface.DEFAULT_BOLD
+        isAllCaps = false
+        background = context.rounded(accent, 14f)
+        setOnClickListener { onDecide(false) }
+      }, context.matchWidth(height = 56, top = 24))
+      scroll.addView(root)
+      return scroll
     }
     root.addView(context.label("Block & Report hides this notification, saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves the notification visible.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
 

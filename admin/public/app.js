@@ -489,10 +489,11 @@ async function loadRecords() {
     if (current !== generation) return;
     rows = data.rows;
     renderRecordBrowser();
+    const pageSize = data.pageSize || 20;
     $('#count').textContent =
-      `${number(data.count)} matching records · Page ${page + 1} of ${Math.max(1, Math.ceil(data.count / 50))}`;
+      `${number(data.count)} matching records · Page ${page + 1} of ${Math.max(1, Math.ceil(data.count / pageSize))}`;
     $('#previous').disabled = page === 0;
-    $('#next').disabled = (page + 1) * 50 >= data.count;
+    $('#next').disabled = (page + 1) * pageSize >= data.count;
     $('#export').disabled = !rows.length;
   } catch (error) {
     if (current === generation) {

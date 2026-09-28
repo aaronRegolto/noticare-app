@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { datasetCatalog, datasetRows, importDataset } from './datasets.mjs';
+import { PAGE_SIZE, datasetCatalog, datasetRows, importDataset } from './datasets.mjs';
 import { TREND_RANGES, loadTrend } from './trend.mjs';
 
 try {
@@ -215,10 +215,10 @@ export const server = createServer(async (req, res) => {
         .order('last_reported_at', { ascending: false })
         .order('id');
       if (search) query = query.ilike('message_text', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
-      const { data, count, error } = await query.range(page * 50, page * 50 + 49);
+      const { data, count, error } = await query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (error)
         throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
-      return send({ rows: data, count, page });
+      return send({ rows: data, count, page, pageSize: PAGE_SIZE });
     }
     if (path.pathname === '/api/phishing-links') {
       const page = Number(path.searchParams.get('page') || 0);
@@ -260,7 +260,12 @@ export const server = createServer(async (req, res) => {
       }
       let list = [...links.values()].sort((a, b) => (a.last_seen < b.last_seen ? 1 : -1));
       if (search) list = list.filter((item) => item.url.toLowerCase().includes(search));
-      return send({ rows: list.slice(page * 50, page * 50 + 50), count: list.length, page });
+      return send({
+        rows: list.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
+        count: list.length,
+        page,
+        pageSize: PAGE_SIZE,
+      });
     }
     if (path.pathname === '/api/connection') {
       const checks = await Promise.all(
@@ -338,9 +343,9 @@ export const server = createServer(async (req, res) => {
               : q.lt(dateColumn, new Date(Date.parse(date) + 86400000).toISOString());
         }
       }
-      const { data, count, error } = await q.range(page * 50, page * 50 + 49);
+      const { data, count, error } = await q.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (error) throw fail('Could not load records. Check database migrations and connectivity.', 502);
-      return send({ rows: data, count, page });
+      return send({ rows: data, count, page, pageSize: PAGE_SIZE });
     }
     throw fail('Not found', 404);
   } catch (error) {

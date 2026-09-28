@@ -128,12 +128,12 @@ object NotiCareNotifications {
   }
 
   /** A message the user already blocked arrived again and was handled without a warning. */
-  fun showBlockedAgain(context: Context, hidden: Boolean) {
+  fun showBlockedAgain(context: Context, hidden: Boolean, reviewToken: String) {
     ensureChannels(context)
     val detail = if (hidden) {
-      "Already blocked. You blocked this message before, so NotiCare hid it again. Nothing else to do."
+      "Already blocked. You blocked this message before, so NotiCare hid it again. Tap to see why it was flagged."
     } else {
-      "Already blocked. You blocked this message before, but Android didn't let NotiCare hide it this time. Don't open its links or reply."
+      "Already blocked. You blocked this message before, but Android didn't let NotiCare hide it this time. Don't open its links or reply. Tap to see why it was flagged."
     }
     notificationManager(context)?.notify(
       repeatNotificationId,
@@ -142,7 +142,8 @@ object NotiCareNotifications {
         .setContentTitle("Blocked message notification")
         .setContentText("Already blocked")
         .setStyle(Notification.BigTextStyle().bigText(detail))
-        .setContentIntent(historyIntent(context, null))
+        // Opens the view-only warning (score breakdown and a Close button), never a new decision.
+        .setContentIntent(warningIntent(context, reviewToken))
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)
         .setCategory(Notification.CATEGORY_STATUS)
@@ -273,20 +274,21 @@ object NotiCareNotifications {
   private fun notificationManager(context: Context): NotificationManager? =
     context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
-  private fun historyIntent(context: Context, recordId: String?): PendingIntent {
+  private fun historyIntent(context: Context, recordId: String?): PendingIntent = PendingIntent.getActivity(
+    context,
+    recordId?.hashCode() ?: 0,
+    historyActivityIntent(context, recordId),
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+  )
+
+  fun historyActivityIntent(context: Context, recordId: String?): Intent {
     val uri = Uri.parse(
       if (recordId == null) "noticareapp://history" else "noticareapp://history?recordId=$recordId",
     )
-    val intent = Intent(context, __NOTICARE_PACKAGE__.MainActivity::class.java).apply {
+    return Intent(context, __NOTICARE_PACKAGE__.MainActivity::class.java).apply {
       action = Intent.ACTION_VIEW
       data = uri
       flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
-    return PendingIntent.getActivity(
-      context,
-      recordId?.hashCode() ?: 0,
-      intent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
   }
 }

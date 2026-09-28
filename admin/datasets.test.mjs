@@ -36,10 +36,14 @@ test('new CSV files appear in the catalog and support pagination and search', as
     assert.equal(added.provenance_count, null);
     const first = await datasetRows(new URLSearchParams({ file: filename }));
     assert.equal(first.total, 53);
-    assert.equal(first.rows.length, 50);
+    // 53 rows at 20 per page: 20 + 20 + 13, and row 21 starts page 2.
+    assert.equal(first.rows.length, 20);
+    assert.equal(first.pageSize, 20);
     const second = await datasetRows(new URLSearchParams({ file: filename, page: '1' }));
-    assert.equal(second.rows.length, 3);
-    assert.equal(second.rows[0].message, 'Sample 50');
+    assert.equal(second.rows.length, 20);
+    assert.equal(second.rows[0].message, 'Sample 20');
+    const third = await datasetRows(new URLSearchParams({ file: filename, page: '2' }));
+    assert.equal(third.rows.length, 13);
     const filtered = await datasetRows(new URLSearchParams({ file: filename, q: 'PHISHING' }));
     assert.equal(filtered.count, 1);
     assert.equal(filtered.rows[0].message, 'Sample 51');

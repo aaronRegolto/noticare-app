@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 const directory = fileURLToPath(new URL('../datasets/', import.meta.url));
 const metadataFile = new URL('../assets/models/model_metadata.json', import.meta.url);
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
+/** Rows per page in every admin table; the browser reads it from each response. */
+export const PAGE_SIZE = 20;
 
 export async function importDataset({ filename, csv }) {
   if (
@@ -140,13 +142,13 @@ export async function datasetRows(params) {
   const query = (params.get('q') || '').trim().toLowerCase();
   if (query.length > 200) throw invalid('Search must be 200 characters or fewer.');
 
-  // Streams through csvRows and keeps only the current page's rows (at most 50) resident, rather
-  // than materializing every matching row (or the whole file) as one array — see csvRows above for
-  // why that mattered here. Costs one full pass per request instead of an in-memory cache, which is
-  // an acceptable trade: a bounded, small, predictable memory footprint over an unbounded one.
+  // Streams through csvRows and keeps only the current page's rows (at most PAGE_SIZE) resident,
+  // rather than materializing every matching row (or the whole file) as one array — see csvRows
+  // above for why that mattered here. Costs one full pass per request instead of an in-memory cache,
+  // which is an acceptable trade: a bounded, small, predictable memory footprint over an unbounded one.
   const text = await readFile(file, 'utf8');
-  const start = page * 50,
-    end = start + 50;
+  const start = page * PAGE_SIZE,
+    end = start + PAGE_SIZE;
   const pageRows = [];
   let total = 0,
     matchCount = 0;
@@ -156,5 +158,5 @@ export async function datasetRows(params) {
     if (matchCount >= start && matchCount < end) pageRows.push(row);
     matchCount++;
   }
-  return { rows: pageRows, count: matchCount, total, page };
+  return { rows: pageRows, count: matchCount, total, page, pageSize: PAGE_SIZE };
 }

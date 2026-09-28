@@ -24,6 +24,9 @@ data class PendingThreat(
   val result: ThreatResult,
   val ownerScope: String,
   val recordId: String?,
+  // A repeat of a message the user already blocked: the warning only explains the score and has
+  // no Block & Report / Ignore choice.
+  val reviewOnly: Boolean = false,
 )
 
 object ThreatDecisionCoordinator {
@@ -38,8 +41,11 @@ object ThreatDecisionCoordinator {
     while (pending.size > maxPending) pending.remove(pending.entries.first().key)
   }
   @Synchronized fun get(token: String): PendingThreat? = pending[token]
+  @Synchronized fun dismiss(token: String) { pending.remove(token) }
   @Synchronized fun decide(token: String, block: Boolean): Boolean {
     val threat = pending.remove(token) ?: return false
+    // Already blocked and reported once; never block, report, or count it again.
+    if (threat.reviewOnly) return false
     val service = listener ?: return false
     service.applyDecision(threat, block)
     return true
@@ -148,15 +154,29 @@ class SmsNotificationListener : NotificationListenerService() {
       return
     }
     // A repeat of a message the user already blocked: hide it and show a quiet banner instead of
-    // a second full-screen warning. It isn't scanned, counted against the free quota, uploaded,
-    // reported, or saved again, so it never shows up twice anywhere.
+    // a second full-screen warning. It isn't counted against the free quota, uploaded, reported,
+    // or saved again, so it never shows up twice anywhere. It is re-scored on the phone only, so
+    // tapping the banner can show the same warning details in a view-only form.
     if (BlockedMessageStore.contains(applicationContext, ownerScope, BlockedMessageStore.hash(text))) {
       val hidden = runCatching {
         cancelNotification(sbn.key)
         true
       }.getOrDefault(false)
       ScanRuntime.markProcessed()
-      NotiCareNotifications.showBlockedAgain(applicationContext, hidden)
+      val review = PendingThreat(
+        token = UUID.randomUUID().toString(),
+        notificationKey = sbn.key,
+        sender = sender,
+        message = text,
+        sourcePackage = sourcePackage,
+        postedAt = sbn.postTime,
+        result = V3RiskEvaluator.evaluate(applicationContext, text),
+        ownerScope = ownerScope,
+        recordId = null,
+        reviewOnly = true,
+      )
+      ThreatDecisionCoordinator.add(review)
+      NotiCareNotifications.showBlockedAgain(applicationContext, hidden, review.token)
       Log.d(logTag, "repeat of a blocked message: hidden=$hidden")
       return
     }
