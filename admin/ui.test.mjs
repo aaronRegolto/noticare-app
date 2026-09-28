@@ -84,26 +84,6 @@ test('record details display untrusted text safely and clear on sign out', () =>
   }
 });
 
-test('workspace navigation can be filtered and cleared with Escape', () => {
-  const dom = browser();
-  try {
-    dom.window.eval("token = 'test-token'; renderNav();");
-    const { document, KeyboardEvent, Event } = dom.window;
-    const filter = document.querySelector('#nav-filter');
-    filter.value = 'dataset';
-    filter.dispatchEvent(new Event('input'));
-    assert.deepEqual(
-      [...document.querySelectorAll('#nav [data-section]')].map((button) => button.textContent),
-      ['Dataset library'],
-    );
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    assert.equal(filter.value, '');
-    assert.equal(document.querySelectorAll('#nav [data-section]').length, Object.keys(dom.window.eval('sections')).length);
-  } finally {
-    dom.window.close();
-  }
-});
-
 test('daily and hourly statistics share a collapsible navigation group', () => {
   const dom = browser();
   try {
@@ -111,7 +91,11 @@ test('daily and hourly statistics share a collapsible navigation group', () => {
     const { document } = dom.window;
     const group = document.querySelector('[data-nav-group="statistics"]');
     assert.equal(group.textContent.includes('Statistics'), true);
-    assert.equal(document.querySelectorAll('[data-section="community_daily_stats"], [data-section="community_hourly_stats"]').length, 2);
+    assert.equal(
+      document.querySelectorAll('[data-section="community_daily_stats"], [data-section="community_hourly_stats"]')
+        .length,
+      2,
+    );
     group.click();
     assert.equal(document.querySelector('.nav-group-items').hidden, true);
     assert.equal(document.querySelector('[data-nav-group="statistics"]').getAttribute('aria-expanded'), 'false');

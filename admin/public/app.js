@@ -162,26 +162,22 @@ function renderNav() {
     $('#nav').replaceChildren();
     return;
   }
-  const query = $('#nav-filter').value.trim().toLocaleLowerCase();
   const renderItem = ([id, title]) =>
     `<button data-section="${id}" class="${id === section ? 'active' : ''}" ${id === section ? 'aria-current="page"' : ''}>${escape(title)}</button>`;
   const rendered = [];
   const groupedSections = new Set(Object.values(navGroups).flatMap((group) => group.sections));
   for (const [id, title] of Object.entries(sections)) {
-    if (groupedSections.has(id) || !title.toLocaleLowerCase().includes(query)) continue;
+    if (groupedSections.has(id)) continue;
     rendered.push(renderItem([id, title]));
   }
   for (const [groupId, group] of Object.entries(navGroups)) {
-    const groupSections = group.sections
-      .map((id) => [id, sections[id]])
-      .filter(([, title]) => title.toLocaleLowerCase().includes(query));
-    if (query && !group.label.toLocaleLowerCase().includes(query) && !groupSections.length) continue;
-    const expanded = expandedNavGroups.has(groupId) || Boolean(query);
+    const groupSections = group.sections.map((id) => [id, sections[id]]);
+    const expanded = expandedNavGroups.has(groupId);
     rendered.push(
       `<div class="nav-group"><button class="nav-group-toggle" data-nav-group="${groupId}" aria-expanded="${expanded}">${escape(group.label)}<span aria-hidden="true">${expanded ? '−' : '+'}</span></button><div class="nav-group-items" ${expanded ? '' : 'hidden'}>${groupSections.map(renderItem).join('')}</div></div>`,
     );
   }
-  $('#nav').innerHTML = rendered.join('') || '<p class="nav-empty">No matching views</p>';
+  $('#nav').innerHTML = rendered.join('');
 }
 function metric(title, value) {
   return `<article class="metric"><small>${escape(title)}</small><strong>${escape(value)}</strong></article>`;
@@ -683,33 +679,13 @@ $('#nav').onclick = (event) => {
 $('#menu-toggle').onclick = () => {
   const open = !document.body.classList.contains('nav-open');
   setNavOpen(open);
-  if (open) $('#nav-filter').focus({ preventScroll: true });
+  if (open) $('#nav .active')?.focus({ preventScroll: true });
 };
 $('#nav-backdrop').onclick = () => setNavOpen(false);
-$('#nav-filter').oninput = renderNav;
-$('#nav-filter').onkeydown = (event) => {
-  if (event.key === 'Escape' && event.currentTarget.value) {
-    // The first Escape clears the search; the next one closes the mobile drawer.
-    event.preventDefault();
-    event.currentTarget.value = '';
-    renderNav();
-  }
-};
 document.addEventListener('keydown', (event) => {
-  if (
-    event.key === 'Escape' &&
-    !event.defaultPrevented &&
-    document.body.classList.contains('nav-open') &&
-    !$('dialog[open]')
-  ) {
+  if (event.key === 'Escape' && document.body.classList.contains('nav-open') && !$('dialog[open]')) {
     setNavOpen(false);
     $('#menu-toggle').focus();
-    return;
-  }
-  if (event.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-    event.preventDefault();
-    if (token) setNavOpen(true);
-    $('#nav-filter').focus();
   }
 });
 $('#logout').onclick = () => {

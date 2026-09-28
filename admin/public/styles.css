@@ -163,36 +163,10 @@ aside {
   color: var(--muted);
   margin-top: 5px;
 }
-.nav-label {
-  font-size: 11px;
-  color: var(--muted);
-  margin: 42px 12px 12px;
-}
-.nav-search {
-  display: grid;
-  gap: 7px;
-  margin: 0 4px 12px;
-}
-.nav-search span {
-  color: var(--muted);
-  font-size: 10px;
-  padding: 0 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-}
-.nav-search input {
-  width: 100%;
-  padding: 8px 9px;
-  background: var(--surface);
-  border-color: var(--line);
-}
-.nav-empty {
-  margin: 8px 12px;
-  font-size: 11px;
-}
 nav {
   display: grid;
   gap: 4px;
+  margin-top: 42px;
 }
 nav button {
   text-align: left;
@@ -239,8 +213,6 @@ nav button.active {
   font-size: 11px;
   color: var(--muted);
 }
-body[data-session='signed-out'] .nav-label,
-body[data-session='signed-out'] .nav-search,
 body[data-session='signed-out'] .sidebar-note {
   display: none;
 }
