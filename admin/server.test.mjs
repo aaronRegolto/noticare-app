@@ -25,6 +25,18 @@ test('serves dashboard with restrictive security headers', async () => {
   assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
 });
+test('serves the tab icons with image content types', async () => {
+  for (const [path, type] of [
+    ['/favicon.ico', 'image/x-icon'],
+    ['/favicon.png', 'image/png'],
+    ['/apple-touch-icon.png', 'image/png'],
+  ]) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('content-type'), type);
+    assert.ok((await response.arrayBuffer()).byteLength > 0);
+  }
+});
 test('never serves repository files or secrets', async () => {
   for (const path of [
     '/.env',

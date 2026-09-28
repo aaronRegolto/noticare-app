@@ -114,6 +114,17 @@ async function body(req, limit = 8192) {
     throw fail('Invalid JSON');
   }
 }
+// The only files served from public/ — an explicit allowlist, never a directory lookup.
+const STATIC_FILES = {
+  '/': 'text/html',
+  '/app.js': 'text/javascript',
+  '/dashboard.js': 'text/javascript',
+  '/styles.css': 'text/css',
+  '/favicon.ico': 'image/x-icon',
+  '/favicon.png': 'image/png',
+  '/apple-touch-icon.png': 'image/png',
+  '/logo.png': 'image/png',
+};
 export const server = createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -134,12 +145,10 @@ export const server = createServer(async (req, res) => {
       req.headers.origin !== `https://${req.headers.host}`
     )
       throw fail('Origin not allowed', 403);
-    if (req.method === 'GET' && ['/', '/app.js', '/dashboard.js', '/styles.css'].includes(path.pathname)) {
+    if (req.method === 'GET' && Object.hasOwn(STATIC_FILES, path.pathname)) {
       const name = path.pathname === '/' ? 'index.html' : path.pathname.slice(1);
       const content = await readFile(new URL(`./public/${name}`, import.meta.url));
-      res.writeHead(200, {
-        'Content-Type': name.endsWith('.html') ? 'text/html' : name.endsWith('.css') ? 'text/css' : 'text/javascript',
-      });
+      res.writeHead(200, { 'Content-Type': STATIC_FILES[path.pathname] });
       return res.end(content);
     }
     if (path.pathname === '/api/model' && req.method === 'GET')
