@@ -50,7 +50,7 @@
               <td>Your phone number</td>
               <td>
                 To sign you in with a one-time SMS code. Our database keeps only the last four digits for display; the
-                full number is held by our sign-in provider.
+                full number is held by our sign-in provider and passed to our SMS provider to deliver the code.
               </td>
             </tr>
             <tr>
@@ -117,6 +117,10 @@
       <h2>Who we share data with</h2>
       <ul>
         <li><strong>Supabase</strong>, which hosts our database and phone sign-in.</li>
+        <li>
+          <strong>Semaphore</strong>, which delivers the one-time sign-in code by SMS. It receives your phone number
+          and the code, and nothing else.
+        </li>
         <li><strong>PayMongo</strong>, which processes Pro payments.</li>
         <li>
           <strong>Other NotiCare users</strong> see the text of messages reported with Block &amp; Report, without any

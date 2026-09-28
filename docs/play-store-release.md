@@ -15,6 +15,34 @@ What to enter in the Play Console for NotiCare, and the steps that happen outsid
       and OTPs**: `639171234567=123456`. Test numbers never send a real SMS. Set **Test OTPs Valid Until** well
       past the review and closed-test period (for example a year ahead), or the reviewer login stops working.
 
+## 1b. SMS sign-in codes (Semaphore)
+
+Sign-in codes go through Semaphore via a Supabase "Send SMS" hook (`backend/supabase/functions/send-sms-semaphore`).
+Once the hook is enabled it takes over from the Twilio settings under Sign In / Providers → Phone, which can stay as
+they are.
+
+- [ ] Semaphore account with credit; copy the API key (never commit it or paste it in chat).
+- [x] Deploy the function: `npx supabase functions deploy send-sms-semaphore --no-verify-jwt --workdir backend`
+- [ ] Supabase → **Authentication → Hooks → Add hook → Send SMS hook** → type **HTTPS**, URL
+      `https://<project-ref>.supabase.co/functions/v1/send-sms-semaphore`. Generate the secret and copy it.
+- [ ] Supabase → **Edge Functions → Secrets**: add `SEND_SMS_HOOK_SECRET` (the hook secret, `v1,whsec_…`) and
+      `SEMAPHORE_API_KEY`. Optional: `SEMAPHORE_SENDER_NAME` once Semaphore approves a sender name.
+- [ ] Enable the hook, then sign in with a real PH number to confirm the code arrives.
+- [ ] Authentication → Rate Limits: keep **SMS sent per hour** low (30–60) so nobody can drain the credit.
+
+Only Philippine numbers (+63 9…) can receive codes; others get an error. Test numbers keep working without SMS.
+
+- [ ] Semaphore account with credit; copy the API key (never commit it or paste it in chat).
+- [ ] Deploy the function: `npx supabase functions deploy send-sms-semaphore --no-verify-jwt --workdir backend`
+- [ ] Supabase → **Authentication → Hooks → Add hook → Send SMS hook** → type **HTTPS**, URL
+      `https://<project-ref>.supabase.co/functions/v1/send-sms-semaphore`. Generate the secret and copy it.
+- [ ] Supabase → **Edge Functions → Secrets**: add `SEND_SMS_HOOK_SECRET` (the hook secret, `v1,whsec_…`) and
+      `SEMAPHORE_API_KEY`. Optional: `SEMAPHORE_SENDER_NAME` once Semaphore approves a sender name.
+- [ ] Enable the hook, then sign in with a real PH number to confirm the code arrives.
+- [ ] Authentication → Rate Limits: keep **SMS sent per hour** low (30–60) so nobody can drain the credit.
+
+Only Philippine numbers (+63 9…) can receive codes; others get an error. Test numbers keep working without SMS.
+
 ## 2. Build
 
 ```
