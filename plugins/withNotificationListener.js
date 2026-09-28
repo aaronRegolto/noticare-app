@@ -38,6 +38,9 @@ const DISALLOWED_PERMISSIONS = [
   // BIND_NOTIFICATION_LISTENER_SERVICE belongs on the service declaration; it
   // is not an app-level permission request.
   'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
+  // Google Play restricts this to a short list of app types. NotiCare sends users to App info
+  // (Battery > Unrestricted) instead, which needs no permission.
+  'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
 ];
 const DISALLOWED_PERMISSION_SET = new Set(DISALLOWED_PERMISSIONS);
 // Previously disallowed; older prebuilds left removal directives for these in
@@ -86,17 +89,6 @@ function updateManifest(manifest) {
 
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
     permissions.push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
-  }
-  // Lets the app open the system "ignore battery optimizations" prompt for itself. Without this
-  // exemption, OEM battery managers (notably ColorOS/Realme) can kill the app in the background,
-  // taking the bound notification listener down with it until Android restarts the service —
-  // which can take well over a minute and silently misses SMS notifications in the meantime.
-  if (
-    !permissions.some(
-      (entry) => entry?.$?.['android:name'] === 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
-    )
-  ) {
-    permissions.push({ $: { 'android:name': 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' } });
   }
   // Lets the danger-warning notification launch ThreatWarningActivity directly (full-screen when
   // the phone is locked or the screen is off, a heads-up banner otherwise) instead of a plain

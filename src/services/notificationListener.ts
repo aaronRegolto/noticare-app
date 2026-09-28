@@ -113,6 +113,8 @@ export type PendingCommunityReport = {
   sampleSender: string | null;
   indicatorCodes: string[];
   ruleVersion: string;
+  /** The detector's 0-100 risk score; null for reports queued before it was stored. */
+  riskScore?: number | null;
   createdAt: number;
 };
 

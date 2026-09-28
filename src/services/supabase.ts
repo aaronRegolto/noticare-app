@@ -100,9 +100,28 @@ export async function unlinkPhone(phone: string) {
   return data ?? false;
 }
 
+/**
+ * Permanently deletes the signed-in account and everything the server links to it, then ends
+ * the session on this device. Anonymous community totals and reported scam texts, which carry
+ * no user id, are kept.
+ */
+export async function deleteAccount() {
+  requireConfiguration();
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) throw error;
+  // The server session is already gone with the account, so only the local one needs clearing.
+  const local = await supabase.auth.signOut({ scope: 'local' });
+  if (local.error) throw local.error;
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  if (!error) return;
+  // The default sign-out also revokes the session on the server. If that request fails (offline,
+  // or the server rejects it), still end the session on this device so the user isn't left stuck
+  // signed in; the server-side refresh token then simply expires.
+  const local = await supabase.auth.signOut({ scope: 'local' });
+  if (local.error) throw local.error;
 }
 
 export async function restoreSession() {

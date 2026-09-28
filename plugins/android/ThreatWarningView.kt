@@ -50,27 +50,81 @@ object ThreatWarningView {
       addView(context.label("Do not tap links or share passwords, PINs, or OTP codes.", 15f, Color.rgb(101, 35, 32), false).withTop(context, 6))
     }
     root.addView(risk, context.matchWidth(top = 24))
-    root.addView(context.label("Why this was flagged", 18f, Color.rgb(25, 38, 57), true).withTop(context, 26))
 
-    threat.result.reasons.take(5).forEach { reason ->
+    root.addView(context.label("How the score was calculated", 18f, Color.rgb(25, 38, 57), true).withTop(context, 26))
+
+    // Every sign is listed (not just the first few) so the points always add up to the score.
+    threat.result.reasons.forEach { reason ->
       val card = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(16), context.dp(14), context.dp(16), context.dp(14))
         background = context.rounded(Color.WHITE, 14f, Color.rgb(225, 230, 238))
-        addView(context.label(reason.label, 15f, Color.rgb(38, 59, 84), true))
-        addView(context.label(reason.description, 14f, Color.rgb(91, 108, 130), false).withTop(context, 4))
+        val header = LinearLayout(context).apply {
+          orientation = LinearLayout.HORIZONTAL
+          gravity = Gravity.CENTER_VERTICAL
+          addView(
+            context.label(reason.label, 15f, Color.rgb(38, 59, 84), true).apply { gravity = Gravity.START },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+          )
+          addView(context.label("+${reason.weight}", 15f, accent, true).apply { gravity = Gravity.END })
+        }
+        addView(header)
+        addView(context.label(reason.description, 14f, Color.rgb(91, 108, 130), false).apply { gravity = Gravity.START }.withTop(context, 4))
       }
       root.addView(card, context.matchWidth(top = 10))
     }
+
+    val rawTotal = threat.result.reasons.sumOf { it.weight }
+    if (threat.result.reasons.isNotEmpty()) {
+      val weights = threat.result.reasons.map { it.weight }
+      val sum = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(context.dp(16), context.dp(12), context.dp(16), 0)
+        addView(
+          context.label(
+            if (weights.size > 1) "Total (${weights.joinToString(" + ")})" else "Total",
+            14f,
+            Color.rgb(82, 99, 122),
+            true,
+          ).apply { gravity = Gravity.START },
+          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(context.label("$rawTotal", 15f, Color.rgb(25, 38, 57), true).apply { gravity = Gravity.END })
+      }
+      root.addView(sum, context.matchWidth(top = 6))
+    }
+    val total = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
+      addView(
+        context.label("Risk score", 15f, Color.rgb(25, 38, 57), true).apply { gravity = Gravity.START },
+        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+      )
+      addView(context.label("${threat.result.score}/100", 17f, accent, true).apply { gravity = Gravity.END })
+    }
+    root.addView(total, context.matchWidth(top = 6))
+    if (rawTotal > 100) {
+      root.addView(context.label("The signs add up to $rawTotal points; the score is capped at 100.", 12f, Color.rgb(92, 107, 127), false))
+    }
+    root.addView(
+      context.label(
+        "Safe 0–29 · Suspicious 30–69 · Dangerous 70–100",
+        13f,
+        Color.rgb(92, 107, 127),
+        false,
+      ).withTop(context, 4),
+    )
 
     val domains = threat.result.urls.mapNotNull { it.normalizedDomain }.distinct().take(3)
     if (domains.isNotEmpty()) {
       root.addView(context.label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, accent, true).withTop(context, 16))
     }
-    root.addView(context.label("Block hides this notification and saves a protected local History record. Ignore leaves the message notification visible.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
+    root.addView(context.label("Block & Report hides this notification, saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves the notification visible.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
 
     root.addView(Button(context).apply {
-      text = "Block message notification"
+      text = "Block & Report"
       textSize = 16f
       setTextColor(Color.WHITE)
       typeface = Typeface.DEFAULT_BOLD

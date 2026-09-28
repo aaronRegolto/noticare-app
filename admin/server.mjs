@@ -124,6 +124,17 @@ const STATIC_FILES = {
   '/favicon.png': 'image/png',
   '/apple-touch-icon.png': 'image/png',
   '/logo.png': 'image/png',
+  '/logo-mark.png': 'image/png',
+  // Public pages linked from the Google Play listing; they need no sign-in.
+  '/privacy': 'text/html',
+  '/delete-account': 'text/html',
+  '/legal.css': 'text/css',
+};
+// Files whose name differs from their URL path.
+const STATIC_NAMES = {
+  '/': 'index.html',
+  '/privacy': 'privacy.html',
+  '/delete-account': 'delete-account.html',
 };
 export const server = createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -146,7 +157,7 @@ export const server = createServer(async (req, res) => {
     )
       throw fail('Origin not allowed', 403);
     if (req.method === 'GET' && Object.hasOwn(STATIC_FILES, path.pathname)) {
-      const name = path.pathname === '/' ? 'index.html' : path.pathname.slice(1);
+      const name = STATIC_NAMES[path.pathname] ?? path.pathname.slice(1);
       const content = await readFile(new URL(`./public/${name}`, import.meta.url));
       res.writeHead(200, { 'Content-Type': STATIC_FILES[path.pathname] });
       return res.end(content);

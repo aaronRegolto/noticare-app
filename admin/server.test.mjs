@@ -37,6 +37,19 @@ test('serves the tab icons with image content types', async () => {
     assert.ok((await response.arrayBuffer()).byteLength > 0);
   }
 });
+test('serves the public privacy and account-deletion pages without sign-in', async () => {
+  for (const [path, heading] of [
+    ['/privacy', /Privacy Policy/],
+    ['/delete-account', /Delete your NotiCare account/],
+  ]) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('content-type'), 'text/html');
+    assert.match(await response.text(), heading);
+  }
+  const css = await fetch(`${base}/legal.css`);
+  assert.equal(css.headers.get('content-type'), 'text/css');
+});
 test('never serves repository files or secrets', async () => {
   for (const path of [
     '/.env',

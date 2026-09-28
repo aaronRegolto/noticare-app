@@ -14,14 +14,19 @@ const monthStart = (time: number) => {
 
 /**
  * get_community_stats only returns buckets that have activity, so a quiet range comes back with
- * one or two points. This expands them to the full UTC timeline the range covers (24 hours of
- * today, 7 or 30 days, or 6 months) so the chart's x-axis is stable and gaps read as zero.
+ * one or two points. This expands them to the full timeline the range covers (the last 24 hours
+ * ending with the current hour, the UTC day, 7 or 30 days, or 6 months) so the chart's x-axis is
+ * stable and gaps read as zero.
  */
 export function blockedSeries(points: BlockedPoint[], range: CommunityRange, now = new Date()): BlockedBucket[] {
   const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   let starts: number[];
   let bucketOf: (time: number) => number;
-  if (range === 'today') {
+  if (range === 'last_24_hours') {
+    const currentHour = Math.floor(now.getTime() / HOUR) * HOUR;
+    starts = Array.from({ length: 24 }, (_, index) => currentHour - (23 - index) * HOUR);
+    bucketOf = (time) => Math.floor(time / HOUR) * HOUR;
+  } else if (range === 'today') {
     starts = Array.from({ length: 24 }, (_, index) => dayStart + index * HOUR);
     bucketOf = (time) => Math.floor(time / HOUR) * HOUR;
   } else if (range === 'last_6_months') {

@@ -1,12 +1,10 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { BrandLogo } from '@/src/components/brand-logo';
 export function AppSplash() {
   return (
     <View style={styles.page}>
-      <View style={styles.icon}>
-        <Ionicons name="shield-checkmark" size={54} color="#00C88B" />
-      </View>
+      <BrandLogo size={112} />
       <Text style={styles.name}>NotiCare</Text>
       <Text style={styles.copy}>Smishing Shield</Text>
     </View>

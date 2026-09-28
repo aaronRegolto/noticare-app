@@ -8,7 +8,7 @@ export type Json =
 
 // Not part of the generated schema — a convenience type for get_community_stats'
 // p_range parameter. Re-add this after every `gen types` regeneration.
-export type CommunityRange = 'today' | 'last_7_days' | 'last_30_days' | 'last_6_months'
+export type CommunityRange = 'last_24_hours' | 'today' | 'last_7_days' | 'last_30_days' | 'last_6_months'
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
@@ -340,6 +340,7 @@ export type Database = {
           device_id: string
           id: string
           report_id: string
+          risk_score: number | null
           source: string
           user_id: string
         }
@@ -437,6 +438,7 @@ export type Database = {
         Args: { p_codes: string[]; p_rule_version: string }
         Returns: undefined
       }
+      delete_my_account: { Args: never; Returns: undefined }
       get_community_stats: {
         Args: { p_range: string }
         Returns: {
@@ -464,6 +466,7 @@ export type Database = {
           message_text: string
           report_count: number
           report_id: string
+          risk_score: number | null
           sample_sender: string
           viral_score: number
         }[]
@@ -490,6 +493,7 @@ export type Database = {
           p_indicator_codes: string[]
           p_message_text: string
           p_rule_version: string
+          p_risk_score?: number | null
           p_sample_sender: string | null
           p_source?: string
         }

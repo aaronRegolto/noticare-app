@@ -1,9 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAppTheme } from '@/src/theme/ThemeProvider';
+import type { ThemeColors } from '@/src/theme/palette';
 
 type GuideTopic = { title: string; body: string };
 
@@ -29,16 +32,24 @@ const topics: GuideTopic[] = [
     body: 'Safe means no meaningful warning signs were found. Suspicious means caution is recommended. Dangerous means strong phishing evidence was found.',
   },
   {
-    title: 'Choose Block or Ignore',
-    body: 'For a Dangerous message, NotiCare explains the warning signs and asks you to Block or Ignore it. Block suppresses the notification (Android may not always allow this); Ignore leaves it visible. Neither choice deletes the original SMS from your Messages app.',
+    title: 'Choose Block & Report or Ignore',
+    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
   },
   {
     title: 'Manual Scan',
     body: 'Long-press an SMS in Messages, tap Copy, return to NotiCare, tap Paste, then choose Scan message. NotiCare never opens links it finds.',
   },
   {
-    title: 'Report & Block and viral phishing messages',
-    body: 'For a Dangerous result, tapping Report & Block saves the message on this device and, once online, shares its exact text so other NotiCare users can be warned about the same scam. Its score starts low and rises toward 100 as more people report the identical message — the Dashboard’s "Most Reported Phishing Messages" list ranks the messages spreading the widest. This is the only action in NotiCare that uploads message text; Mark as safe never uploads anything.',
+    title: 'Safe Link Protection',
+    body: 'When NotiCare is your default browser, it checks every link you tap in any app (Messages, Messenger, email, and others) before it opens. Safe links open straight away in your normal browser. Risky links stop at a warning screen first: Dangerous for domains on NotiCare\'s known-scam list, Suspicious for shortened links, links to a numeric address, uncommon domain endings often used by scams, look-alikes of brands like GCash, Maya, or BDO, and links that use an "@" to hide where they really go. The check happens on your phone; NotiCare never opens or loads the link to check it.',
+  },
+  {
+    title: 'Turn on Safe Link Protection',
+    body: 'Open Settings & Privacy and tap the Safe Link Protection card, then choose NotiCare as your default browser in Android\'s settings. Under "Open safe links in", pick the browser you normally use (for example Chrome); safe links will keep opening there. On a warning screen, tap Go back to stay safe, or Open anyway if you are sure the link is legitimate. To turn protection off, set a different default browser in Android settings.',
+  },
+  {
+    title: 'Most Reported Phishing Messages',
+    body: 'When you tap Block & Report, NotiCare saves the message on this device and, once online, shares its exact text and risk score so other NotiCare users can be warned about the same scam. The Dashboard’s "Most Reported Phishing Messages" list ranks the scams reported by the most people, with separate tabs for Manual scans and Real-time. This is the only action in NotiCare that uploads message text; Ignore never uploads anything.',
   },
   {
     title: 'Messages inbox',
@@ -46,7 +57,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Privacy',
-    body: 'Full SMS content, sender numbers, notification titles, and raw links stay on your device. Community reporting contains only anonymous classification metadata.',
+    body: 'Full SMS content, sender numbers, notification titles, and raw links stay on your device. Community reporting contains only anonymous classification metadata, except the text of messages you Block & Report. You can permanently delete your account from Settings & Privacy. The full Privacy Policy is at admin.noticare.site/privacy.',
   },
   {
     title: 'Notification permission troubleshooting',
@@ -80,6 +91,27 @@ const topics: GuideTopic[] = [
 
 export default function GuideScreen() {
   const router = useRouter();
+  // Follows the Light / Dark / System choice in Settings, like the rest of the app.
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  // Set when onboarding hands off here, so the guide is the first stop before the Dashboard.
+  const welcome = useLocalSearchParams<{ welcome?: string }>().welcome === '1';
+  const leave = useCallback(() => {
+    if (!welcome && router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router, welcome]);
+  // On the first-run guide there's nothing behind it, so Android's back button goes to the
+  // Dashboard instead of closing the app.
+  useFocusEffect(
+    useCallback(() => {
+      if (!welcome) return undefined;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        leave();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [leave, welcome]),
+  );
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const visibleTopics = useMemo(
@@ -91,27 +123,36 @@ export default function GuideScreen() {
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={12}>
-          <Ionicons name="arrow-back" size={25} color="#fff" />
+        <Pressable
+          onPress={leave}
+          accessibilityRole="button"
+          accessibilityLabel={welcome ? 'Continue to Dashboard' : 'Go back'}
+          hitSlop={12}
+        >
+          <Ionicons name="arrow-back" size={25} color={colors.headerText} />
         </Pressable>
         <Text style={styles.headerTitle}>User Guide</Text>
         <View style={styles.headerSpacer} />
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <Ionicons name="book-outline" size={27} color="#00B87C" />
-          <View>
+          <Ionicons name="book-outline" size={27} color={colors.accent} />
+          <View style={styles.heroText}>
             <Text style={styles.heroTitle}>How NotiCare protects you</Text>
-            <Text style={styles.heroCopy}>Answers to common questions about how NotiCare works.</Text>
+            <Text style={styles.heroCopy}>
+              {welcome
+                ? "You're all set. Take a minute to learn how NotiCare works, then continue to your Dashboard."
+                : 'Answers to common questions about how NotiCare works.'}
+            </Text>
           </View>
         </View>
         <View style={styles.search}>
-          <Ionicons name="search" size={20} color="#7288A6" />
+          <Ionicons name="search" size={20} color={colors.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Search the guide"
-            placeholderTextColor="#8497B0"
+            placeholderTextColor={colors.textMuted}
             style={styles.searchInput}
             accessibilityLabel="Search the user guide"
           />
@@ -128,58 +169,84 @@ export default function GuideScreen() {
             >
               <View style={styles.topicRow}>
                 <Text style={styles.topicTitle}>{topic.title}</Text>
-                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#647B9A" />
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textMuted} />
               </View>
               {open ? <Text style={styles.topicBody}>{topic.body}</Text> : null}
             </Pressable>
           );
         })}
         {!visibleTopics.length ? <Text style={styles.empty}>No guide topics match your search.</Text> : null}
+        {welcome ? (
+          <Pressable onPress={leave} style={styles.continueButton} accessibilityRole="button">
+            <Text style={styles.continueText}>Continue to Dashboard</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.accentContrast} />
+          </Pressable>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F6F8FC' },
-  header: {
-    height: 62,
-    backgroundColor: '#1E2D43',
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: { color: '#fff', fontWeight: '800', fontSize: 18 },
-  headerSpacer: { width: 25 },
-  content: { padding: 16, gap: 10 },
-  hero: {
-    flexDirection: 'row',
-    gap: 13,
-    backgroundColor: '#ECFCF5',
-    borderRadius: 14,
-    padding: 17,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  heroTitle: { color: '#193754', fontWeight: '800', fontSize: 16 },
-  heroCopy: { color: '#607B99', marginTop: 3 },
-  search: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 13,
-    height: 49,
-    gap: 8,
-    marginBottom: 4,
-  },
-  searchInput: { flex: 1, color: '#1F3653', fontSize: 15 },
-  topic: { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E7ECF3' },
-  topicRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  topicTitle: { color: '#253D5C', fontWeight: '700', fontSize: 15, flex: 1, paddingRight: 10 },
-  topicBody: { color: '#637998', lineHeight: 21, marginTop: 12 },
-  empty: { color: '#637998', textAlign: 'center', marginTop: 35 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    page: { flex: 1, backgroundColor: colors.background },
+    header: {
+      height: 62,
+      backgroundColor: colors.headerBg,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    headerTitle: { color: colors.headerText, fontWeight: '800', fontSize: 18 },
+    headerSpacer: { width: 25 },
+    content: { padding: 16, gap: 10 },
+    hero: {
+      flexDirection: 'row',
+      gap: 13,
+      backgroundColor: colors.accentSoft,
+      borderRadius: 14,
+      padding: 17,
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    heroText: { flex: 1 },
+    heroTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
+    heroCopy: { color: colors.textSecondary, marginTop: 3 },
+    search: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 13,
+      height: 49,
+      gap: 8,
+      marginBottom: 4,
+    },
+    searchInput: { flex: 1, color: colors.textPrimary, fontSize: 15 },
+    topic: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    topicRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    topicTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 15, flex: 1, paddingRight: 10 },
+    topicBody: { color: colors.textSecondary, lineHeight: 21, marginTop: 12 },
+    empty: { color: colors.textMuted, textAlign: 'center', marginTop: 35 },
+    continueButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 14,
+      paddingVertical: 15,
+      borderRadius: 12,
+      backgroundColor: colors.accent,
+    },
+    continueText: { color: colors.accentContrast, fontWeight: '800', fontSize: 15 },
+  });
+}

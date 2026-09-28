@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandLogo } from '@/src/components/brand-logo';
 import { useOnboarding } from '@/src/providers/OnboardingProvider';
 import {
   getMonitoringStatus,
@@ -17,33 +18,32 @@ const pages = [
   {
     icon: 'shield-checkmark-outline' as const,
     title: 'Welcome to NotiCare',
-    body: 'NotiCare checks notifications from your current default Messages app for common smishing warning signs. It works on your device, even while the app is closed.',
-    note: 'It cannot read messages that Android hides in a notification preview, and it cannot guarantee every scam will be detected.',
+    body: 'NotiCare protects you from scam text messages (smishing). It checks new SMS notifications from your Messages app right on your phone, even when NotiCare is closed, and warns you before you tap a risky link.',
+    note: "NotiCare can't check messages whose preview Android hides, and no app can catch every scam, so stay alert.",
   },
   {
     icon: 'notifications-outline' as const,
-    title: 'Why notification access?',
-    body: 'Android requires Notification Access before NotiCare can protect new SMS notifications. NotiCare first checks that a notification is from your default Messages app before reading any text.',
-    note: 'It immediately ignores social media, email, banking, shopping, and every other app.',
+    title: 'Allow notification access',
+    body: 'To check new texts as they arrive, Android needs you to turn on Notification Access for NotiCare. NotiCare only reads notifications from your default Messages app.',
+    note: 'Notifications from every other app, like social media, email, banking, and shopping, are ignored without being read.',
   },
   {
     icon: 'speedometer-outline' as const,
-    title: 'Know the threat levels',
-    body: 'Safe means no meaningful warning signs. Suspicious means use caution. Dangerous means strong phishing evidence was found, and NotiCare asks you to Block or Ignore the notification.',
-    note: 'Blocking a message does not delete the original SMS from your Messages app.',
+    title: 'Understand the warnings',
+    body: 'Every message gets a risk score from 0 to 100. Safe (0–29) has no strong warning signs, Suspicious (30–69) means be careful, and Dangerous (70–100) is very likely a scam. For risky messages, NotiCare shows why and lets you choose Block & Report or Ignore.',
+    note: 'Blocking only hides the notification. The original SMS stays in your Messages app.',
   },
   {
     icon: 'lock-closed-outline' as const,
     title: 'Your privacy comes first',
-    body: 'Full SMS text, sender details, and links stay on this device. Only anonymous classification counts and warning-sign codes may contribute to community data — unless you explicitly tap Report & Block on a Dangerous message, which shares that message’s exact text to warn other users.',
-    note: 'You can review the complete guide, turn scanning off, or delete protected local History at any time.',
+    body: 'Your messages, senders, and links stay on this phone. NotiCare only shares anonymous counts, like how many messages were flagged. The one exception is when you tap Block & Report: that message’s text is shared so other NotiCare users can be warned.',
+    note: 'You can turn scanning off, delete your saved History, or read the User Guide anytime from Settings.',
   },
 ];
 
 function statusTitle(status: MonitoringStatus | null) {
-  if (!status) return 'Checking Android status…';
-  if (status.defaultSmsAppName && status.defaultSmsPackage)
-    return `${status.defaultSmsAppName} (${status.defaultSmsPackage})`;
+  if (!status) return 'Checking…';
+  if (status.defaultSmsAppName) return status.defaultSmsAppName;
   return 'No default Messages app found';
 }
 
@@ -123,9 +123,15 @@ export default function OnboardingScreen() {
             <View key={pageIndex} style={[styles.progressDot, pageIndex <= index && styles.progressDotActive]} />
           ))}
         </View>
-        <View style={styles.icon}>
-          <Ionicons name={page.icon} size={48} color="#00B87C" />
-        </View>
+        {index === 0 ? (
+          <View style={styles.logo}>
+            <BrandLogo size={120} />
+          </View>
+        ) : (
+          <View style={styles.icon}>
+            <Ionicons name={page.icon} size={48} color="#00B87C" />
+          </View>
+        )}
         <Text style={styles.title}>{page.title}</Text>
         <Text style={styles.body}>{page.body}</Text>
         <View style={styles.note}>
@@ -135,17 +141,19 @@ export default function OnboardingScreen() {
 
         {index === 1 ? (
           <View style={styles.permissionCard}>
-            <Text style={styles.permissionTitle}>Detected Messages app</Text>
+            <Text style={styles.permissionTitle}>Your Messages app</Text>
             <Text style={styles.permissionValue}>{statusTitle(status)}</Text>
             <Text style={styles.permissionStatus}>
-              {needsPermission ? 'Notification Access is still required.' : 'Notification Access has been granted.'}
+              {needsPermission
+                ? 'Notification Access is off. Turn it on to start protection.'
+                : 'Notification Access is on.'}
             </Text>
             <Pressable onPress={openNotificationAccess} style={styles.outlineButton} accessibilityRole="button">
               <Ionicons name="settings-outline" size={19} color="#006DAB" />
-              <Text style={styles.outlineButtonText}>Open Notification Access</Text>
+              <Text style={styles.outlineButtonText}>Open Notification Access settings</Text>
             </Pressable>
             <Pressable onPress={() => void refreshStatus()} style={styles.textButton} accessibilityRole="button">
-              <Text style={styles.textButtonText}>Check again</Text>
+              <Text style={styles.textButtonText}>Refresh status</Text>
             </Pressable>
           </View>
         ) : null}
@@ -158,8 +166,8 @@ export default function OnboardingScreen() {
             </View>
             <Text style={styles.scanStartText}>
               {status?.status === 'active'
-                ? 'Active: NotiCare is ready to monitor your default Messages app.'
-                : 'You can turn this on now or later from Dashboard settings.'}
+                ? 'On. NotiCare is checking new messages from your Messages app.'
+                : 'Turn it on now, or later from the Dashboard.'}
             </Text>
             <Pressable
               disabled={loading || status?.status === 'active'}
@@ -168,11 +176,7 @@ export default function OnboardingScreen() {
               accessibilityRole="button"
             >
               <Text style={styles.enableButtonText}>
-                {status?.status === 'active'
-                  ? 'Scanning is active'
-                  : loading
-                    ? 'Checking…'
-                    : 'Turn on Real-Time Scanning'}
+                {status?.status === 'active' ? 'Scanning is on' : loading ? 'Checking…' : 'Turn on Real-Time Scanning'}
               </Text>
             </Pressable>
           </View>
@@ -192,13 +196,16 @@ export default function OnboardingScreen() {
           )}
           <Pressable
             onPress={() => {
-              if (isLast) void finish();
-              else setIndex((current) => current + 1);
+              if (isLast) {
+                // Onboarding hands off to the User Guide as the starting point; its
+                // "Continue to Dashboard" button then opens the app proper.
+                void finish().then(() => router.replace('/guide?welcome=1'));
+              } else setIndex((current) => current + 1);
             }}
             style={styles.nextButton}
             accessibilityRole="button"
           >
-            <Text style={styles.nextText}>{isLast ? 'Open Dashboard' : 'Continue'}</Text>
+            <Text style={styles.nextText}>{isLast ? 'Open User Guide' : 'Continue'}</Text>
             <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" />
           </Pressable>
         </View>
@@ -217,6 +224,7 @@ const styles = StyleSheet.create({
   progress: { flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: 28 },
   progressDot: { height: 7, width: 7, borderRadius: 5, backgroundColor: '#D1DAE7' },
   progressDotActive: { width: 23, backgroundColor: '#00B87C' },
+  logo: { alignSelf: 'center', marginTop: 8, marginBottom: 4 },
   icon: {
     width: 96,
     height: 96,

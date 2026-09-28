@@ -281,6 +281,7 @@ class SmsNotificationListener : NotificationListenerService() {
         pending.sender,
         pending.result.reasons.map(ThreatReason::code),
         pending.result.ruleVersion,
+        pending.result.score,
       )
       NotiCareNotifications.showBlocked(
         applicationContext,

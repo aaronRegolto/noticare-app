@@ -6,6 +6,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ScoreBreakdown } from '@/src/components/score-breakdown';
+import { BrandLogo } from '@/src/components/brand-logo';
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
 import {
   getMessageFeedbackRecord,
@@ -71,9 +73,7 @@ function Header() {
   const styles = useThemedStyles(colors);
   return (
     <View style={styles.appBar}>
-      <View style={styles.shieldMark}>
-        <Ionicons name="shield-checkmark-outline" size={25} color={colors.accent} />
-      </View>
+      <BrandLogo size={44} />
       <View style={styles.brandCopy}>
         <Text style={styles.brand}>NotiCare</Text>
         <Text style={styles.tagline}>Smishing Shield</Text>
@@ -91,20 +91,23 @@ function Header() {
   );
 }
 
-
-const NEW_MESSAGE_SCORE = 5;
-
-/** The number and copy shown for a result's score. Safe is always 0 — a viral
- * score only tracks how many people confirmed a Dangerous message, and nobody
- * reports a safe one. Dangerous shows the shared community score instead of
- * the local rule score, since that's the number that actually rises as more
- * people report the exact same message. */
+/**
+ * The risk score is always the detector's own score (the sum of the warning signs' points, capped
+ * at 100). How many people reported the same text is shown separately as a badge, never as the
+ * score, so the number here matches the real-time warning for the same message.
+ */
 function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, viralityLoading: boolean) {
+  const reportBadge =
+    result.level === 'dangerous' && virality && virality.reportCount > 0
+      ? virality.reportCount === 1
+        ? '1 report'
+        : `${virality.reportCount} reports`
+      : null;
   if (result.level === 'safe') {
     return {
-      score: 0,
+      score: result.score,
       badge: null as string | null,
-      explanation: 'A Safe result has no community reports and no known risk.',
+      explanation: `Scores from 0 to 29 are Safe. ${result.score}/100 means no strong warning signs were found.`,
     };
   }
   if (result.level === 'suspicious') {
@@ -114,24 +117,15 @@ function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, v
       explanation: `Scores from 30 to 69 are Suspicious. ${result.score}/100 means some warning signs were found, but not enough to call this a confirmed scam.`,
     };
   }
-  if (viralityLoading) {
-    return { score: null, badge: null as string | null, explanation: 'Checking how many other users reported this exact message…' };
-  }
-  if (virality) {
-    const badge = virality.reportCount <= 1 ? 'New' : `${virality.reportCount} reports`;
-    return {
-      score: virality.viralScore,
-      badge,
-      explanation:
-        virality.reportCount <= 1
-          ? `${virality.viralScore}/100 is a starting score for a newly seen message. It rises toward 100 as more NotiCare users report this exact text — tap Report to add your report.`
-          : `${virality.viralScore}/100 reflects ${virality.reportCount} NotiCare users who reported this exact message. The more people who confirm it, the closer it climbs to 100 — a fully viral phishing message.`,
-    };
-  }
+  const community = viralityLoading
+    ? ' Checking whether other NotiCare users reported this exact message…'
+    : virality && virality.reportCount > 0
+      ? ` ${virality.reportCount === 1 ? '1 NotiCare user has' : `${virality.reportCount} NotiCare users have`} reported this exact message.`
+      : ' No one has reported this exact message yet. Tap Report to warn other NotiCare users.';
   return {
-    score: NEW_MESSAGE_SCORE,
-    badge: 'New',
-    explanation: `${NEW_MESSAGE_SCORE}/100 is a starting score — this message has not been reported by anyone else yet. Tap Report to warn other NotiCare users if this is phishing.`,
+    score: result.score,
+    badge: reportBadge,
+    explanation: `Scores of 70 and above are Dangerous. ${result.score}/100 means strong phishing signs were found.${community}`,
   };
 }
 
@@ -166,25 +160,19 @@ function ResultCard({
               </View>
             ) : null}
           </View>
-          <Text style={styles.score}>{scored.score === null ? '…/100' : `${scored.score}/100`} risk score</Text>
+          <Text style={styles.score}>{scored.score}/100 risk score</Text>
         </View>
       </View>
       <Text style={styles.resultExplanation}>{display.explanation}</Text>
       <Text style={styles.scoreExplanation}>{scored.explanation}</Text>
-      <Text style={styles.resultSectionTitle}>Warning signs found</Text>
-      {result.reasons.length ? (
-        result.reasons.map((reason) => (
-          <View key={reason.code} style={styles.reasonRow}>
-            <Ionicons name="alert-circle-outline" size={18} color={display.color} />
-            <View style={styles.reasonCopy}>
-              <Text style={styles.reasonTitle}>{reason.label}</Text>
-              <Text style={styles.reasonText}>{reason.description}</Text>
-            </View>
-          </View>
-        ))
-      ) : (
-        <Text style={styles.muted}>No meaningful warning signs were found.</Text>
-      )}
+      <Text style={styles.resultSectionTitle}>How the score was calculated</Text>
+      <ScoreBreakdown
+        reasons={result.reasons}
+        score={result.score}
+        level={result.level}
+        accent={display.color}
+        colors={colors}
+      />
       {result.urls.length ? (
         <>
           <Text style={styles.resultSectionTitle}>Links found</Text>
@@ -460,8 +448,8 @@ export default function ScanScreen() {
           </View>
           <Text style={styles.privacyText}>
             <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
-            uploaded — unless you tap Report on a Dangerous result, which shares that exact message so other
-            NotiCare users can be warned about it.
+            uploaded — unless you tap Report on a Dangerous result, which shares that exact message so other NotiCare
+            users can be warned about it.
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -503,203 +491,210 @@ function useThemedStyles(colors: ThemeColors) {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-  // Keep the top safe-area inset navy so white Android status icons remain legible.
-  safeArea: { flex: 1, backgroundColor: colors.headerBg },
-  contentArea: { flex: 1, backgroundColor: colors.background },
-  appBar: {
-    height: 66,
-    backgroundColor: colors.headerBg,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#0E1726',
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    zIndex: 10,
-    elevation: 10,
-  },
-  shieldMark: {
-    width: 39,
-    height: 39,
-    borderRadius: 10,
-    backgroundColor: colors.headerSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandCopy: { marginLeft: 10 },
-  brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
-  tagline: { color: '#CFD7E3', fontSize: 12, marginTop: 1 },
-  menuButton: { marginLeft: 'auto', padding: 4 },
-  content: { alignItems: 'center', paddingHorizontal: 10, paddingTop: 26 },
-  scannerIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#142038',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  heading: { color: colors.textPrimary, fontSize: 24, fontWeight: '800', marginTop: 16, textAlign: 'center' },
-  subheading: { color: colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 300 },
-  summaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  summaryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  summaryChipText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
-  analysisCard: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 18,
-    marginTop: 22,
-    shadowColor: '#1E2D43',
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
-  count: { color: colors.textMuted, fontSize: 12 },
-  inputWrap: {
-    marginTop: 16,
-    borderRadius: 14,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  input: {
-    minHeight: 130,
-    maxHeight: 240,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 14,
-    paddingHorizontal: 13,
-    paddingTop: 12,
-    color: colors.textPrimary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  inputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  secondaryButton: {
-    flex: 1,
-    height: 42,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceAlt,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  secondaryDisabled: { opacity: 0.45 },
-  secondaryText: { color: colors.textSecondary, fontWeight: '700' },
-  privacyText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 13 },
-  scanButton: {
-    height: 52,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 11,
-    shadowColor: '#0D3C39',
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  scanButtonDisabled: { backgroundColor: '#939BA8' },
-  scanButtonPressed: { opacity: 0.82 },
-  scanButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
-  resultCard: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 17,
-    marginTop: 16,
-    borderWidth: 1,
-    shadowColor: '#1E2D43',
-    shadowOpacity: 0.08,
-    shadowRadius: 7,
-    elevation: 2,
-  },
-  resultHero: { borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  resultHeroCopy: { flex: 1 },
-  resultLevelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  resultLevel: { fontWeight: '800', fontSize: 18 },
-  newBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  newBadgeText: { color: '#fff', fontWeight: '800', fontSize: 10, letterSpacing: 0.4 },
-  score: { color: colors.textSecondary, marginTop: 2, fontSize: 13 },
-  resultExplanation: { color: colors.textSecondary, lineHeight: 20, marginTop: 13 },
-  scoreExplanation: { color: colors.textMuted, lineHeight: 18, marginTop: 8, fontSize: 12.5, fontStyle: 'italic' },
-  resultSectionTitle: { color: colors.textPrimary, fontWeight: '800', marginTop: 17, marginBottom: 8 },
-  reasonRow: { flexDirection: 'row', gap: 8, paddingVertical: 7 },
-  reasonCopy: { flex: 1 },
-  reasonTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
-  reasonText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
-  muted: { color: colors.textMuted, fontSize: 13 },
-  urlRow: {
-    backgroundColor: colors.warningSoft,
-    borderRadius: 7,
-    padding: 9,
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-start',
-    marginTop: 6,
-  },
-  urlText: { color: colors.warning, flex: 1, fontSize: 12, lineHeight: 17 },
-  actionBox: { backgroundColor: colors.surfaceAlt, borderRadius: 9, padding: 12, marginTop: 18, flexDirection: 'row', gap: 9 },
-  actionCopy: { flex: 1 },
-  actionTitle: { color: navy, fontWeight: '800', fontSize: 13 },
-  actionText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  meta: { color: colors.textMuted, fontSize: 11, marginTop: 13 },
-  feedbackRow: { flexDirection: 'row', gap: 9, marginTop: 15 },
-  feedbackButton: {
-    flex: 1,
-    minHeight: 41,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  feedbackButtonDisabled: { opacity: 0.55 },
-  feedbackText: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, textAlign: 'center' },
-  feedbackSent: {
-    minHeight: 42,
-    borderRadius: 8,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 7,
-    marginTop: 15,
-    paddingHorizontal: 10,
-  },
-  feedbackSentText: { color: '#007D59', fontWeight: '700', fontSize: 12, textAlign: 'center' },
-  guideLink: { marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10 },
-  guideLinkText: { color: '#006DAB', fontWeight: '700' },
+    // Keep the top safe-area inset navy so white Android status icons remain legible.
+    safeArea: { flex: 1, backgroundColor: colors.headerBg },
+    contentArea: { flex: 1, backgroundColor: colors.background },
+    appBar: {
+      height: 66,
+      backgroundColor: colors.headerBg,
+      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      shadowColor: '#0E1726',
+      shadowOpacity: 0.18,
+      shadowRadius: 4,
+      zIndex: 10,
+      elevation: 10,
+    },
+    shieldMark: {
+      width: 39,
+      height: 39,
+      borderRadius: 10,
+      backgroundColor: colors.headerSurface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    brandCopy: { marginLeft: 10 },
+    brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+    tagline: { color: '#CFD7E3', fontSize: 12, marginTop: 1 },
+    menuButton: { marginLeft: 'auto', padding: 4 },
+    content: { alignItems: 'center', paddingHorizontal: 10, paddingTop: 26 },
+    scannerIcon: {
+      width: 72,
+      height: 72,
+      borderRadius: 24,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#142038',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    heading: { color: colors.textPrimary, fontSize: 24, fontWeight: '800', marginTop: 16, textAlign: 'center' },
+    subheading: { color: colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 300 },
+    summaryRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 18,
+    },
+    summaryChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    summaryChipText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+    analysisCard: {
+      alignSelf: 'stretch',
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      padding: 18,
+      marginTop: 22,
+      shadowColor: '#1E2D43',
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
+    count: { color: colors.textMuted, fontSize: 12 },
+    inputWrap: {
+      marginTop: 16,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    input: {
+      minHeight: 130,
+      maxHeight: 240,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 14,
+      paddingHorizontal: 13,
+      paddingTop: 12,
+      color: colors.textPrimary,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    inputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+    secondaryButton: {
+      flex: 1,
+      height: 42,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceAlt,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    secondaryDisabled: { opacity: 0.45 },
+    secondaryText: { color: colors.textSecondary, fontWeight: '700' },
+    privacyText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 13 },
+    scanButton: {
+      height: 52,
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      marginTop: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 11,
+      shadowColor: '#0D3C39',
+      shadowOpacity: 0.16,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    scanButtonDisabled: { backgroundColor: '#939BA8' },
+    scanButtonPressed: { opacity: 0.82 },
+    scanButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+    resultCard: {
+      alignSelf: 'stretch',
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 17,
+      marginTop: 16,
+      borderWidth: 1,
+      shadowColor: '#1E2D43',
+      shadowOpacity: 0.08,
+      shadowRadius: 7,
+      elevation: 2,
+    },
+    resultHero: { borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    resultHeroCopy: { flex: 1 },
+    resultLevelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    resultLevel: { fontWeight: '800', fontSize: 18 },
+    newBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+    newBadgeText: { color: '#fff', fontWeight: '800', fontSize: 10, letterSpacing: 0.4 },
+    score: { color: colors.textSecondary, marginTop: 2, fontSize: 13 },
+    resultExplanation: { color: colors.textSecondary, lineHeight: 20, marginTop: 13 },
+    scoreExplanation: { color: colors.textMuted, lineHeight: 18, marginTop: 8, fontSize: 12.5, fontStyle: 'italic' },
+    resultSectionTitle: { color: colors.textPrimary, fontWeight: '800', marginTop: 17, marginBottom: 8 },
+    reasonRow: { flexDirection: 'row', gap: 8, paddingVertical: 7 },
+    reasonCopy: { flex: 1 },
+    reasonTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
+    reasonText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2 },
+    muted: { color: colors.textMuted, fontSize: 13 },
+    urlRow: {
+      backgroundColor: colors.warningSoft,
+      borderRadius: 7,
+      padding: 9,
+      flexDirection: 'row',
+      gap: 8,
+      alignItems: 'flex-start',
+      marginTop: 6,
+    },
+    urlText: { color: colors.warning, flex: 1, fontSize: 12, lineHeight: 17 },
+    actionBox: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 9,
+      padding: 12,
+      marginTop: 18,
+      flexDirection: 'row',
+      gap: 9,
+    },
+    actionCopy: { flex: 1 },
+    actionTitle: { color: navy, fontWeight: '800', fontSize: 13 },
+    actionText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
+    meta: { color: colors.textMuted, fontSize: 11, marginTop: 13 },
+    feedbackRow: { flexDirection: 'row', gap: 9, marginTop: 15 },
+    feedbackButton: {
+      flex: 1,
+      minHeight: 41,
+      paddingHorizontal: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    feedbackButtonDisabled: { opacity: 0.55 },
+    feedbackText: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, textAlign: 'center' },
+    feedbackSent: {
+      minHeight: 42,
+      borderRadius: 8,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 7,
+      marginTop: 15,
+      paddingHorizontal: 10,
+    },
+    feedbackSentText: { color: '#007D59', fontWeight: '700', fontSize: 12, textAlign: 'center' },
+    guideLink: { marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10 },
+    guideLinkText: { color: '#006DAB', fontWeight: '700' },
   });
 }

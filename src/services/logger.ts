@@ -15,5 +15,10 @@ export function logDiagnostic(event: string, detail?: Record<string, string | nu
 export function logError(event: string, error: unknown) {
   if (!__DEV__) return;
   const name = error instanceof Error ? error.name : 'UnknownError';
-  console.warn(`[NotiCare] ${event}: ${name}`);
+  // Supabase/PostgREST errors are plain objects with a code and a server-written message; both
+  // describe the failure, not the user's data, and are what make a failed sync diagnosable.
+  const detail = error && typeof error === 'object' ? (error as { code?: unknown; message?: unknown }) : {};
+  const code = typeof detail.code === 'string' ? ` code=${detail.code}` : '';
+  const message = typeof detail.message === 'string' ? ` ${detail.message.slice(0, 160)}` : '';
+  console.warn(`[NotiCare] ${event}: ${name}${code}${message}`);
 }

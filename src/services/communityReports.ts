@@ -1,14 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
-import type { ThreatResult } from '@/src/features/detection';
+import { evaluateThreat, type ThreatResult } from '@/src/features/detection';
 import { activeUserId, registerDevice } from '@/src/services/eventSync';
-import { logError } from '@/src/services/logger';
+import { logDiagnostic, logError } from '@/src/services/logger';
 import {
   ackCommunityReports,
   getPendingCommunityReports,
   isNativeMonitoringAvailable,
   notifyCommunityReportResult,
+  scanTextLocally,
   type PendingCommunityReport,
 } from '@/src/services/notificationListener';
 import { isSupabaseConfigured, supabase } from '@/src/services/supabase';
@@ -82,6 +83,8 @@ export type ViralPhishingEntry = {
   reportCount: number;
   firstReportedAt: string;
   lastReportedAt: string;
+  /** The detector's 0-100 risk score; null for reports filed before it was stored. */
+  riskScore: number | null;
 };
 
 type QueuedReport = {
@@ -90,6 +93,7 @@ type QueuedReport = {
   sampleSender: string | null;
   indicatorCodes: string[];
   ruleVersion: string;
+  riskScore?: number | null;
   createdAt: string;
   attempts: number;
 };
@@ -147,8 +151,17 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
     p_indicator_codes: report.indicatorCodes,
     p_rule_version: report.ruleVersion,
   };
-  let { data, error } = await supabase.rpc('record_phishing_report', { ...args, p_source: source });
-  // Older database: record the report without its source rather than leaving it queued.
+  const riskScore =
+    typeof report.riskScore === 'number' ? Math.max(0, Math.min(100, Math.round(report.riskScore))) : null;
+  let { data, error } = await supabase.rpc('record_phishing_report', {
+    ...args,
+    p_source: source,
+    p_risk_score: riskScore,
+  });
+  // Older databases: drop the parameters they don't know yet rather than leaving the report queued.
+  if (isMissingSourceParameter(error)) {
+    ({ data, error } = await supabase.rpc('record_phishing_report', { ...args, p_source: source }));
+  }
   if (isMissingSourceParameter(error)) ({ data, error } = await supabase.rpc('record_phishing_report', args));
   if (error) throw error;
   const row = data?.[0];
@@ -174,6 +187,7 @@ export async function reportAndBlockMessage(
     sampleSender,
     indicatorCodes: result.reasons.map((reason) => reason.code).slice(0, 32),
     ruleVersion: result.ruleVersion,
+    riskScore: result.score,
     createdAt: new Date().toISOString(),
     attempts: 0,
   };
@@ -256,6 +270,7 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
           sampleSender: report.sampleSender,
           indicatorCodes: report.indicatorCodes,
           ruleVersion: report.ruleVersion,
+          riskScore: report.riskScore ?? null,
           createdAt: new Date(report.createdAt).toISOString(),
           attempts: 0,
         },
@@ -277,6 +292,10 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
       logError('native-community-report-ack-failed', error);
     }
   }
+  logDiagnostic('native-community-reports-flushed', {
+    claimed: pending.length,
+    synced: acknowledged.length,
+  });
   return { synced: acknowledged.length, pending: pending.length - acknowledged.length };
 }
 
@@ -305,7 +324,8 @@ function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
     typeof entry.viralScore === 'number' &&
     typeof entry.reportCount === 'number' &&
     typeof entry.firstReportedAt === 'string' &&
-    typeof entry.lastReportedAt === 'string'
+    typeof entry.lastReportedAt === 'string' &&
+    (entry.riskScore === undefined || entry.riskScore === null || typeof entry.riskScore === 'number')
   );
 }
 
@@ -316,7 +336,9 @@ async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntr
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isViralPhishingRow) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(isViralPhishingRow).map((entry) => ({ ...entry, riskScore: entry.riskScore ?? null }))
+      : [];
   } catch {
     return [];
   }
@@ -330,7 +352,9 @@ export async function getViralPhishingRanking(
   reportSource: ReportSource,
   limit = 20,
 ): Promise<{ entries: ViralPhishingEntry[]; source: 'network' | 'cache' }> {
-  if (!isSupabaseConfigured) return { entries: await readRankingCache(reportSource), source: 'cache' };
+  if (!isSupabaseConfigured) {
+    return { entries: await fillMissingRiskScores(await readRankingCache(reportSource)), source: 'cache' };
+  }
   try {
     let { data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit, p_source: reportSource });
     if (isMissingSourceParameter(error)) {
@@ -349,16 +373,41 @@ export async function getViralPhishingRanking(
       reportCount: row.report_count,
       firstReportedAt: row.first_reported_at,
       lastReportedAt: row.last_reported_at,
+      // Absent until the risk-score migration is applied.
+      riskScore: typeof row.risk_score === 'number' ? row.risk_score : null,
     }));
-    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource}`, JSON.stringify(entries));
-    return { entries, source: 'network' };
+    const scored = await fillMissingRiskScores(entries);
+    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource}`, JSON.stringify(scored));
+    return { entries: scored, source: 'network' };
   } catch (error) {
     logError('viral-phishing-ranking-load-failed', error);
     const cached = await readRankingCache(reportSource);
     // Without a saved copy, surface the failure instead of an empty list that looks like no data.
     if (!cached.length) throw error;
-    return { entries: cached, source: 'cache' };
+    return { entries: await fillMissingRiskScores(cached), source: 'cache' };
   }
+}
+
+/**
+ * Reports filed before risk scores were stored come back without one. The score depends only on
+ * the message text, so re-running the same detector Manual Scan and real-time scanning use
+ * reproduces it exactly: the native Kotlin evaluator on Android, else the parity-tested TS one.
+ */
+async function fillMissingRiskScores(entries: ViralPhishingEntry[]): Promise<ViralPhishingEntry[]> {
+  return Promise.all(
+    entries.map(async (entry) => {
+      if (entry.riskScore !== null) return entry;
+      try {
+        const result = isNativeMonitoringAvailable()
+          ? await scanTextLocally(entry.messageText)
+          : evaluateThreat(entry.messageText);
+        return { ...entry, riskScore: result.score };
+      } catch (error) {
+        logError('viral-risk-score-fill-failed', error);
+        return entry;
+      }
+    }),
+  );
 }
 
 /** A ranking failure whose message is safe and useful to show the user as-is. */

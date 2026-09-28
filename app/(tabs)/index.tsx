@@ -2,11 +2,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { CommunityRange } from '@/backend/supabase/types/database.types';
 import { BlockedTrendCard } from '@/src/components/blocked-trend-card';
+import { BrandLogo } from '@/src/components/brand-logo';
 import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { DASHBOARD_TOUR_KEY, useFirstVisitTour } from '@/src/hooks/use-first-visit-tour';
@@ -86,9 +87,30 @@ function ViralEntryRow({
           </Text>
         </View>
       </View>
-      <View style={styles.viralScoreBox}>
-        <Text style={styles.viralScoreValue}>{entry.viralScore}</Text>
-        <Text style={styles.viralScoreMax}>/100</Text>
+      <View
+        style={styles.viralScoreBox}
+        accessibilityLabel={
+          entry.riskScore === null ? 'Risk score not recorded' : `Risk score ${entry.riskScore} out of 100`
+        }
+      >
+        {entry.riskScore === null ? (
+          <Text style={styles.viralScoreMissing}>—</Text>
+        ) : (
+          <>
+            <Text
+              style={[
+                styles.viralScoreValue,
+                {
+                  color:
+                    entry.riskScore >= 70 ? colors.danger : entry.riskScore >= 30 ? colors.warning : colors.success,
+                },
+              ]}
+            >
+              {entry.riskScore}
+            </Text>
+            <Text style={styles.viralScoreMax}>/100</Text>
+          </>
+        )}
       </View>
     </View>
   );
@@ -190,7 +212,7 @@ export default function DashboardScreen() {
   const [monitoring, setMonitoring] = useState<MonitoringStatus | null>(null);
   const [savingSwitch, setSavingSwitch] = useState(false);
   const [history, setHistory] = useState<HistorySummary[]>([]);
-  const [range, setRange] = useState<CommunityRange>('today');
+  const [range, setRange] = useState<CommunityRange>('last_24_hours');
   const [community, setCommunity] = useState<CommunityState>({ points: [], source: null, loading: true, error: null });
   const [viral, setViral] = useState<ViralState>({ entries: [], source: null, loading: true, error: null });
   const [viralSource, setViralSource] = useState<ReportSource>('manual');
@@ -269,21 +291,39 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  /**
+   * Uploads queued reports first (real-time Block & Report taps wait in the native queue until the
+   * app runs), then loads the ranking, so a fresh report is in the list right away. The ranking
+   * RPC is Pro-gated server-side, so Free skips it instead of erroring on every visit.
+   */
+  const syncReportsAndRanking = useCallback(
+    (reportSource?: ReportSource) =>
+      Promise.allSettled([flushQueuedPhishingReports(), flushNativeCommunityReports()]).then(() => {
+        if (subscriptionTier === 'pro') void refreshViralRanking(reportSource);
+      }),
+    [refreshViralRanking, subscriptionTier],
+  );
+
+  const refreshDashboard = useCallback(() => {
+    void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
+    void refreshCommunity(range);
+    void flushQueuedThreatEvents();
+    void flushNativeTelemetry();
+    void syncReportsAndRanking();
+  }, [range, refreshCommunity, refreshMonitoringAndHistory, syncReportsAndRanking]);
+
   useFocusEffect(
     useCallback(() => {
-      void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
-      void refreshCommunity(range);
-      void flushQueuedThreatEvents();
-      void flushNativeTelemetry();
-      // Upload queued reports first (real-time Block & Report taps wait in the native queue until
-      // the app opens), then load the ranking, so a fresh report is in the list on this visit.
-      // The ranking RPC is Pro-gated server-side; skip it entirely for Free so it doesn't error.
-      void Promise.allSettled([flushQueuedPhishingReports(), flushNativeCommunityReports()]).then(() => {
-        if (subscriptionTier === 'pro') void refreshViralRanking();
-      });
+      refreshDashboard();
       tour.checkNow();
+      // Coming back to the app (for example after blocking a message from a real-time warning)
+      // doesn't refocus this screen, so refresh on return to the foreground as well.
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') refreshDashboard();
+      });
+      return () => subscription.remove();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [range, refreshCommunity, refreshMonitoringAndHistory, refreshViralRanking, subscriptionTier]),
+    }, [refreshDashboard]),
   );
 
   const changeScanning = useCallback(
@@ -398,7 +438,7 @@ export default function DashboardScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <StatusBar style="light" />
         <View style={styles.appBar}>
-          <ShieldMark size={25} colors={colors} />
+          <BrandLogo size={44} />
           <View style={styles.brandCopy}>
             <Text style={styles.brand}>NotiCare</Text>
             <Text style={styles.tagline}>Smishing Shield</Text>
@@ -547,7 +587,7 @@ export default function DashboardScreen() {
                 onPress={() =>
                   Alert.alert(
                     'Most reported phishing messages',
-                    'When someone reports a dangerous message, its exact text is shared here so other NotiCare users can recognize it.\n\nManual scans: reported with Report & Block after a Manual Scan.\nReal-time: reported with Block & Report on a real-time warning.\n\nA score rises toward 100 as more people report the same message from that source.',
+                    'When someone reports a dangerous message, its exact text is shared here so other NotiCare users can recognize it.\n\nManual scans: reported with Report & Block after a Manual Scan.\nReal-time: reported with Block & Report on a real-time warning.\n\nThe score on the right is the risk score NotiCare gave the message (the highest from any report). Messages reported by more people rank higher.',
                   )
                 }
                 hitSlop={10}
@@ -574,7 +614,7 @@ export default function DashboardScreen() {
                           if (active) return;
                           viralSourceRef.current = key;
                           setViralSource(key);
-                          void refreshViralRanking(key);
+                          void syncReportsAndRanking(key);
                         }}
                         style={[styles.viralTab, active && styles.viralTabActive]}
                         accessibilityRole="tab"
@@ -854,6 +894,7 @@ function createStyles(colors: ThemeColors) {
     viralScoreBox: { flexDirection: 'row', alignItems: 'flex-end' },
     viralScoreValue: { color: colors.danger, fontWeight: '800', fontSize: 18 },
     viralScoreMax: { color: colors.textMuted, fontSize: 11, marginBottom: 2 },
+    viralScoreMissing: { color: colors.textMuted, fontWeight: '800', fontSize: 18 },
     localTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
     localTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
     historyLink: { color: colors.link, fontWeight: '700', fontSize: 12 },

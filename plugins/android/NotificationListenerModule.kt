@@ -98,17 +98,25 @@ class NotificationListenerModule(
   }
 
   /**
-   * Prompts the system's "ignore battery optimizations" dialog for this app.
-   * Without this exemption, OEM battery managers can kill NotiCare in the
-   * background and miss incoming SMS notifications until Android restarts the
-   * listener service, which can take well over a minute.
+   * Opens NotiCare's App info screen, where the user can set Battery to "Unrestricted".
+   * Without that, OEM battery managers can kill NotiCare in the background and miss incoming
+   * SMS notifications until Android restarts the listener service.
+   *
+   * Deliberately avoids ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: that direct prompt needs
+   * the REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission, which Google Play restricts to a short
+   * list of app types. Falls back to the system-wide battery optimization list.
    */
   @ReactMethod
   fun requestIgnoreBatteryOptimizations(promise: Promise) {
     try {
-      val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+      val appInfo = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
         data = Uri.parse("package:${appContext.packageName}")
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      val intent = if (appInfo.resolveActivity(appContext.packageManager) != null) {
+        appInfo
+      } else {
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
       appContext.startActivity(intent)
       promise.resolve(true)
@@ -358,6 +366,7 @@ class NotificationListenerModule(
               putNullableString("sampleSender", report.sampleSender)
               putArray("indicatorCodes", Arguments.createArray().apply { report.indicatorCodes.forEach(::pushString) })
               putString("ruleVersion", report.ruleVersion)
+              report.riskScore?.let { putInt("riskScore", it) } ?: putNull("riskScore")
               putDouble("createdAt", report.createdAt.toDouble())
             })
           }

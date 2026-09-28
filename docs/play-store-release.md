@@ -1,0 +1,90 @@
+# Google Play release checklist
+
+What to enter in the Play Console for NotiCare, and the steps that happen outside the code.
+
+## 1. Before the first build
+
+- [ ] Apply the account-deletion migration to the live database:
+      `npx supabase db push --workdir backend` (adds `delete_my_account`). Until then, **Delete account** in the app shows "Unable to delete account".
+- [ ] Push `master` so Render redeploys the admin site, then check that these open without signing in:
+  - https://admin.noticare.site/privacy
+  - https://admin.noticare.site/delete-account
+- [ ] Make sure **support@noticare.site** receives email (it is the contact on both pages), or replace it in
+      `admin/public/privacy.html` and `admin/public/delete-account.html`.
+- [ ] Add a reviewer test number in Supabase: **Authentication → Sign In / Providers → Phone → Test phone numbers
+      and OTPs**: `639171234567=123456`. Test numbers never send a real SMS. Set **Test OTPs Valid Until** well
+      past the review and closed-test period (for example a year ahead), or the reviewer login stops working.
+
+## 2. Build
+
+```
+npm run build:android:production
+```
+
+This makes a signed `.aab` on EAS (EAS manages the upload key; the version code increases automatically). Do not
+upload a locally built release: the local Gradle config signs it with the debug key.
+
+## 3. Play Console: App content
+
+**Privacy policy:** `https://admin.noticare.site/privacy`
+
+**App access → All or some functionality is restricted:**
+
+> Sign in with phone number +63 917 123 4567 and code 123456 (a test number; no SMS is sent). To see a scam warning,
+> open the Manual Scan tab and paste: "Your GCash account is suspended. Verify now at http://gcash-verify.xyz"
+
+**Data safety:**
+
+| Question | Answer |
+|---|---|
+| Collects or shares user data? | Yes |
+| Encrypted in transit? | Yes |
+| Users can request deletion? | Yes, in the app and at https://admin.noticare.site/delete-account |
+| Personal info → Phone number | Collected. Purpose: Account management. Required. |
+| Messages → SMS or MMS | Collected **and shared** (other users see reported scam text). Purpose: App functionality, Fraud prevention and security. **Optional** (only on Block & Report). |
+| App activity → Other actions (scan results) | Collected. Purpose: Analytics, App functionality. Required when signed in. |
+| Device or other IDs | Collected (random installation ID). Purpose: App functionality. |
+| Financial info → Purchase history | Collected (plan status only). Payments go through PayMongo. |
+
+**Account deletion URL:** `https://admin.noticare.site/delete-account`
+
+**Target audience:** 18 and over (keeps the app out of Families policy review).
+
+## 4. Play Console: Permission declarations
+
+**Full-screen intent (`USE_FULL_SCREEN_INTENT`)**
+
+Google grants this by default only to calling and alarm apps. Declare it and explain:
+
+> NotiCare shows a full-screen warning on the lock screen when an incoming SMS is a likely phishing scam, so the user
+> sees it before they open the message and tap its link. It is only used for messages scored Dangerous.
+
+If Google declines, the app still works: Android turns the warning into a heads-up banner, and the "Display over
+other apps" warning still covers the screen while the phone is in use.
+
+**Notification access, Display over other apps, default browser**
+
+No form is needed, but the store description and screenshots must show the in-app explanation that appears before
+each permission is requested (onboarding slide 2, and the Settings prompts).
+
+## 5. Store listing
+
+- **App name:** NotiCare
+- **Short description** (80 characters max):
+  "Blocks scam texts and warns you before you tap a phishing link."
+- **App icon:** 512×512 PNG (`play-store-icon-512.png`, generated from the logo)
+- **Feature graphic:** 1024×500 PNG (still needed)
+- **Phone screenshots:** at least 2, for example the Dashboard, a warning with the score breakdown, Manual Scan, and
+  the Safe Link warning.
+- **Category:** Tools. **Contact email:** the same support address.
+
+## 6. Testing requirement
+
+Personal developer accounts created after 13 November 2023 must run a **closed test with at least 12 testers for 14
+days in a row** before they can apply for production access. Start the closed test as soon as the first build is
+uploaded.
+
+## Known gaps (not policy blockers)
+
+- Filipino-language scam phrases score lower than English ones.
+- Some older queued reports keep being rejected by the server (unknown rule version) and retry forever.

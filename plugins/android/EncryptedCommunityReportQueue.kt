@@ -37,13 +37,22 @@ object EncryptedCommunityReportQueue {
     val sampleSender: String?,
     val indicatorCodes: List<String>,
     val ruleVersion: String,
+    /** The detector's 0-100 risk score for this message; null for reports queued before it was stored. */
+    val riskScore: Int?,
     val createdAt: Long,
     val attemptCount: Int,
     val nextAttemptAt: Long,
   )
 
   @Synchronized
-  fun enqueue(context: Context, messageText: String, sampleSender: String?, indicatorCodes: List<String>, ruleVersion: String) {
+  fun enqueue(
+    context: Context,
+    messageText: String,
+    sampleSender: String?,
+    indicatorCodes: List<String>,
+    ruleVersion: String,
+    riskScore: Int,
+  ) {
     runCatching {
       val reports = read(context).toMutableList()
       reports += Report(
@@ -52,6 +61,7 @@ object EncryptedCommunityReportQueue {
         sampleSender = sampleSender?.take(120),
         indicatorCodes = indicatorCodes.distinct().take(32),
         ruleVersion = ruleVersion,
+        riskScore = riskScore.coerceIn(0, 100),
         createdAt = System.currentTimeMillis(),
         attemptCount = 0,
         nextAttemptAt = 0L,
@@ -173,6 +183,7 @@ object EncryptedCommunityReportQueue {
     put("sampleSender", report.sampleSender)
     put("indicatorCodes", JSONArray(report.indicatorCodes))
     put("ruleVersion", report.ruleVersion)
+    report.riskScore?.let { put("riskScore", it) }
     put("createdAt", report.createdAt)
     put("attemptCount", report.attemptCount)
     put("nextAttemptAt", report.nextAttemptAt)
@@ -192,6 +203,7 @@ object EncryptedCommunityReportQueue {
       sampleSender = json.optString("sampleSender").takeIf { it.isNotBlank() },
       indicatorCodes = codes,
       ruleVersion = json.optString("ruleVersion"),
+      riskScore = if (json.has("riskScore")) json.optInt("riskScore").coerceIn(0, 100) else null,
       createdAt = json.optLong("createdAt"),
       attemptCount = json.optInt("attemptCount").coerceAtLeast(0),
       nextAttemptAt = json.optLong("nextAttemptAt").coerceAtLeast(0),

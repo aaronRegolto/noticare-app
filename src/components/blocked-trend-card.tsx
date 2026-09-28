@@ -8,7 +8,7 @@ import { axisTicks, blockedSeries, type BlockedBucket } from '@/src/features/com
 import type { ThemeColors } from '@/src/theme/palette';
 
 const RANGES: { key: CommunityRange; label: string; period: string }[] = [
-  { key: 'today', label: 'Today', period: 'today (UTC)' },
+  { key: 'last_24_hours', label: '24 hours', period: 'in the last 24 hours' },
   { key: 'last_7_days', label: '7 days', period: 'in the last 7 days' },
   { key: 'last_30_days', label: '30 days', period: 'in the last 30 days' },
   { key: 'last_6_months', label: '6 months', period: 'in the last 6 months' },
@@ -19,7 +19,7 @@ const MARGIN = { top: 10, right: 4, bottom: 26, left: 28 };
 
 function bucketLabel(start: number, range: CommunityRange, long = false) {
   const date = new Date(start);
-  if (range === 'today') {
+  if (range === 'last_24_hours' || range === 'today') {
     const hour = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(date);
     return long
       ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)}, ${hour}`
@@ -44,7 +44,7 @@ function bucketLabel(start: number, range: CommunityRange, long = false) {
 
 /** Which buckets get an x-axis label: every one for short ranges, evenly spaced otherwise. */
 function labelIndexes(count: number, range: CommunityRange) {
-  const every = range === 'today' ? 6 : range === 'last_30_days' ? 7 : 1;
+  const every = range === 'last_24_hours' || range === 'today' ? 6 : range === 'last_30_days' ? 7 : 1;
   const indexes: number[] = [];
   for (let index = count - 1; index >= 0; index -= every) indexes.unshift(index);
   return indexes;

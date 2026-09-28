@@ -130,18 +130,18 @@ object NotiCareNotifications {
   /** A message the user already blocked arrived again and was handled without a warning. */
   fun showBlockedAgain(context: Context, hidden: Boolean) {
     ensureChannels(context)
-    val body = if (hidden) {
-      "A message you blocked earlier arrived again. NotiCare hid it for you, so there's nothing you need to do."
+    val detail = if (hidden) {
+      "Already blocked. You blocked this message before, so NotiCare hid it again. Nothing else to do."
     } else {
-      "A message you blocked earlier arrived again. Don't open its links or reply to it."
+      "Already blocked. You blocked this message before, but Android didn't let NotiCare hide it this time. Don't open its links or reply."
     }
     notificationManager(context)?.notify(
       repeatNotificationId,
       builder(context, repeatChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle(if (hidden) "Blocked message received again" else "Blocked message received again, not hidden")
-        .setContentText(body)
-        .setStyle(Notification.BigTextStyle().bigText(body))
+        .setContentTitle("Blocked message notification")
+        .setContentText("Already blocked")
+        .setStyle(Notification.BigTextStyle().bigText(detail))
         .setContentIntent(historyIntent(context, null))
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)

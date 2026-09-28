@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandLogo } from '@/src/components/brand-logo';
 import {
   countryFromPhone,
   formatPhoneNumber,
@@ -130,9 +131,7 @@ export default function LoginScreen() {
       <StatusBar style="dark" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', default: undefined })}>
         <View style={styles.brandArea}>
-          <View style={styles.shield}>
-            <Ionicons name="shield-checkmark" size={39} color="#00C88B" />
-          </View>
+          <BrandLogo size={84} />
           <Text style={styles.brand}>NotiCare</Text>
           <Text style={styles.tagline}>Smishing Shield</Text>
         </View>

@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandLogo } from '@/src/components/brand-logo';
 export default function AboutScreen() {
   const router = useRouter();
   const version = Constants.expoConfig?.version ?? '1.0.0';
@@ -19,9 +20,7 @@ export default function AboutScreen() {
         <View style={styles.spacer} />
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.logo}>
-          <Ionicons name="shield-checkmark" size={46} color="#00B87C" />
-        </View>
+        <BrandLogo size={96} />
         <Text style={styles.name}>NotiCare</Text>
         <Text style={styles.tagline}>Smishing Shield · Version {version}</Text>
         <View style={styles.card}>
@@ -38,9 +37,7 @@ export default function AboutScreen() {
             Android or the Messages app may not permit notification suppression.
           </Text>
         </View>
-        <Text style={styles.footer}>
-          NotiCare is built to help you spot scam texts before you act on them.
-        </Text>
+        <Text style={styles.footer}>NotiCare is built to help you spot scam texts before you act on them.</Text>
       </ScrollView>
     </SafeAreaView>
   );

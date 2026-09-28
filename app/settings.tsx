@@ -6,12 +6,13 @@ import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/providers/AuthProvider';
+import { useOnboarding } from '@/src/providers/OnboardingProvider';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
 import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
 import { detectPhilippineCarrier } from '@/src/features/auth/phone';
 import { logError } from '@/src/services/logger';
-import { isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
+import { deleteAccount, isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
 import {
   getInstalledBrowsers,
   isDefaultBrowser,
@@ -95,15 +96,13 @@ function PhoneChip({
     <View style={[styles.phoneChip, primary && styles.phoneChipPrimary]}>
       <View>
         <Text style={styles.phoneChipNumber}>{maskPhone(phone)}</Text>
-        <Text style={styles.phoneChipMeta}>{primary ? 'Primary' : 'Linked'}{carrier ? ` · ${carrier}` : ''}</Text>
+        <Text style={styles.phoneChipMeta}>
+          {primary ? 'Primary' : 'Linked'}
+          {carrier ? ` · ${carrier}` : ''}
+        </Text>
       </View>
       {onRemove ? (
-        <Pressable
-          onPress={onRemove}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${phone}`}
-        >
+        <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Remove ${phone}`}>
           <Ionicons name="close-circle" size={18} color={colors.textMuted} />
         </Pressable>
       ) : null}
@@ -383,6 +382,20 @@ export default function SettingsScreen() {
     );
   }, []);
 
+  const { restart: restartOnboarding } = useOnboarding();
+  // Signing out also resets onboarding, so whoever signs in next on this phone gets the full
+  // first-run flow (onboarding, then the User Guide) instead of landing on the Dashboard.
+  const signOutAndResetOnboarding = useCallback(
+    () =>
+      signOut()
+        .then(() => restartOnboarding())
+        .catch((error) => {
+          logError('sign-out-failed', error);
+          Alert.alert('Unable to sign out', 'Please check your connection and try again.');
+        }),
+    [signOut, restartOnboarding],
+  );
+
   const confirmSignOut = useCallback(() => {
     Alert.alert(
       'Sign out?',
@@ -395,7 +408,7 @@ export default function SettingsScreen() {
             void setScanningEnabled(false)
               .catch(() => undefined)
               .finally(() => {
-                void signOut();
+                void signOutAndResetOnboarding();
               });
           },
         },
@@ -408,13 +421,52 @@ export default function SettingsScreen() {
               .then(() => clearHistory())
               .catch(() => undefined)
               .finally(() => {
-                void signOut();
+                void signOutAndResetOnboarding();
               });
           },
         },
       ],
     );
-  }, [signOut]);
+  }, [signOutAndResetOnboarding]);
+
+  const [deleting, setDeleting] = useState(false);
+  const deleteAccountNow = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+    } catch (error) {
+      setDeleting(false);
+      logError('delete-account-failed', error);
+      Alert.alert(
+        'Unable to delete account',
+        'Your account was not deleted. Check your connection and try again, or see admin.noticare.site/delete-account.',
+      );
+      return;
+    }
+    // The account is gone; wipe what this phone still holds for it and start fresh at Login.
+    await setScanningEnabled(false).catch(() => undefined);
+    await clearHistory().catch(() => undefined);
+    await restartOnboarding().catch(() => undefined);
+  }, [restartOnboarding]);
+
+  const confirmDeleteAccount = useCallback(() => {
+    Alert.alert(
+      'Delete your account?',
+      'This permanently deletes your NotiCare account, your linked phone numbers, your plan, and your saved message history on this phone. Scam messages you already reported stay in the community list without your account attached. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Are you sure?', 'Your account will be deleted right away.', [
+              { text: 'Keep account', style: 'cancel' },
+              { text: 'Delete account', style: 'destructive', onPress: () => void deleteAccountNow() },
+            ]),
+        },
+      ],
+    );
+  }, [deleteAccountNow]);
 
   const current = statusError
     ? { title: 'Unavailable', tone: colors.danger, message: statusError }
@@ -538,15 +590,15 @@ export default function SettingsScreen() {
           {status?.batteryOptimizationExempt === false ? (
             <View style={styles.batteryWarning}>
               <Text style={styles.batteryWarningText}>
-                Android’s battery manager can pause NotiCare in the background and delay or miss new messages. Allow
-                NotiCare to run unrestricted to keep scanning reliable.
+                Android’s battery manager can pause NotiCare in the background and delay or miss new messages. In App
+                info, open Battery and choose Unrestricted to keep scanning reliable.
               </Text>
               <Pressable
                 onPress={() => void requestIgnoreBatteryOptimizations().then(() => void refreshStatus())}
                 style={styles.batteryWarningButton}
                 accessibilityRole="button"
               >
-                <Text style={styles.batteryWarningButtonText}>Allow background activity</Text>
+                <Text style={styles.batteryWarningButtonText}>Open App info</Text>
               </Pressable>
             </View>
           ) : null}
@@ -628,9 +680,7 @@ export default function SettingsScreen() {
                 accessibilityLabel={`Use ${browser.label} for safe links`}
               >
                 <Text style={styles.browserLabel}>{browser.label}</Text>
-                {browser.isPreferred ? (
-                  <Ionicons name="checkmark-circle" size={19} color={colors.accent} />
-                ) : null}
+                {browser.isPreferred ? <Ionicons name="checkmark-circle" size={19} color={colors.accent} /> : null}
               </Pressable>
             ))
           )}
@@ -666,8 +716,8 @@ export default function SettingsScreen() {
           {status?.fullScreenWarnings && status.fullScreenIntentPermitted === false ? (
             <View style={styles.batteryWarning}>
               <Text style={styles.batteryWarningText}>
-                Android is currently blocking full-screen warnings for NotiCare, so dangerous messages will only show
-                as a banner. Allow full-screen notifications to restore the immersive warning.
+                Android is currently blocking full-screen warnings for NotiCare, so dangerous messages will only show as
+                a banner. Allow full-screen notifications to restore the immersive warning.
               </Text>
               <Pressable
                 onPress={() => void requestFullScreenIntentPermission().then(() => void refreshStatus())}
@@ -763,6 +813,18 @@ export default function SettingsScreen() {
             colors={colors}
           />
         </View>
+        {session && !isDevelopmentPhoneLogin && isSupabaseConfigured ? (
+          <View style={styles.card}>
+            <SettingRow
+              icon="person-remove-outline"
+              title={deleting ? 'Deleting account…' : 'Delete account'}
+              subtitle="Permanently delete your account and its data"
+              onPress={deleting ? () => undefined : confirmDeleteAccount}
+              destructive
+              colors={colors}
+            />
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

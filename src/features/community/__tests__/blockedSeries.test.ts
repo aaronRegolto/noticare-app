@@ -53,3 +53,21 @@ describe('axisTicks', () => {
     expect(axisTicks(42)).toEqual([0, 20, 40, 60]);
   });
 });
+
+describe('blockedSeries last_24_hours', () => {
+  it('covers the 24 hours ending with the current hour', () => {
+    const series = blockedSeries(
+      [
+        { date: '2026-09-27T12:00:00+00:00', blocked_count: 2 },
+        { date: '2026-09-28T11:00:00+00:00', blocked_count: 3 },
+      ],
+      'last_24_hours',
+      new Date('2026-09-28T11:20:00Z'),
+    );
+    expect(series).toHaveLength(24);
+    expect(new Date(series[0].start).toISOString()).toBe('2026-09-27T12:00:00.000Z');
+    expect(new Date(series[23].start).toISOString()).toBe('2026-09-28T11:00:00.000Z');
+    expect(series[0].blocked).toBe(2);
+    expect(series[23].blocked).toBe(3);
+  });
+});
