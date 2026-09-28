@@ -61,3 +61,53 @@ describe('credential wording regressions', () => {
     expect(evaluateThreat(message).level).toBe('safe');
   });
 });
+
+/** Rule set 2026.09.29: common Philippine scam families that 2026.09.10 scored Safe. */
+const PHILIPPINE_SCAM_REGRESSIONS = [
+  'Hi Ma, nasira phone ko at ito ang bago kong number. Kailangan ko ng PHP 15,000 ngayon; send mo sa GCash na ito.',
+  'Hello Ma, new number ko ito. Nawala phone ko. Pasend naman ng PHP 3,000 sa GCash ko ngayon, emergency lang.',
+  "Boss, changed bank account po. Please send today's company payment to the attached personal account immediately.",
+  'Sir, this is your manager. I need you to buy 5 gift cards for a client now. Send me the codes.',
+  'Your parcel could not be delivered. Pay the PHP 17 redelivery charge at https://post-delivery.example/track.',
+  'LBC: May kulang na delivery fee na PHP 25. Magbayad ngayon sa https://lbc-fee.example para hindi ibalik ang parcel.',
+  'CONGRATS! You won PHP 75,000 from GCash anniversary promo. Pay the PHP 250 processing fee to claim: https://gcash-promo.example',
+  'Congratulations! Your number won P50,000. To claim, send your full name, bank account number and PIN within 24 hours.',
+  'May trabaho ka na! Earn PHP 5,000 daily by liking products. Deposit PHP 300 to activate your task account.',
+  'Online loan approved kahit hindi ka nag-apply. I-click ang https://instant-loan.example at magbayad ng insurance fee.',
+  'BPI: Unusual login detected on your account. Confirm it was you by sending your password and OTP immediately.',
+  'HR recruitment: You are hired without an interview. Submit your ID and online banking password to receive your salary.',
+  'Your account passed initial verification. To finish, send a photo of your card showing the number and security code.',
+  'PhilHealth refund: May ibabalik na PHP 6,400 sa iyo. I-verify ang ATM card sa https://philhealth-refund.example.',
+  'Na-suspend ang GCash wallet mo. I-verify ngayon sa http://gcash-ph.xyz para hindi ma-lock ang account.',
+  'Meralco disconnection notice: Putol ang kuryente mo mamayang 6 PM unless you pay at https://meralco-bill.example.',
+  'May maling padala akong PHP 2,000 sa iyo. Ibalik gamit ang refund link na https://wallet-return.example.',
+  'URGENT: Your Maya account is locked. Send your OTP code now to verify your identity or your account will be permanently closed within 1 hour.',
+] as const;
+
+/** Ordinary messages that share words with those scams and must stay Safe. */
+const PHILIPPINE_LEGITIMATE_LOOKALIKES = [
+  'Ma, ito na bago kong number. Save mo ha, kita tayo mamaya sa bahay.',
+  'Pa, pwede mo ba akong padalhan ng pera pang-tuition? Salamat po.',
+  'Pls send me your bank account number so I can pay you back for lunch.',
+  'Hi! Your Shopee order #2839 has been shipped. Track it in the Shopee app.',
+  'Globe: Enjoy FREE 1GB data when you register to GoSURF50 today! Dial *143#.',
+  'Meralco: Your bill of PHP 2,345.60 is due on Oct 5. Pay via the Meralco app or payment centers.',
+  'Your Home Credit loan payment of PHP 1,500 is due tomorrow. Pay at any partner outlet.',
+  'Won P500 sa raffle ng barangay! Libre ko kayo mamaya haha',
+  'Smart: Your SIM registration is complete. Thank you!',
+  'Please pay the registration fee at the school cashier before Friday.',
+  'Meeting at 3pm tomorrow, bring the 2nd draft and 100gb flash drive.',
+  'Never share your OTP or MPIN with anyone. GCash will never ask for it.',
+  'All sounds good. Fingers . Makes it difficult to type',
+] as const;
+
+describe('Philippine scam families (rule set 2026.09.29)', () => {
+  it.each(PHILIPPINE_SCAM_REGRESSIONS)('warns: %s', (message) => {
+    expect(evaluateThreat(message).level).not.toBe('safe');
+  });
+  it.each(PHILIPPINE_LEGITIMATE_LOOKALIKES)('safe with no warning signs: %s', (message) => {
+    const result = evaluateThreat(message);
+    expect(result.level).toBe('safe');
+    expect(result.reasons).toEqual([]);
+  });
+});

@@ -7,11 +7,11 @@ import java.util.Locale
 import kotlin.math.min
 
 /**
- * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.09.10).
+ * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.09.29).
  * Both implementations are deterministic, offline, and make no network request.
  */
 object SmishingEvaluator {
-  const val RULE_VERSION = "2026.09.10"
+  const val RULE_VERSION = "2026.09.29"
   private const val scoreCap = 100
   private const val suspiciousThreshold = 30
   private const val dangerousThreshold = 70
@@ -135,6 +135,18 @@ object SmishingEvaluator {
     "The message threatens to remove access or disconnect a service.",
     17,
   )
+  private val moneyTransferRequest = Rule(
+    "money-transfer-request",
+    "Request to send money to a personal account",
+    "The message asks you to send money, gift cards, or a payment to a personal account or new number, a common trick by people pretending to be family, a boss, or a company.",
+    30,
+  )
+  private val advanceFeeRequest = Rule(
+    "advance-fee-request",
+    "Upfront fee to receive money",
+    "The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.",
+    20,
+  )
   private val obfuscatedText = Rule(
     "obfuscated-text",
     "Obfuscated text",
@@ -146,11 +158,17 @@ object SmishingEvaluator {
     TextRule(
       credentialRequest,
       listOf(
-        insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username\s+and\s+password|card\s+number\s+and\s+cvv)\b"""),
+        insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username|card\s+number\s+and\s+cvv)\b"""),
         insensitive("""\b(?:paki[-\s]?(?:reply|send)|isumite|ibigay|ipadala|ilagay|i[-\s]?(?:send|type|share|reply))\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:otp|passcode|password|m?pin|cvv|bank\s+details)\b"""),
         insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|account(?:\s+details)?|bank(?:ing)?\s+details)\b"""),
         insensitive("""\b(?:share|forward)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin)\b"""),
         insensitive("""\b(?:ibigay|ipadala|i[-\s]?send|isend|ilagay|i[-\s]?type|itype|i[-\s]?share|ishare|ibahagi|i[-\s]?reply|ireply)\s+(?:(?:ang|yung|iyong|mo)\s+){0,2}(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|detalye(?:\s+ng\s+account)?)\b"""),
+        insensitive("""\b(?:entering|sending|providing|submitting|confirming|sharing|typing|updating|inputting)\s+(?:your\s+)?(?:(?:online|e[-\s]?wallet|wallet|banking|bank|card|account|email)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials)\b"""),
+        insensitive("""\b(?:send|provide|give|submit|enter|confirm|input|reply\s+with|type|share|update)\s+(?:(?:your|the)\s+)?[a-z]+\s+(?:and|&)\s+(?:(?:your|the)\s+)?(?:(?:online|e[-\s]?wallet|wallet|banking|bank|card)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|security\s+code)\b"""),
+        insensitive("""\b(?:reply\s+with|send|provide|submit|give|ipadala|isumite|ibigay)\s+(?:us\s+)?(?:your\s+|ang\s+(?:iyong\s+|inyong\s+)?)?(?:full\s+|buong\s+)?(?:name|pangalan)\b[^.!?\n]{0,80}?\b(?:bank\s+account|account\s+number|card\s+number|m?pin|otp|password|cvv)\b"""),
+        insensitive("""\b(?:send|upload|submit|ipadala)\s+(?:us\s+)?(?:a\s+)?(?:photo|picture|pic|screenshot|selfie)\s+(?:of\s+)?(?:your|the)\s+(?:card|atm|credit\s+card|debit\s+card|otp|cvv)\b"""),
+        insensitive("""\b(?:i[-\s]?confirm|iconfirm|i[-\s]?update|iupdate|i[-\s]?verify|iverify|isumite|ibigay|ipadala|ilagay)\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:[a-z]+\s+(?:at|and)\s+)?(?:bank\s+details|atm\s+card|card\s+(?:number|details)|personal\s+(?:data|details|info(?:rmation)?)|m?pin|otp|password|cvv)\b"""),
+        insensitive("""\b(?:sign(?:ing)?\s+in|log(?:ging)?\s+in|login)\s+(?:to|into|sa)\s+(?:your\s+|ang\s+(?:iyong\s+)?)?(?:e[-\s]?wallet|wallet|online\s+banking|bank\s+account|gcash|maya)\b(?!\s+app)"""),
       ),
       listOf("credential-request"),
       true,
@@ -162,6 +180,12 @@ object SmishingEvaluator {
         insensitive("""\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\b"""),
         insensitive("""\b(?:i[-\s]?verify|iverify|beripikahin|i[-\s]?update|iupdate)\s+(?:ang\s+)?(?:iyong\s+|mong\s+)?account\b"""),
         insensitive("""\b(?:mawawala|mawawalan)\s+(?:(?:ka\s+ng|ang)\s+)?access\b"""),
+        insensitive("""\b(?:registration|sim|subscription|e[-\s]?wallet|wallet)\s+(?:has\s+been\s+|is\s+|was\s+|will\s+be\s+)?(?:suspended|locked|restricted|deactivated|blocked|expired)\b"""),
+        insensitive("""\b(?:verify|validate|confirm)\s+(?:your\s+)?identity\b"""),
+        insensitive("""\b(?:expired\s+na\s+ang|expired)\s+(?:(?:ang|your|the)\s+)?sim\s+(?:verification|registration)\b"""),
+        insensitive("""\baccount\s+(?:was|has\s+been)\s+used\s+(?:for|to|in)\b"""),
+        insensitive("""\bunusual\s+(?:login|sign[-\s]?in|activity|transaction)\s+(?:was\s+)?detected\b"""),
+        insensitive("""\b(?:na|ma|mala)[-\s]?(?:suspend|lock|block|restrict)\s+ang\s+(?:(?:iyong|inyong)\s+)?(?:(?:gcash|maya|bank)\s+)?(?:account|wallet|e[-\s]?wallet|sim|number)\b"""),
       ),
       listOf("account-warning"),
     ),
@@ -172,6 +196,9 @@ object SmishingEvaluator {
         insensitive("""\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\s+(?:now|today|immediately|asap)\b"""),
         insensitive("""\b(?:limited time|final warning|last chance|within\s+\d+\s+(?:hours?|minutes?))\b"""),
         insensitive("""\b(?:ngayon\s+na|kaagad|agad|huling\s+paalala|huling\s+babala|limitado\s+ang\s+oras)\b"""),
+        insensitive("""\b(?:settle|magbayad|bayaran)\s+(?:(?:it|na)\s+)?(?:now|today|immediately|ngayon|agad|kaagad)\b"""),
+        insensitive("""\bfinal\s+(?:notice|demand)\b"""),
+        insensitive("""\b(?:i[-\s]?verify|iverify|i[-\s]?update|iupdate|i[-\s]?claim|iclaim|mag[-\s]?login)\s+(?:na\s+)?(?:ngayon|agad|kaagad)\b"""),
       ),
       listOf("urgency-pressure"),
     ),
@@ -182,6 +209,7 @@ object SmishingEvaluator {
         insensitive("""\b(?:pindutin|i[-\s]?click|iclick|buksan|bisitahin|visit)\s+(?:ang\s+)?(?:link|link\s+na\s+ito|dito)\b"""),
         insensitive("""\b(?:reply|text)\s+(?:yes|now|immediately)\b"""),
         insensitive("""\b(?:mag[-\s]?reply|magreply|sumagot)\s+(?:ngayon|agad|kaagad)\b"""),
+        insensitive("""\b(?:sign(?:ing)?\s+in|log(?:ging)?\s+in|login)\s+(?:at|here|via|through|sa)\b"""),
       ),
       listOf("link-or-reply-pressure"),
     ),
@@ -190,7 +218,14 @@ object SmishingEvaluator {
       listOf(
         insensitive("""\b(?:you(?:'| a)?ve\s+won|winner|claim\s+(?:your\s+)?(?:prize|reward)|free\s+(?:cash|load|gift)|lucky\s+winner)\b"""),
         insensitive("""\b(?:nanalo\s+ka|i[-\s]?claim|iclaim)\s+(?:ang\s+)?(?:premyo|reward|prize)\b"""),
-        insensitive("""\b(?:libreng\s+(?:load|cash|pera)|swerte\s+mong\s+nanalo)\b"""),
+        insensitive("""\b(?:libreng\s+(?:load|cash|pera|voucher|gift|regalo)|swerte\s+mong\s+nanalo)\b"""),
+        insensitive("""\b(?:nanalo\s+ka(?:\s+ng)?|you(?:'ve|\s+have)?\s+won)\s+(?:(?:php|p|₱|rs\.?|usd|\$)\s?\d[\d,]*|\d{1,3}(?:,\d{3})+|\d{4,}|(?:a|an)\s+(?:new\s+)?(?:phone|iphone|car|motorcycle|house|laptop|prize|reward|gift))"""),
+        insensitive("""\b(?:lottery|raffle|promo|anniversary|loyalty)\s+(?:prize|winner|reward)\b"""),
+        insensitive("""\b(?:(?:mobile\s+)?number|sim)\s+(?:has\s+)?won\b"""),
+        insensitive("""\bclaim\s+(?:your\s+)?free\b"""),
+        insensitive("""\b(?:hindi\s+ka\s+nag[-\s]?apply|without\s+(?:applying|an\s+application|an\s+interview)|may\s+trabaho\s+ka\s+na)\b"""),
+        insensitive("""\bearn\s+(?:up\s+to\s+)?(?:php|p|₱|\$|usd)?\s?[\d,]+\s*(?:daily|a\s+day|per\s+day|kada\s+araw)\b"""),
+        insensitive("""\b(?:liking|rating|reviewing)\s+(?:products|videos|posts|items)\b"""),
       ),
       listOf("prize-or-reward-bait"),
     ),
@@ -200,6 +235,8 @@ object SmishingEvaluator {
         insensitive("""\b(?:refund|reimbursement|cashback|cash back)\s+(?:is\s+)?(?:ready|available|pending|waiting)\b"""),
         insensitive("""\b(?:claim|process|release)\s+(?:your\s+)?(?:refund|cashback|cash back)\b"""),
         insensitive("""\b(?:i[-\s]?claim|iclaim|kunin)\s+(?:ang\s+)?(?:refund|cashback|balik\s+pera)\b"""),
+        insensitive("""\b(?:maling\s+padala|mali\s+(?:ang\s+)?(?:napadala|naipadala)|wrong\s+(?:transfer|padala|send)|sent\s+(?:it\s+|money\s+)?to\s+(?:you\s+)?by\s+mistake|sent\s+to\s+the\s+wrong\s+(?:number|account))\b"""),
+        insensitive("""\b(?:refund\s+(?:link|approved|form)|may\s+ibabalik)\b"""),
       ),
       listOf("refund-bait"),
     ),
@@ -209,6 +246,10 @@ object SmishingEvaluator {
         insensitive("""\b(?:parcel|package|delivery)\s+(?:delivery\s+)?(?:has\s+)?(?:failed|held|pending|stopped|requires\s+payment)\b"""),
         insensitive("""\b(?:delivery\s+attempt|parcel\s+delivery)\s+(?:failed|unsuccessful|missed)\b"""),
         insensitive("""\b(?:hindi\s+(?:na\s+)?(?:na)?deliver|na[-\s]?hold\s+ang\s+(?:iyong\s+)?(?:parcel|package)|may\s+bayad\s+ang\s+(?:iyong\s+)?parcel)\b"""),
+        insensitive("""\b(?:parcel|package|item|order|padala)\s+(?:could\s+not|couldn't|cannot|can't|was\s+not|wasn't)\s+be\s+delivered\b"""),
+        insensitive("""\b(?:parcel|package)\s+(?:mo\s+)?(?:ay\s+)?(?:naka|na)[-\s]?hold\b"""),
+        insensitive("""\b(?:re[-\s]?delivery\s+(?:fee|charge)|(?:unpaid|outstanding|kulang\s+na)\s+(?:delivery|shipping|customs)\s+(?:fee|charge)s?)\b"""),
+        insensitive("""\b(?:item|parcel|package|order)\s+will\s+be\s+(?:destroyed|disposed|returned\s+to\s+sender)\b"""),
       ),
       listOf("parcel-delivery-bait"),
     ),
@@ -218,6 +259,9 @@ object SmishingEvaluator {
         insensitive("""\b(?:unpaid|overdue|outstanding)\s+(?:bill|balance|payment)\b"""),
         insensitive("""\b(?:pay|settle)\s+(?:your\s+)?(?:bill|balance)\s+(?:now|today|immediately)\b"""),
         insensitive("""\b(?:hindi\s+bayad|may\s+utang|bayaran)\s+(?:ang\s+)?(?:bill|balanse|balance)\b"""),
+        insensitive("""\bunpaid\s+(?:[a-z]+\s+){0,2}(?:penalty|fine|fee|toll|bill|violation)\b"""),
+        insensitive("""\b(?:loan|account|payment)\s+(?:account\s+)?(?:is\s+)?(?:overdue|past\s+due|delinquent)\b"""),
+        insensitive("""\bunless\s+you\s+pay\b"""),
       ),
       listOf("unpaid-bill-pressure"),
     ),
@@ -235,8 +279,31 @@ object SmishingEvaluator {
         insensitive("""\b(?:lose|loss\s+of|avoid)\s+(?:your\s+)?(?:access|account|service)\b"""),
         insensitive("""\b(?:service|account)\s+(?:will\s+be\s+)?(?:disconnected|terminated|deactivated)\b"""),
         insensitive("""\b(?:mawawala|ma[-\s]?de[-\s]?deactivate|made-deactivate|mapuputol)\s+(?:ang\s+)?(?:access|account|serbisyo)\b"""),
+        insensitive("""\b(?:made[-\s]?deactivate|ma[-\s]?de[-\s]?deactivate|mapuputol|mawawala)\s+(?:na\s+)?(?:ang\s+)?(?:number|numero|sim|linya)\b"""),
+        insensitive("""\b(?:disconnection\s+notice|(?:putol|puputulin|mapuputol)\s+(?:na\s+)?ang\s+(?:kuryente|tubig|internet|linya|serbisyo))\b"""),
+        insensitive("""\bavoid\s+(?:[a-z]+\s+)?(?:suspension|disconnection|deactivation)\b"""),
       ),
       listOf("access-loss-threat"),
+    ),
+    TextRule(
+      moneyTransferRequest,
+      listOf(
+        insensitive("""\b(?:bago\s+(?:kong|ko\s+na|na)\s+(?:number|numero)|(?:my|this\s+is\s+my)\s+new\s+number|new\s+number\s+(?:ko|ito)|(?:nasira|nawala)\s+(?:ang\s+)?(?:phone|cellphone|cp)|naaksidente\s+ako|changed\s+(?:my\s+|our\s+)?(?:number|bank\s+account)|this\s+is\s+your\s+(?:company\s+)?(?:director|boss|ceo|manager|president))\b[\s\S]{0,160}?\b(?:pera|money|gcash|maya|gift\s+cards?|payment|bayad|php\s?\d)"""),
+        insensitive("""\b(?:pay|send|transfer|deposit|ipadala|magbayad)\b[\s\S]{0,50}?\b(?:private|personal)\s+(?:gcash|maya|bank|account|number)\b"""),
+        insensitive("""\b(?:bumili|buy|purchase)\s+(?:ka\s+)?(?:agad\s+)?(?:ng\s+)?(?:\d+\s+)?gift\s+cards?\b"""),
+      ),
+      listOf("money-transfer-request"),
+      true,
+    ),
+    TextRule(
+      advanceFeeRequest,
+      listOf(
+        insensitive("""\b(?:pay|magbayad|bayaran|deposit|send|magpadala)\s+(?:muna\s+)?(?:(?:the|a|an|ng|ang)\s+)?(?:(?:php|p|₱)\s?[\d.,]+\s+)?(?:processing|release|releasing|activation|insurance|clearance|claiming|verification|handling|redelivery|re-delivery)\s+(?:fee|charge)\b"""),
+        insensitive("""\bdeposit\s+(?:(?:php|p|₱)\s?)?[\d,]+\s+to\s+(?:activate|unlock|start|withdraw|release|claim)\b"""),
+        insensitive("""\b(?:magpadala|magbayad)\s+muna\b"""),
+      ),
+      listOf("advance-fee-request"),
+      true,
     ),
   )
 
@@ -280,7 +347,9 @@ object SmishingEvaluator {
 
   private val directUrlPattern = fromTypeScriptPattern("""(?:https?://|hxxps?://|www\.)[^\s<>"'`]+|(?:(?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9\u00C0-\uFFFF-]+\.)+(?:xn--[A-Za-z0-9-]{2,59}|[A-Za-z\u00C0-\uFFFF]{2,63}))(?::\d{2,5})?(?:/[^\s<>"'`]*)?""")
   private val spacedProtocolPattern = fromTypeScriptPattern("""\b(?:h(?:tt|xx)ps?)\s*:\s*/\s*/\s*(?:[A-Za-z0-9-]+\s*(?:\.|\[\.\]|\(\.\))\s*)+(?:[A-Za-z]{2,63})(?:\s*/\s*[^\s<>"'`]*)?""")
-  private val spacedDomainPattern = fromTypeScriptPattern("""\b(?:[A-Za-z0-9-]+\s*(?:\[\.\]|\(\.\)|\s+\.\s+)\s*)+(?:[A-Za-z]{2,63})\b""")
+  // "[.]" and "(.)" always mark a disguised link. A bare " . " only counts when it ends in a
+  // common link ending ("gcash . com"); otherwise sentences like "Fingers . Makes it" match.
+  private val spacedDomainPattern = fromTypeScriptPattern("""\b(?:[A-Za-z0-9-]+\s*(?:\[\.\]|\(\.\))\s*)+(?:[A-Za-z]{2,63})\b|\b(?:[A-Za-z0-9-]+\s+\.\s+)+(?:com|net|org|info|biz|xyz|top|site|online|link|click|live|shop|store|app|io|co|me|ph|cc|vip|ly|us|uk|asia|club|icu|buzz|cfd|sbs)\b""")
   private val trailingPunctuation = Regex("""[\],.!?;:'">}]+$""")
   private val misleadingPathPattern = insensitive("""/(?:[^/?#]+/)*(?:login|log-in|verify|verification|secure|security|payment|pay|prize|reward|parcel|delivery|account|wallet)(?:[/?#]|$)""")
   private val redirectParameterPattern = insensitive("""(?:^|[?&])(?:url|redirect|target|next|continue|dest|destination|return)=""")
@@ -292,8 +361,11 @@ object SmishingEvaluator {
   private val javascriptWhitespacePattern = Regex("""[\u0009-\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+""")
   private val substitutionTokenPattern = Regex("""[A-Za-z0-9@$!.-]{3,}""")
   private val substitutions = mapOf('@' to 'a', '$' to 's', '0' to 'o', '1' to 'i', '3' to 'e', '4' to 'a', '5' to 's', '7' to 't', '!' to 'i')
-  private val baitSignals = setOf("prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation")
-  private val urlContextSignals = setOf("credential-request", "account-warning", "prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation")
+  private val baitSignals = setOf("prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation", "advance-fee-request")
+  private val urlContextSignals = setOf("credential-request", "account-warning", "prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation", "access-loss-threat", "money-transfer-request", "advance-fee-request")
+  // Amounts, codes, and units such as P500, GoSURF50, bus8, 3pm, 1st, or 100gb: not leetspeak.
+  private val lettersThenDigits = Regex("""^[a-z]+\d+$""", regexOptions)
+  private val digitsThenUnit = Regex("""^\d+(?:am|pm|st|nd|rd|th|gb|mb|kb|tb|g|k|m|hrs?|mins?|secs?|yrs?|days?|pcs|x|s|mg|ml|kg|km|cm|mm|ft)$""", regexOptions)
 
   fun evaluate(message: String): ThreatResult {
     val normalized = normalizeInternal(message)
@@ -384,11 +456,16 @@ object SmishingEvaluator {
 
   private fun normalizeCharacterSubstitutions(value: String): String = substitutionTokenPattern.replace(value) { match ->
     val token = match.value
-    if ('.' in token || '-' in token || token.none(Char::isLetter) || token.none { it.isDigit() || it == '@' || it == '$' || it == '!' }) {
+    // A trailing "!" is punctuation ("Hi!"), not a disguised "i".
+    val core = token.trimEnd('!')
+    val suffix = token.substring(core.length)
+    if ('.' in token || '-' in token || core.none(Char::isLetter) || core.none { it.isDigit() || it == '@' || it == '$' || it == '!' } ||
+      lettersThenDigits.matches(core) || digitsThenUnit.matches(core)
+    ) {
       token
     } else {
-      val converted = token.map { character -> substitutions[character] ?: character }.joinToString("")
-      if (converted.count(Char::isLetter) >= 2) converted else token
+      val converted = core.map { character -> substitutions[character] ?: character }.joinToString("")
+      if (converted.count(Char::isLetter) >= 2) converted + suffix else token
     }
   }
 

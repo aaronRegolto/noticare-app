@@ -97,6 +97,11 @@ class SmishingEvaluatorParityTest {
    * Canonical TypeScript output digest for all 60 corpus cases. It includes the
    * level, capped score, URL count, and ordered reason codes, so a Kotlin change
    * cannot silently retain only the broad safe/suspicious/dangerous classes.
+   *
+   * As with the previous digest, "unicode-confusable-domain" includes url-punycode
+   * (Kotlin's IDN.toASCII turns the look-alike host into xn--). The TypeScript
+   * evaluator run under Jest leaves that host as Unicode and omits it, so a
+   * Jest-generated digest must add url-punycode to that one case.
    */
   @Test
   fun sharedSyntheticCorpusMatchesTypeScriptScoresReasonsAndUrlCounts() {
@@ -116,7 +121,7 @@ class SmishingEvaluatorParityTest {
 
     assertEquals(
       "Kotlin evaluator output differs from the TypeScript rule-bundle corpus.",
-      "acdb9d3673e5a3383596af42c1b888110d494de3b8f33a62ed2a45b11e40327b",
+      "ecfa92fc0fcc2c013c22c9fa591aac787b2b754c40b670cff53406fbee9e37fb",
       actualDigest,
     )
   }
@@ -160,7 +165,53 @@ class SmishingEvaluatorParityTest {
 
   @Test
   fun reportsTheSameVersionAsTheTypeScriptRuleBundle() {
-    assertEquals("2026.09.10", SmishingEvaluator.RULE_VERSION)
+    assertEquals("2026.09.29", SmishingEvaluator.RULE_VERSION)
+  }
+
+  /** Mirrors the rule set 2026.09.29 regressions in src/features/detection/__tests__/evaluator.test.ts. */
+  @Test
+  fun philippineScamFamiliesWarnAndLookalikesStaySafe() {
+    listOf(
+      "Hi Ma, nasira phone ko at ito ang bago kong number. Kailangan ko ng PHP 15,000 ngayon; send mo sa GCash na ito.",
+      "Hello Ma, new number ko ito. Nawala phone ko. Pasend naman ng PHP 3,000 sa GCash ko ngayon, emergency lang.",
+      "Boss, changed bank account po. Please send today's company payment to the attached personal account immediately.",
+      "Sir, this is your manager. I need you to buy 5 gift cards for a client now. Send me the codes.",
+      "Your parcel could not be delivered. Pay the PHP 17 redelivery charge at https://post-delivery.example/track.",
+      "LBC: May kulang na delivery fee na PHP 25. Magbayad ngayon sa https://lbc-fee.example para hindi ibalik ang parcel.",
+      "CONGRATS! You won PHP 75,000 from GCash anniversary promo. Pay the PHP 250 processing fee to claim: https://gcash-promo.example",
+      "Congratulations! Your number won P50,000. To claim, send your full name, bank account number and PIN within 24 hours.",
+      "May trabaho ka na! Earn PHP 5,000 daily by liking products. Deposit PHP 300 to activate your task account.",
+      "Online loan approved kahit hindi ka nag-apply. I-click ang https://instant-loan.example at magbayad ng insurance fee.",
+      "BPI: Unusual login detected on your account. Confirm it was you by sending your password and OTP immediately.",
+      "HR recruitment: You are hired without an interview. Submit your ID and online banking password to receive your salary.",
+      "Your account passed initial verification. To finish, send a photo of your card showing the number and security code.",
+      "PhilHealth refund: May ibabalik na PHP 6,400 sa iyo. I-verify ang ATM card sa https://philhealth-refund.example.",
+      "Na-suspend ang GCash wallet mo. I-verify ngayon sa http://gcash-ph.xyz para hindi ma-lock ang account.",
+      "Meralco disconnection notice: Putol ang kuryente mo mamayang 6 PM unless you pay at https://meralco-bill.example.",
+      "May maling padala akong PHP 2,000 sa iyo. Ibalik gamit ang refund link na https://wallet-return.example.",
+      "URGENT: Your Maya account is locked. Send your OTP code now to verify your identity or your account will be permanently closed within 1 hour.",
+    ).forEach { message ->
+      val result = SmishingEvaluator.evaluate(message)
+      assertEquals("$message: score=${result.score}, reasons=${result.reasons.map { it.code }}", true, result.level != ThreatLevel.SAFE)
+    }
+    listOf(
+      "Ma, ito na bago kong number. Save mo ha, kita tayo mamaya sa bahay.",
+      "Pa, pwede mo ba akong padalhan ng pera pang-tuition? Salamat po.",
+      "Pls send me your bank account number so I can pay you back for lunch.",
+      "Hi! Your Shopee order #2839 has been shipped. Track it in the Shopee app.",
+      "Globe: Enjoy FREE 1GB data when you register to GoSURF50 today! Dial *143#.",
+      "Meralco: Your bill of PHP 2,345.60 is due on Oct 5. Pay via the Meralco app or payment centers.",
+      "Your Home Credit loan payment of PHP 1,500 is due tomorrow. Pay at any partner outlet.",
+      "Won P500 sa raffle ng barangay! Libre ko kayo mamaya haha",
+      "Smart: Your SIM registration is complete. Thank you!",
+      "Please pay the registration fee at the school cashier before Friday.",
+      "Meeting at 3pm tomorrow, bring the 2nd draft and 100gb flash drive.",
+      "Never share your OTP or MPIN with anyone. GCash will never ask for it.",
+      "All sounds good. Fingers . Makes it difficult to type",
+    ).forEach { message ->
+      val result = SmishingEvaluator.evaluate(message)
+      assertEquals("$message: reasons=${result.reasons.map { it.code }}", emptyList<String>(), result.reasons.map { it.code })
+    }
   }
   @Test
   fun credentialWordingAndSafetyAdvice() {

@@ -14,6 +14,7 @@ const BAIT_SIGNALS = new Set([
   'parcel-delivery-bait',
   'unpaid-bill-pressure',
   'government-aid-impersonation',
+  'advance-fee-request',
 ]);
 
 const URL_CONTEXT_SIGNALS = new Set([
@@ -24,6 +25,9 @@ const URL_CONTEXT_SIGNALS = new Set([
   'parcel-delivery-bait',
   'unpaid-bill-pressure',
   'government-aid-impersonation',
+  'access-loss-threat',
+  'money-transfer-request',
+  'advance-fee-request',
 ]);
 
 /**

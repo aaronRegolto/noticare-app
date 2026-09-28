@@ -108,7 +108,7 @@ def report():
                 return f'{value} ({value / len(group):.1%})'
             lines.append(f"| {source} | {label} | {len(group)} | {cell(counts['model_warnings'])} | {cell(counts['rule_warnings'])} | {cell(counts['combined_warnings'])} |")
     lines += ['', '## Limits', ''] + [f'- {item}' for item in provenance['limitations']]
-    lines += ['', 'Thresholds and model weights were not tuned on this evaluation. Credential rule coverage was expanded after inspecting missed examples; these corpora are development diagnostics, not independent validation. No source message bodies are included in this report.', '',
+    lines += ['', 'Thresholds and model weights were not tuned on this evaluation. Rule coverage was expanded after inspecting missed examples: rule set 2026.09.29 was written using the 50 Philippine phishing rows above, so their detection rate is not an unbiased estimate. As a separate check at that time, 12 newly written scam variants were all flagged and 20 newly written lookalike legitimate messages all stayed Safe; a subset of both is kept as the Philippine regression tests in src/features/detection/__tests__/evaluator.test.ts. These corpora are development diagnostics, not independent validation. No source message bodies are included in this report.', '',
               '## Reproduce', '', 'See `scripts/evaluate-model.py` and `docs/ML_VALIDATION.md`.', '',
               f"Kotlin rules SHA-256: `{digest(ROOT / 'plugins/android/SmishingEvaluator.kt')}`", '',
               f"Model SHA-256: `{provenance['model_sha256']}`", '',

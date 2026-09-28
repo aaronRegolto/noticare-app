@@ -6,7 +6,7 @@ import type { DetectionRuleBundle } from './types';
  * We intentionally score combinations, rather than a brand name or one keyword alone.
  */
 export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
-  version: '2026.09.10',
+  version: '2026.09.29',
   scoreCap: 100,
   thresholds: {
     suspicious: 30,
@@ -22,11 +22,23 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       signals: ['credential-request'],
       ignoreWhenPrecededBySafetyAdvice: true,
       patterns: [
-        String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username\s+and\s+password|card\s+number\s+and\s+cvv)\b`,
+        String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type|share|forward|update)\s+(?:(?:your|the)\s+)?(?:(?:six[-\s]digit|6[-\s]digit|four[-\s]digit|4[-\s]digit|e[-\s]?wallet|wallet|banking|bank|card|account)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials|username|card\s+number\s+and\s+cvv)\b`,
         String.raw`\b(?:paki[-\s]?(?:reply|send)|isumite|ibigay|ipadala|ilagay|i[-\s]?(?:send|type|share|reply))\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:otp|passcode|password|m?pin|cvv|bank\s+details)\b`,
         String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply with|text back|type)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|account(?:\s+details)?|bank(?:ing)?\s+details)\b`,
         String.raw`\b(?:share|forward)\s+(?:your\s+)?(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin)\b`,
         String.raw`\b(?:ibigay|ipadala|i[-\s]?send|isend|ilagay|i[-\s]?type|itype|i[-\s]?share|ishare|ibahagi|i[-\s]?reply|ireply)\s+(?:(?:ang|yung|iyong|mo)\s+){0,2}(?:one[-\s]?time(?:\s+password)?|otp|passcode|password|pin|detalye(?:\s+ng\s+account)?)\b`,
+        // "...by entering your password", "sending your password and OTP"
+        String.raw`\b(?:entering|sending|providing|submitting|confirming|sharing|typing|updating|inputting)\s+(?:your\s+)?(?:(?:online|e[-\s]?wallet|wallet|banking|bank|card|account|email)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|credentials)\b`,
+        // "Submit your ID and online banking password"
+        String.raw`\b(?:send|provide|give|submit|enter|confirm|input|reply\s+with|type|share|update)\s+(?:(?:your|the)\s+)?[a-z]+\s+(?:and|&)\s+(?:(?:your|the)\s+)?(?:(?:online|e[-\s]?wallet|wallet|banking|bank|card)\s+){0,2}(?:otp|passcode|password|m?pin|cvv|security\s+code)\b`,
+        // "Reply with your full name, birthday, address and bank account"
+        String.raw`\b(?:reply\s+with|send|provide|submit|give|ipadala|isumite|ibigay)\s+(?:us\s+)?(?:your\s+|ang\s+(?:iyong\s+|inyong\s+)?)?(?:full\s+|buong\s+)?(?:name|pangalan)\b[^.!?\n]{0,80}?\b(?:bank\s+account|account\s+number|card\s+number|m?pin|otp|password|cvv)\b`,
+        // "send a photo of your card"
+        String.raw`\b(?:send|upload|submit|ipadala)\s+(?:us\s+)?(?:a\s+)?(?:photo|picture|pic|screenshot|selfie)\s+(?:of\s+)?(?:your|the)\s+(?:card|atm|credit\s+card|debit\s+card|otp|cvv)\b`,
+        // "I-confirm ang address at bank details", "I-verify ang ATM card", "I-update ang personal data"
+        String.raw`\b(?:i[-\s]?confirm|iconfirm|i[-\s]?update|iupdate|i[-\s]?verify|iverify|isumite|ibigay|ipadala|ilagay)\s+(?:(?:ang|yung|iyong|inyong|mo)\s+){0,3}(?:[a-z]+\s+(?:at|and)\s+)?(?:bank\s+details|atm\s+card|card\s+(?:number|details)|personal\s+(?:data|details|info(?:rmation)?)|m?pin|otp|password|cvv)\b`,
+        // "signing in to your e-wallet"
+        String.raw`\b(?:sign(?:ing)?\s+in|log(?:ging)?\s+in|login)\s+(?:to|into|sa)\s+(?:your\s+|ang\s+(?:iyong\s+)?)?(?:e[-\s]?wallet|wallet|online\s+banking|bank\s+account|gcash|maya)\b(?!\s+app)`,
       ],
     },
     {
@@ -40,6 +52,13 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\b`,
         String.raw`\b(?:i[-\s]?verify|iverify|beripikahin|i[-\s]?update|iupdate)\s+(?:ang\s+)?(?:iyong\s+|mong\s+)?account\b`,
         String.raw`\b(?:mawawala|mawawalan)\s+(?:(?:ka\s+ng|ang)\s+)?access\b`,
+        String.raw`\b(?:registration|sim|subscription|e[-\s]?wallet|wallet)\s+(?:has\s+been\s+|is\s+|was\s+|will\s+be\s+)?(?:suspended|locked|restricted|deactivated|blocked|expired)\b`,
+        String.raw`\b(?:verify|validate|confirm)\s+(?:your\s+)?identity\b`,
+        String.raw`\b(?:expired\s+na\s+ang|expired)\s+(?:(?:ang|your|the)\s+)?sim\s+(?:verification|registration)\b`,
+        String.raw`\baccount\s+(?:was|has\s+been)\s+used\s+(?:for|to|in)\b`,
+        String.raw`\bunusual\s+(?:login|sign[-\s]?in|activity|transaction)\s+(?:was\s+)?detected\b`,
+        // "Na-suspend ang GCash wallet mo", "para hindi ma-lock ang account"
+        String.raw`\b(?:na|ma|mala)[-\s]?(?:suspend|lock|block|restrict)\s+ang\s+(?:(?:iyong|inyong)\s+)?(?:(?:gcash|maya|bank)\s+)?(?:account|wallet|e[-\s]?wallet|sim|number)\b`,
       ],
     },
     {
@@ -53,6 +72,9 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\s+(?:now|today|immediately|asap)\b`,
         String.raw`\b(?:limited time|final warning|last chance|within\s+\d+\s+(?:hours?|minutes?))\b`,
         String.raw`\b(?:ngayon\s+na|kaagad|agad|huling\s+paalala|huling\s+babala|limitado\s+ang\s+oras)\b`,
+        String.raw`\b(?:settle|magbayad|bayaran)\s+(?:(?:it|na)\s+)?(?:now|today|immediately|ngayon|agad|kaagad)\b`,
+        String.raw`\bfinal\s+(?:notice|demand)\b`,
+        String.raw`\b(?:i[-\s]?verify|iverify|i[-\s]?update|iupdate|i[-\s]?claim|iclaim|mag[-\s]?login)\s+(?:na\s+)?(?:ngayon|agad|kaagad)\b`,
       ],
     },
     {
@@ -66,6 +88,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:pindutin|i[-\s]?click|iclick|buksan|bisitahin|visit)\s+(?:ang\s+)?(?:link|link\s+na\s+ito|dito)\b`,
         String.raw`\b(?:reply|text)\s+(?:yes|now|immediately)\b`,
         String.raw`\b(?:mag[-\s]?reply|magreply|sumagot)\s+(?:ngayon|agad|kaagad)\b`,
+        String.raw`\b(?:sign(?:ing)?\s+in|log(?:ging)?\s+in|login)\s+(?:at|here|via|through|sa)\b`,
       ],
     },
     {
@@ -77,7 +100,17 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       patterns: [
         String.raw`\b(?:you(?:'| a)?ve\s+won|winner|claim\s+(?:your\s+)?(?:prize|reward)|free\s+(?:cash|load|gift)|lucky\s+winner)\b`,
         String.raw`\b(?:nanalo\s+ka|i[-\s]?claim|iclaim)\s+(?:ang\s+)?(?:premyo|reward|prize)\b`,
-        String.raw`\b(?:libreng\s+(?:load|cash|pera)|swerte\s+mong\s+nanalo)\b`,
+        String.raw`\b(?:libreng\s+(?:load|cash|pera|voucher|gift|regalo)|swerte\s+mong\s+nanalo)\b`,
+        // A won amount or item: "Nanalo ka ng PHP 50,000", "You won a new phone"
+        String.raw`\b(?:nanalo\s+ka(?:\s+ng)?|you(?:'ve|\s+have)?\s+won)\s+(?:(?:php|p|₱|rs\.?|usd|\$)\s?\d[\d,]*|\d{1,3}(?:,\d{3})+|\d{4,}|(?:a|an)\s+(?:new\s+)?(?:phone|iphone|car|motorcycle|house|laptop|prize|reward|gift))`,
+        String.raw`\b(?:lottery|raffle|promo|anniversary|loyalty)\s+(?:prize|winner|reward)\b`,
+        String.raw`\b(?:(?:mobile\s+)?number|sim)\s+(?:has\s+)?won\b`,
+        String.raw`\bclaim\s+(?:your\s+)?free\b`,
+        // Unsolicited loans and jobs: "loan approved kahit hindi ka nag-apply", "hired without an interview"
+        String.raw`\b(?:hindi\s+ka\s+nag[-\s]?apply|without\s+(?:applying|an\s+application|an\s+interview)|may\s+trabaho\s+ka\s+na)\b`,
+        // Task scams: "Earn PHP 5,000 daily by liking products"
+        String.raw`\bearn\s+(?:up\s+to\s+)?(?:php|p|₱|\$|usd)?\s?[\d,]+\s*(?:daily|a\s+day|per\s+day|kada\s+araw)\b`,
+        String.raw`\b(?:liking|rating|reviewing)\s+(?:products|videos|posts|items)\b`,
       ],
     },
     {
@@ -90,6 +123,9 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:refund|reimbursement|cashback|cash back)\s+(?:is\s+)?(?:ready|available|pending|waiting)\b`,
         String.raw`\b(?:claim|process|release)\s+(?:your\s+)?(?:refund|cashback|cash back)\b`,
         String.raw`\b(?:i[-\s]?claim|iclaim|kunin)\s+(?:ang\s+)?(?:refund|cashback|balik\s+pera)\b`,
+        // "May maling padala akong PHP 2,000 sa iyo", "sent to you by mistake"
+        String.raw`\b(?:maling\s+padala|mali\s+(?:ang\s+)?(?:napadala|naipadala)|wrong\s+(?:transfer|padala|send)|sent\s+(?:it\s+|money\s+)?to\s+(?:you\s+)?by\s+mistake|sent\s+to\s+the\s+wrong\s+(?:number|account))\b`,
+        String.raw`\b(?:refund\s+(?:link|approved|form)|may\s+ibabalik)\b`,
       ],
     },
     {
@@ -102,6 +138,10 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:parcel|package|delivery)\s+(?:delivery\s+)?(?:has\s+)?(?:failed|held|pending|stopped|requires\s+payment)\b`,
         String.raw`\b(?:delivery\s+attempt|parcel\s+delivery)\s+(?:failed|unsuccessful|missed)\b`,
         String.raw`\b(?:hindi\s+(?:na\s+)?(?:na)?deliver|na[-\s]?hold\s+ang\s+(?:iyong\s+)?(?:parcel|package)|may\s+bayad\s+ang\s+(?:iyong\s+)?parcel)\b`,
+        String.raw`\b(?:parcel|package|item|order|padala)\s+(?:could\s+not|couldn't|cannot|can't|was\s+not|wasn't)\s+be\s+delivered\b`,
+        String.raw`\b(?:parcel|package)\s+(?:mo\s+)?(?:ay\s+)?(?:naka|na)[-\s]?hold\b`,
+        String.raw`\b(?:re[-\s]?delivery\s+(?:fee|charge)|(?:unpaid|outstanding|kulang\s+na)\s+(?:delivery|shipping|customs)\s+(?:fee|charge)s?)\b`,
+        String.raw`\b(?:item|parcel|package|order)\s+will\s+be\s+(?:destroyed|disposed|returned\s+to\s+sender)\b`,
       ],
     },
     {
@@ -114,6 +154,9 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:unpaid|overdue|outstanding)\s+(?:bill|balance|payment)\b`,
         String.raw`\b(?:pay|settle)\s+(?:your\s+)?(?:bill|balance)\s+(?:now|today|immediately)\b`,
         String.raw`\b(?:hindi\s+bayad|may\s+utang|bayaran)\s+(?:ang\s+)?(?:bill|balanse|balance)\b`,
+        String.raw`\bunpaid\s+(?:[a-z]+\s+){0,2}(?:penalty|fine|fee|toll|bill|violation)\b`,
+        String.raw`\b(?:loan|account|payment)\s+(?:account\s+)?(?:is\s+)?(?:overdue|past\s+due|delinquent)\b`,
+        String.raw`\bunless\s+you\s+pay\b`,
       ],
     },
     {
@@ -137,6 +180,37 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:lose|loss\s+of|avoid)\s+(?:your\s+)?(?:access|account|service)\b`,
         String.raw`\b(?:service|account)\s+(?:will\s+be\s+)?(?:disconnected|terminated|deactivated)\b`,
         String.raw`\b(?:mawawala|ma[-\s]?de[-\s]?deactivate|made-deactivate|mapuputol)\s+(?:ang\s+)?(?:access|account|serbisyo)\b`,
+        String.raw`\b(?:made[-\s]?deactivate|ma[-\s]?de[-\s]?deactivate|mapuputol|mawawala)\s+(?:na\s+)?(?:ang\s+)?(?:number|numero|sim|linya)\b`,
+        String.raw`\b(?:disconnection\s+notice|(?:putol|puputulin|mapuputol)\s+(?:na\s+)?ang\s+(?:kuryente|tubig|internet|linya|serbisyo))\b`,
+        String.raw`\bavoid\s+(?:[a-z]+\s+)?(?:suspension|disconnection|deactivation)\b`,
+      ],
+    },
+    {
+      code: 'money-transfer-request',
+      label: 'Request to send money to a personal account',
+      description:
+        'The message asks you to send money, gift cards, or a payment to a personal account or new number, a common trick by people pretending to be family, a boss, or a company.',
+      weight: 30,
+      signals: ['money-transfer-request'],
+      ignoreWhenPrecededBySafetyAdvice: true,
+      patterns: [
+        // A claimed new number, broken phone, accident, or boss, followed by a money request.
+        String.raw`\b(?:bago\s+(?:kong|ko\s+na|na)\s+(?:number|numero)|(?:my|this\s+is\s+my)\s+new\s+number|new\s+number\s+(?:ko|ito)|(?:nasira|nawala)\s+(?:ang\s+)?(?:phone|cellphone|cp)|naaksidente\s+ako|changed\s+(?:my\s+|our\s+)?(?:number|bank\s+account)|this\s+is\s+your\s+(?:company\s+)?(?:director|boss|ceo|manager|president))\b[\s\S]{0,160}?\b(?:pera|money|gcash|maya|gift\s+cards?|payment|bayad|php\s?\d)`,
+        String.raw`\b(?:pay|send|transfer|deposit|ipadala|magbayad)\b[\s\S]{0,50}?\b(?:private|personal)\s+(?:gcash|maya|bank|account|number)\b`,
+        String.raw`\b(?:bumili|buy|purchase)\s+(?:ka\s+)?(?:agad\s+)?(?:ng\s+)?(?:\d+\s+)?gift\s+cards?\b`,
+      ],
+    },
+    {
+      code: 'advance-fee-request',
+      label: 'Upfront fee to receive money',
+      description: 'The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.',
+      weight: 20,
+      signals: ['advance-fee-request'],
+      ignoreWhenPrecededBySafetyAdvice: true,
+      patterns: [
+        String.raw`\b(?:pay|magbayad|bayaran|deposit|send|magpadala)\s+(?:muna\s+)?(?:(?:the|a|an|ng|ang)\s+)?(?:(?:php|p|₱)\s?[\d.,]+\s+)?(?:processing|release|releasing|activation|insurance|clearance|claiming|verification|handling|redelivery|re-delivery)\s+(?:fee|charge)\b`,
+        String.raw`\bdeposit\s+(?:(?:php|p|₱)\s?)?[\d,]+\s+to\s+(?:activate|unlock|start|withdraw|release|claim)\b`,
+        String.raw`\b(?:magpadala|magbayad)\s+muna\b`,
       ],
     },
   ],

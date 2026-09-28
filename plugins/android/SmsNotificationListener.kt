@@ -148,15 +148,13 @@ class SmsNotificationListener : NotificationListenerService() {
       Log.d(logTag, "drop: no sender extracted (likely a non-message status notification)")
       return
     }
-    val fingerprint = fingerprint("$sourcePackage\n${sender.orEmpty()}", text)
-    if (NotificationDeduplicator.isDuplicate(sbn.key, fingerprint)) {
-      Log.d(logTag, "drop: duplicate of a recently processed notification")
-      return
-    }
     // A repeat of a message the user already blocked: hide it and show a quiet banner instead of
     // a second full-screen warning. It isn't counted against the free quota, uploaded, reported,
     // or saved again, so it never shows up twice anywhere. It is re-scored on the phone only, so
     // tapping the banner can show the same warning details in a view-only form.
+    // This runs before the duplicate check below: the same scam resent within its two-minute
+    // window has the same sender and text, and must still be hidden rather than silently skipped
+    // (which would leave it visible). A double-posted notification just replaces the banner.
     if (BlockedMessageStore.contains(applicationContext, ownerScope, BlockedMessageStore.hash(text))) {
       val hidden = runCatching {
         cancelNotification(sbn.key)
@@ -178,6 +176,11 @@ class SmsNotificationListener : NotificationListenerService() {
       ThreatDecisionCoordinator.add(review)
       NotiCareNotifications.showBlockedAgain(applicationContext, hidden, review.token)
       Log.d(logTag, "repeat of a blocked message: hidden=$hidden")
+      return
+    }
+    val fingerprint = fingerprint("$sourcePackage\n${sender.orEmpty()}", text)
+    if (NotificationDeduplicator.isDuplicate(sbn.key, fingerprint)) {
+      Log.d(logTag, "drop: duplicate of a recently processed notification")
       return
     }
     Log.d(logTag, "processing: textLength=${text.length} hasSender=${sender != null}")

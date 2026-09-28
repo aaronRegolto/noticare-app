@@ -58,6 +58,11 @@ export function normalizeMessage(message: string): NormalizedMessage {
   };
 }
 
+// Amounts, codes, and units such as P500, GoSURF50, bus8, 3pm, 1st, or 100gb: not leetspeak.
+const LETTERS_THEN_DIGITS = /^[a-z]+\d+$/i;
+const DIGITS_THEN_UNIT =
+  /^\d+(?:am|pm|st|nd|rd|th|gb|mb|kb|tb|g|k|m|hrs?|mins?|secs?|yrs?|days?|pcs|x|s|mg|ml|kg|km|cm|mm|ft)$/i;
+
 /**
  * Converts common leetspeak only inside mixed letter/number tokens. Pure numbers (such
  * as OTPs, dates, amounts, and phone numbers) are intentionally left unchanged.
@@ -67,9 +72,13 @@ export function normalizeCharacterSubstitutions(value: string): string {
     // Domains, punycode labels, decimal values, and version numbers must be handled by
     // the URL parser rather than being mistaken for leetspeak.
     if (token.includes('.') || token.includes('-')) return token;
-    if (!/[A-Za-z]/.test(token) || !/[0-9@$!]/.test(token)) return token;
+    // A trailing "!" is punctuation ("Hi!"), not a disguised "i".
+    const core = token.replace(/!+$/, '');
+    const suffix = token.slice(core.length);
+    if (!/[A-Za-z]/.test(core) || !/[0-9@$!]/.test(core)) return token;
+    if (LETTERS_THEN_DIGITS.test(core) || DIGITS_THEN_UNIT.test(core)) return token;
 
-    const converted = token.replace(/[@$013457!]/g, (character) => CHARACTER_SUBSTITUTIONS[character] ?? character);
-    return /[A-Za-z]{2,}/.test(converted) ? converted : token;
+    const converted = core.replace(/[@$013457!]/g, (character) => CHARACTER_SUBSTITUTIONS[character] ?? character);
+    return /[A-Za-z]{2,}/.test(converted) ? converted + suffix : token;
   });
 }

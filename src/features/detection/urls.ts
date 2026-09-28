@@ -5,7 +5,10 @@ const DIRECT_URL_PATTERN =
   /(?:https?:\/\/|hxxps?:\/\/|www\.)[^\s<>"'`]+|(?:(?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9\u00C0-\uFFFF-]+\.)+(?:xn--[A-Za-z0-9-]{2,59}|[A-Za-z\u00C0-\uFFFF]{2,63}))(?::\d{2,5})?(?:\/[^\s<>"'`]*)?/giu;
 const SPACED_PROTOCOL_PATTERN =
   /\b(?:h(?:tt|xx)ps?)\s*:\s*\/\s*\/\s*(?:[A-Za-z0-9-]+\s*(?:\.|\[\.\]|\(\.\))\s*)+(?:[A-Za-z]{2,63})(?:\s*\/\s*[^\s<>"'`]*)?/giu;
-const SPACED_DOMAIN_PATTERN = /\b(?:[A-Za-z0-9-]+\s*(?:\[\.\]|\(\.\)|\s+\.\s+)\s*)+(?:[A-Za-z]{2,63})\b/giu;
+// "[.]" and "(.)" always mark a disguised link. A bare " . " only counts when it ends in a
+// common link ending ("gcash . com"); otherwise sentences like "Fingers . Makes it" match.
+const SPACED_DOMAIN_PATTERN =
+  /\b(?:[A-Za-z0-9-]+\s*(?:\[\.\]|\(\.\))\s*)+(?:[A-Za-z]{2,63})\b|\b(?:[A-Za-z0-9-]+\s+\.\s+)+(?:com|net|org|info|biz|xyz|top|site|online|link|click|live|shop|store|app|io|co|me|ph|cc|vip|ly|us|uk|asia|club|icu|buzz|cfd|sbs)\b/giu;
 const TRAILING_PUNCTUATION = /[\],.!?;:'">}]+$/u;
 const MISLEADING_PATH_PATTERN =
   /\/(?:[^/?#]+\/)*(?:login|log-in|verify|verification|secure|security|payment|pay|prize|reward|parcel|delivery|account|wallet)(?:[/?#]|$)/i;
