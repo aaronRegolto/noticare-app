@@ -112,16 +112,25 @@ const Dashboard = (() => {
 
   // ---------- KPI tiles ----------
 
+  // Below this many scans in the previous period, a percentage swings wildly (1 → 20 scans is
+  // "+1,900%"), so the change is shown as a plain count instead.
+  const MIN_BASE_FOR_PERCENT = 20;
+
+  /** The change vs. the previous period: a count difference, plus a percentage on a large base. */
   function deltaInfo(current, previous, upIsBad) {
-    if (!current && !previous) return { text: 'No activity', tone: 'flat', arrow: '' };
-    if (!previous)
-      return { text: 'New activity', tone: upIsBad === null ? 'flat' : upIsBad ? 'bad' : 'good', arrow: '▲' };
-    const change = ((current - previous) / previous) * 100;
-    if (Math.abs(change) < 0.5) return { text: '0%', tone: 'flat', arrow: '' };
-    const up = change > 0;
+    const period = `the ${rangeInfo().period}`;
+    if (!current && !previous) return { text: 'No activity', detail: ` in this or ${period}`, tone: 'flat', arrow: '' };
+    const difference = current - previous;
+    if (!difference) return { text: 'No change', detail: ` from ${period}`, tone: 'flat', arrow: '' };
+    const up = difference > 0;
     const tone = upIsBad === null ? 'flat' : up === upIsBad ? 'bad' : 'good';
+    const percent =
+      previous >= MIN_BASE_FOR_PERCENT
+        ? ` (${up ? '+' : '−'}${Math.round(Math.abs(difference / previous) * 100)}%)`
+        : '';
     return {
-      text: `${Math.abs(change) >= 10 ? Math.round(Math.abs(change)) : Math.abs(change).toFixed(1)}%`,
+      text: `${number(Math.abs(difference))} ${up ? 'more' : 'fewer'}${percent}`,
+      detail: ` than ${period}`,
       tone,
       arrow: up ? '▲' : '▼',
     };
@@ -193,14 +202,14 @@ const Dashboard = (() => {
         const delta = deltaInfo(tile.value, tile.previous, tile.upIsBad);
         button.setAttribute(
           'aria-label',
-          `${tile.label}: ${number(tile.value)} in the last ${rangeInfo().label}, ${delta.arrow === '▲' ? 'up' : delta.arrow === '▼' ? 'down' : ''} ${delta.text} versus the ${rangeInfo().period}. Open matching scan records.`,
+          `${tile.label}: ${number(tile.value)} in the last ${rangeInfo().label}. ${delta.text}${delta.detail}. Open matching scan records.`,
         );
         const labelRow = el('span', 'kpi-label');
         if (LEVELS.some((level) => level.key === tile.key)) labelRow.append(el('i', `key s-${tile.key}`));
         labelRow.append(tile.label);
         const deltaRow = el('span', `kpi-delta ${delta.tone}`);
         if (delta.arrow) deltaRow.append(el('span', 'kpi-arrow', delta.arrow));
-        deltaRow.append(delta.text, el('small', '', ` vs ${rangeInfo().period}`));
+        deltaRow.append(delta.text, el('small', '', delta.detail));
         const spark = el('span', 'kpi-spark');
         button.append(labelRow, el('strong', 'kpi-value', number(tile.value)), deltaRow, spark);
         button.onclick = () => openRecords(tile.level, recordRange());
