@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { datasetCatalog, datasetRows, importDataset } from './datasets.mjs';
+import { TREND_RANGES, loadTrend } from './trend.mjs';
 
 try {
   process.loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url)));
@@ -30,7 +31,8 @@ const fail = (message, status = 400) => Object.assign(new Error(message), { stat
 // Best-effort display extraction only — not the app's on-device detection logic. Matches an
 // optional scheme, a dotted host, and an optional path/query, then trims common trailing
 // punctuation a phishing SMS often ends a link with (a period, closing parenthesis, etc).
-const URL_PATTERN = /\b(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?::\d{2,5})?(?:\/[^\s]*)?/gi;
+const URL_PATTERN =
+  /\b(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?::\d{2,5})?(?:\/[^\s]*)?/gi;
 function extractUrls(text) {
   return [...new Set((text.match(URL_PATTERN) || []).map((match) => match.replace(/[).,!?'"\]}]+$/, '')))];
 }
@@ -132,7 +134,7 @@ export const server = createServer(async (req, res) => {
       req.headers.origin !== `https://${req.headers.host}`
     )
       throw fail('Origin not allowed', 403);
-    if (req.method === 'GET' && ['/', '/app.js', '/styles.css'].includes(path.pathname)) {
+    if (req.method === 'GET' && ['/', '/app.js', '/dashboard.js', '/styles.css'].includes(path.pathname)) {
       const name = path.pathname === '/' ? 'index.html' : path.pathname.slice(1);
       const content = await readFile(new URL(`./public/${name}`, import.meta.url));
       res.writeHead(200, {
@@ -194,7 +196,8 @@ export const server = createServer(async (req, res) => {
         .order('id');
       if (search) query = query.ilike('message_text', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
       const { data, count, error } = await query.range(page * 50, page * 50 + 49);
-      if (error) throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
+      if (error)
+        throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
       return send({ rows: data, count, page });
     }
     if (path.pathname === '/api/phishing-links') {
@@ -210,7 +213,8 @@ export const server = createServer(async (req, res) => {
         .select('message_text,report_count,viral_score,first_reported_at,last_reported_at')
         .order('last_reported_at', { ascending: false })
         .limit(2000);
-      if (error) throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
+      if (error)
+        throw fail('Could not load reported messages. Apply the admin report-access migration and try again.', 502);
       const links = new Map();
       for (const row of data) {
         for (const url of extractUrls(row.message_text)) {
@@ -272,6 +276,13 @@ export const server = createServer(async (req, res) => {
         }),
       );
       return send(Object.fromEntries(values));
+    }
+    if (path.pathname === '/api/trend') {
+      const range = path.searchParams.get('range') || '30d';
+      if (!Object.hasOwn(TREND_RANGES, range)) throw fail('Invalid range');
+      const { data, error } = await loadTrend(db, range);
+      if (error) throw fail('Could not load activity trend. Check database migrations and connectivity.', 502);
+      return send(data);
     }
     if (path.pathname === '/api/records') {
       const table = path.searchParams.get('table');

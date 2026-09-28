@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const sections = {
-  overview: 'Overview',
+  overview: 'Dashboard',
   threat_events: 'Scan records',
   discoveries: 'Phishing detections',
   community_daily_stats: 'Daily statistics',
@@ -83,7 +83,11 @@ function setRefreshStatus(message = '') {
 function refreshCurrentView() {
   if (!token) return;
   setRefreshStatus('Refreshing…');
-  const request = $('#filters') ? loadRecords() : navigate(section);
+  const request = $('#filters')
+    ? loadRecords()
+    : section === 'overview' && Dashboard.isActive()
+      ? Dashboard.refresh()
+      : navigate(section);
   request.finally(() => {
     if (token) setRefreshStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
   });
@@ -179,9 +183,6 @@ function renderNav() {
   }
   $('#nav').innerHTML = rendered.join('');
 }
-function metric(title, value) {
-  return `<article class="metric"><small>${escape(title)}</small><strong>${escape(value)}</strong></article>`;
-}
 function cell(value) {
   if (['safe', 'suspicious', 'dangerous'].includes(value))
     return `<span class="badge ${value}">${escape(value)}</span>`;
@@ -201,14 +202,16 @@ function table(data) {
   const keys = Object.keys(data[0]);
   return `<div class="table-wrap"><table><thead><tr>${keys.map((key) => `<th scope="col">${escape(label(key))}</th>`).join('')}</tr></thead><tbody>${data.map((row) => `<tr>${keys.map((key) => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
-function openRecords(level = '') {
+/** Opens Scan records, optionally filtered by classification and a UTC date range. */
+function openRecords(level = '', { from = '', to = '' } = {}) {
   navigate('threat_events').then(() => {
-    const filter = $('#filters')?.elements.level;
-    if (filter && level) {
-      filter.value = level;
-      page = 0;
-      loadRecords();
-    }
+    const form = $('#filters');
+    if (!form || (!level && !from && !to)) return;
+    form.elements.level.value = level;
+    form.elements.from.value = from;
+    form.elements.to.value = to;
+    page = 0;
+    loadRecords();
   });
 }
 async function navigate(next) {
@@ -258,29 +261,7 @@ async function navigate(next) {
       $('#browse-datasets').onclick = () => navigate('datasets');
       $('#browse-discoveries').onclick = () => navigate('discoveries');
     } else if (section === 'overview') {
-      const stats = await api('/api/overview');
-      if (current !== generation) return;
-      const scans = Number(stats.scans) || 0;
-      const risky = (Number(stats.suspicious) || 0) + (Number(stats.dangerous) || 0);
-      const riskRate = scans ? ((risky / scans) * 100).toFixed(1) : '0.0';
-      $('#content').innerHTML =
-        `<section class="overview-hero"><div><span class="overview-kicker">LIVE SECURITY PULSE</span><h2>${scans ? `${number(scans)} scans monitored` : 'Your security pulse is ready'}</h2><p>${scans ? `${number(risky)} scans need attention across your community activity.` : 'Scan activity will appear here once the mobile app starts syncing metadata.'}</p><div class="hero-actions"><button id="open-records" class="primary">Review scan records</button><button id="open-discoveries">Review detections</button></div></div><div class="risk-orb" aria-label="${riskRate}% of scans need attention"><strong>${riskRate}%</strong><span>need attention</span></div></section><div class="metrics dashboard-metrics">${Object.entries(
-          stats,
-        )
-          .map(([name, count]) => metric(label(name), number(count)))
-          .join(
-            '',
-          )}</div><div class="overview-grid"><article class="panel distribution-panel"><div class="panel-title"><div><span class="section-kicker">CLASSIFICATION MIX</span><h2>Scan outcomes</h2></div><button id="view-all-scans" class="text-button">View all <span aria-hidden="true">→</span></button></div>${['safe', 'suspicious', 'dangerous'].map((name) => `<button class="bar-row interactive-bar" data-level="${name}" aria-label="View ${name} scans"><span class="badge ${name}">${name}</span><meter min="0" max="${Math.max(scans, 1)}" value="${stats[name]}" aria-label="${name} scans">${stats[name]}</meter><span>${scans ? ((stats[name] / scans) * 100).toFixed(1) : '0'}%</span></button>`).join('')}<p class="panel-note">Select an outcome to filter the scan records. Successfully blocked is a subset of Dangerous.</p></article><article class="panel activity-panel"><span class="section-kicker">WORKSPACE STATUS</span><h2>Ready for review</h2><div class="readiness-list"><div><span class="readiness-icon">✓</span><p><strong>Privacy-first collection</strong><small>SMS content remains on device.</small></p></div><div><span class="readiness-icon">✓</span><p><strong>Metadata is synchronized</strong><small>Use the connection view to verify the latest upload.</small></p></div></div><div class="activity-actions"><button id="open-connection">Connection status</button><button id="open-model">Model & datasets <span aria-hidden="true">→</span></button></div></article></div>`;
-      $('#open-records').onclick = () => openRecords();
-      $('#open-discoveries').onclick = () => navigate('discoveries');
-      $('#view-all-scans').onclick = () => openRecords();
-      $('#open-connection').onclick = () => navigate('connection');
-      $('#open-model').onclick = () => navigate('model');
-      $('#content')
-        .querySelectorAll('[data-level]')
-        .forEach((button) => {
-          button.onclick = () => openRecords(button.dataset.level);
-        });
+      await Dashboard.render(() => current === generation);
     } else {
       $('#content').innerHTML =
         `<form class="toolbar" id="filters"><label>From (UTC)<input type="date" name="from"></label><label>Through (UTC)<input type="date" name="to"></label>${['threat_events', 'scan_feedback'].includes(section) ? '<label>Classification<select name="level"><option value="">All classifications</option><option>safe</option><option>suspicious</option><option>dangerous</option></select></label>' : ''}${section === 'threat_events' ? '<label class="check"><input type="checkbox" name="demo" value="true"> Include demo events</label>' : ''}<button type="submit" class="primary">Apply filters</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div>`;
@@ -693,7 +674,12 @@ $('#logout').onclick = () => {
   notice('Signed out.');
 };
 $('#preview-model').onclick = () => navigate('model');
-$('#refresh').onclick = () => ($('#filters') ? loadRecords() : navigate(section));
+$('#refresh').onclick = () =>
+  $('#filters')
+    ? loadRecords()
+    : section === 'overview' && Dashboard.isActive()
+      ? Dashboard.refresh().catch((error) => notice(error.message))
+      : navigate(section);
 $('#appearance').onchange = saveAppearance;
 $('#auto-refresh').onchange = (event) => updateAutoRefresh(event.target.checked);
 restoreAppearance();

@@ -560,7 +560,7 @@ export default function DashboardScreen() {
                   <Text style={styles.aggregateNotice}>
                     {community.source === 'cache'
                       ? 'Showing cached anonymous aggregate data (offline).'
-                      : 'Anonymous aggregate data only — never individual messages.'}
+                      : 'Anonymous community data.'}
                   </Text>
                   <View style={styles.summaryCards}>
                     <View style={[styles.summaryCard, styles.dangerSummary]}>
@@ -591,7 +591,7 @@ export default function DashboardScreen() {
             <View style={styles.chartTitleRow}>
               <View>
                 <Text style={styles.chartTitle}>Dangerous SMS successfully blocked</Text>
-                <Text style={styles.chartCopy}>Anonymous community aggregate</Text>
+                <Text style={styles.chartCopy}>Device only data</Text>
               </View>
               <Text style={styles.chartTotal}>{summary.blocked}</Text>
             </View>

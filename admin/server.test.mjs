@@ -40,6 +40,7 @@ test('never serves repository files or secrets', async () => {
 test('rejects anonymous access to every live data endpoint', async () => {
   for (const path of [
     '/api/overview',
+    '/api/trend?range=7d',
     '/api/connection',
     '/api/records?table=threat_events',
     '/api/records?table=admin_users',
