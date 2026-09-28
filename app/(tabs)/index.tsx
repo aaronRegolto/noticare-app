@@ -4,9 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Line, Rect } from 'react-native-svg';
 
 import type { CommunityRange } from '@/backend/supabase/types/database.types';
+import { BlockedTrendCard } from '@/src/components/blocked-trend-card';
 import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { DASHBOARD_TOUR_KEY, useFirstVisitTour } from '@/src/hooks/use-first-visit-tour';
@@ -16,6 +16,7 @@ import {
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
   getViralPhishingRanking,
+  type ReportSource,
   type ViralPhishingEntry,
 } from '@/src/services/communityReports';
 import { flushNativeTelemetry, flushQueuedThreatEvents } from '@/src/services/eventSync';
@@ -150,75 +151,6 @@ function percentage(value: number, total: number) {
   return total ? `${Math.round((value / total) * 100)}%` : '0%';
 }
 
-function dayLabel(point: CommunityPoint, range: CommunityRange) {
-  const date = new Date(point.date);
-  if (Number.isNaN(date.getTime())) return '';
-  if (range === 'today') return new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(date);
-  if (range === 'last_6_months') return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(date);
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
-}
-
-function CommunityChart({
-  points,
-  range,
-  colors,
-}: {
-  points: CommunityPoint[];
-  range: CommunityRange;
-  colors: ThemeColors;
-}) {
-  const styles = useThemedStyles(colors);
-  const bars = points.slice(-12);
-  const maximum = Math.max(1, ...bars.map((point) => point.blocked_count));
-  const width = 328;
-  const height = 148;
-  const baseline = 116;
-  const gap = 7;
-  const barWidth = Math.max(8, (width - gap * Math.max(0, bars.length - 1)) / Math.max(1, bars.length));
-  return (
-    <View accessibilityLabel="Chart of anonymized, aggregated blocked-message counts">
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        {[0, 1, 2].map((index) => (
-          <Line
-            key={index}
-            x1="0"
-            x2={width}
-            y1={22 + index * 47}
-            y2={22 + index * 47}
-            stroke={colors.border}
-            strokeWidth="1"
-          />
-        ))}
-        {bars.map((point, index) => {
-          const value = point.blocked_count;
-          const barHeight = Math.max(value ? 4 : 0, (value / maximum) * 90);
-          const x = index * (barWidth + gap);
-          return (
-            <Rect
-              key={`${point.date}-${index}`}
-              x={x}
-              y={baseline - barHeight}
-              width={barWidth}
-              height={barHeight}
-              rx="3"
-              fill={value ? colors.accent : colors.border}
-            />
-          );
-        })}
-      </Svg>
-      <View style={styles.chartLabels}>
-        {bars
-          .filter((_, index) => index === 0 || index === bars.length - 1 || index === Math.floor(bars.length / 2))
-          .map((point, index) => (
-            <Text key={`${point.date}-${index}`} style={styles.chartLabel}>
-              {dayLabel(point, range)}
-            </Text>
-          ))}
-      </View>
-    </View>
-  );
-}
-
 function Metric({
   icon,
   title,
@@ -258,6 +190,8 @@ export default function DashboardScreen() {
   const [range, setRange] = useState<CommunityRange>('today');
   const [community, setCommunity] = useState<CommunityState>({ points: [], source: null, loading: true, error: null });
   const [viral, setViral] = useState<ViralState>({ entries: [], source: null, loading: true, error: null });
+  const [viralSource, setViralSource] = useState<ReportSource>('manual');
+  const viralSourceRef = useRef<ReportSource>('manual');
   const tour = useFirstVisitTour(DASHBOARD_TOUR_KEY);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -310,13 +244,16 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  const refreshViralRanking = useCallback(async () => {
+  const refreshViralRanking = useCallback(async (reportSource: ReportSource = viralSourceRef.current) => {
     setViral((current) => ({ ...current, loading: true, error: null }));
     try {
-      const { entries, source } = await getViralPhishingRanking(10);
+      const { entries, source } = await getViralPhishingRanking(reportSource, 10);
+      // Ignore a slower response for a tab the user has already switched away from.
+      if (reportSource !== viralSourceRef.current) return;
       setViral({ entries, source, loading: false, error: null });
     } catch (error) {
       logError('viral-ranking-load-failed', error);
+      if (reportSource !== viralSourceRef.current) return;
       setViral((current) => ({
         ...current,
         loading: false,
@@ -329,13 +266,14 @@ export default function DashboardScreen() {
     useCallback(() => {
       void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
       void refreshCommunity(range);
-      // The ranking RPC is Pro-gated server-side; skip the call entirely for
-      // Free so it doesn't error on every dashboard visit.
-      if (subscriptionTier === 'pro') void refreshViralRanking();
       void flushQueuedThreatEvents();
       void flushNativeTelemetry();
-      void flushQueuedPhishingReports();
-      void flushNativeCommunityReports();
+      // Upload queued reports first (real-time Block & Report taps wait in the native queue until
+      // the app opens), then load the ranking, so a fresh report is in the list on this visit.
+      // The ranking RPC is Pro-gated server-side; skip it entirely for Free so it doesn't error.
+      void Promise.allSettled([flushQueuedPhishingReports(), flushNativeCommunityReports()]).then(() => {
+        if (subscriptionTier === 'pro') void refreshViralRanking();
+      });
       tour.checkNow();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [range, refreshCommunity, refreshMonitoringAndHistory, refreshViralRanking, subscriptionTier]),
@@ -398,12 +336,6 @@ export default function DashboardScreen() {
   const blockedToday = history.filter((record) => record.receivedAt >= todayStart).length;
   const blockedThisMonth = history.filter((record) => record.receivedAt >= monthStart).length;
   const monitor = statusDetails(monitoring, colors);
-  const ranges: [CommunityRange, string][] = [
-    ['today', 'Today'],
-    ['last_7_days', '7 days'],
-    ['last_30_days', '30 days'],
-    ['last_6_months', '6 months'],
-  ];
 
   const tourSteps: TourStep[] = useMemo(
     () => [
@@ -587,47 +519,18 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.chartCard}>
-            <View style={styles.chartTitleRow}>
-              <View>
-                <Text style={styles.chartTitle}>Dangerous SMS successfully blocked</Text>
-                <Text style={styles.chartCopy}>Device only data</Text>
-              </View>
-              <Text style={styles.chartTotal}>{summary.blocked}</Text>
-            </View>
-            <View style={styles.rangeRow}>
-              {ranges.map(([key, label]) => (
-                <Pressable
-                  key={key}
-                  onPress={() => {
-                    setRange(key);
-                    void refreshCommunity(key);
-                  }}
-                  style={[styles.rangeButton, range === key && styles.rangeButtonActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: range === key }}
-                >
-                  <Text style={[styles.rangeText, range === key && styles.rangeTextActive]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {community.loading ? (
-              <View style={styles.chartPlaceholder}>
-                <Text style={styles.muted}>Loading chart…</Text>
-              </View>
-            ) : community.error ? (
-              <View style={styles.chartPlaceholder}>
-                <Text style={styles.muted}>No chart data available.</Text>
-              </View>
-            ) : community.points.length ? (
-              <CommunityChart points={community.points} range={range} colors={colors} />
-            ) : (
-              <View style={styles.chartPlaceholder}>
-                <Ionicons name="bar-chart-outline" size={32} color={colors.textMuted} />
-                <Text style={styles.muted}>No anonymous blocked-message data for this range yet.</Text>
-              </View>
-            )}
-          </View>
+          <BlockedTrendCard
+            points={community.points}
+            range={range}
+            onRangeChange={(next) => {
+              setRange(next);
+              void refreshCommunity(next);
+            }}
+            loading={community.loading}
+            error={community.error}
+            fromCache={community.source === 'cache'}
+            colors={colors}
+          />
 
           <View style={styles.viralCard}>
             <View style={styles.matrixHeader}>
@@ -636,8 +539,8 @@ export default function DashboardScreen() {
               <Pressable
                 onPress={() =>
                   Alert.alert(
-                    'Viral phishing messages',
-                    'When someone taps Report & Block on a Dangerous result, that exact message text is shared here so other NotiCare users can recognize it. Its score rises toward 100 as more people report the same message.',
+                    'Most reported phishing messages',
+                    'When someone reports a dangerous message, its exact text is shared here so other NotiCare users can recognize it.\n\nManual scans: reported with Report & Block after a Manual Scan.\nReal-time: reported with Block & Report on a real-time warning.\n\nA score rises toward 100 as more people report the same message from that source.',
                   )
                 }
                 hitSlop={10}
@@ -648,13 +551,46 @@ export default function DashboardScreen() {
               </Pressable>
             </View>
             <View style={styles.matrixBody}>
+              {subscriptionTier === 'pro' ? (
+                <View style={styles.viralTabs} accessibilityRole="tablist">
+                  {(
+                    [
+                      ['manual', 'Manual scans', 'scan-outline'],
+                      ['realtime', 'Real-time', 'flash-outline'],
+                    ] as const
+                  ).map(([key, label, icon]) => {
+                    const active = viralSource === key;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => {
+                          if (active) return;
+                          viralSourceRef.current = key;
+                          setViralSource(key);
+                          void refreshViralRanking(key);
+                        }}
+                        style={[styles.viralTab, active && styles.viralTabActive]}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Ionicons name={icon} size={14} color={active ? colors.textPrimary : colors.textSecondary} />
+                        <Text style={[styles.viralTabText, active && styles.viralTabTextActive]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
               {subscriptionTier !== 'pro' ? (
                 <View>
                   <Text style={styles.muted}>
                     Viral phishing ranking is a Pro feature. Upgrade to see which scam messages are spreading most
                     widely. Reporting phishing with Block & Report is free for everyone.
                   </Text>
-                  <Pressable onPress={() => router.push('/paywall')} style={styles.retryButton} accessibilityRole="button">
+                  <Pressable
+                    onPress={() => router.push('/paywall')}
+                    style={styles.retryButton}
+                    accessibilityRole="button"
+                  >
                     <Text style={styles.retryText}>Upgrade to Pro</Text>
                   </Pressable>
                 </View>
@@ -663,7 +599,11 @@ export default function DashboardScreen() {
               ) : viral.error ? (
                 <View>
                   <Text style={styles.errorText}>{viral.error}</Text>
-                  <Pressable onPress={() => void refreshViralRanking()} style={styles.retryButton} accessibilityRole="button">
+                  <Pressable
+                    onPress={() => void refreshViralRanking(viralSource)}
+                    style={styles.retryButton}
+                    accessibilityRole="button"
+                  >
                     <Text style={styles.retryText}>Retry</Text>
                   </Pressable>
                 </View>
@@ -673,13 +613,20 @@ export default function DashboardScreen() {
                     <Text style={styles.aggregateNotice}>Showing cached data (offline).</Text>
                   ) : null}
                   {viral.entries.map((entry, index) => (
-                    <ViralEntryRow key={entry.reportId} entry={entry} rank={index + 1} first={index === 0} colors={colors} />
+                    <ViralEntryRow
+                      key={entry.reportId}
+                      entry={entry}
+                      rank={index + 1}
+                      first={index === 0}
+                      colors={colors}
+                    />
                   ))}
                 </>
               ) : (
                 <Text style={styles.muted}>
-                  No phishing messages have been reported yet. Reported messages appear here once other NotiCare users
-                  confirm the same text.
+                  {viralSource === 'manual'
+                    ? 'No Manual Scan reports yet. Messages reported with Report & Block after a Manual Scan appear here.'
+                    : 'No real-time reports yet. Messages reported with Block & Report on a real-time warning appear here.'}
                 </Text>
               )}
             </View>
@@ -837,25 +784,6 @@ function createStyles(colors: ThemeColors) {
       marginTop: 10,
     },
     retryText: { color: colors.link, fontWeight: '800', fontSize: 12 },
-    chartCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 14,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    chartTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-    chartTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 15 },
-    chartCopy: { color: colors.textMuted, fontSize: 12, marginTop: 3 },
-    chartTotal: { color: colors.accent, fontWeight: '800', fontSize: 23 },
-    rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14, marginBottom: 13 },
-    rangeButton: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 7, backgroundColor: colors.surfaceAlt },
-    rangeButtonActive: { backgroundColor: colors.headerBg },
-    rangeText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
-    rangeTextActive: { color: '#fff' },
-    chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 1, marginTop: -12 },
-    chartLabel: { color: colors.textMuted, fontSize: 10 },
-    chartPlaceholder: { height: 130, alignItems: 'center', justifyContent: 'center', gap: 8 },
     viralCard: {
       backgroundColor: colors.surface,
       borderRadius: 14,
@@ -876,6 +804,32 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.border,
     },
     viralRowFirst: { borderTopWidth: 0 },
+    viralTabs: {
+      flexDirection: 'row',
+      padding: 3,
+      marginBottom: 12,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceAlt,
+    },
+    viralTab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    viralTabActive: {
+      backgroundColor: colors.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    viralTabText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    viralTabTextActive: { color: colors.textPrimary, fontWeight: '800' },
     viralRank: {
       width: 26,
       height: 26,

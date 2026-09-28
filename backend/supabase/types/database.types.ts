@@ -340,6 +340,7 @@ export type Database = {
           device_id: string
           id: string
           report_id: string
+          source: string
           user_id: string
         }
         Insert: {
@@ -347,6 +348,7 @@ export type Database = {
           device_id: string
           id?: string
           report_id: string
+          source?: string
           user_id: string
         }
         Update: {
@@ -354,6 +356,7 @@ export type Database = {
           device_id?: string
           id?: string
           report_id?: string
+          source?: string
           user_id?: string
         }
         Relationships: [
@@ -454,7 +457,7 @@ export type Database = {
         }[]
       }
       get_viral_phishing_ranking: {
-        Args: { p_limit?: number }
+        Args: { p_limit?: number; p_source?: string }
         Returns: {
           first_reported_at: string
           last_reported_at: string
@@ -488,6 +491,7 @@ export type Database = {
           p_message_text: string
           p_rule_version: string
           p_sample_sender: string | null
+          p_source?: string
         }
         Returns: {
           is_first_reporter: boolean

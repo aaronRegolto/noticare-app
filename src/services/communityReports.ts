@@ -14,7 +14,7 @@ import {
 import { isSupabaseConfigured, supabase } from '@/src/services/supabase';
 
 const REPORT_QUEUE_KEY = 'noticare.phishing-report-queue.v1';
-const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v1';
+const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v2';
 const FEEDBACK_RECORD_KEY = 'noticare.manual-feedback-record.v1';
 const MAX_QUEUED_REPORTS = 50;
 const MAX_FEEDBACK_RECORDS = 500;
@@ -66,6 +66,9 @@ export async function markMessageFeedback(messageText: string, kind: ManualFeedb
   next.push({ hash, kind });
   await AsyncStorage.setItem(FEEDBACK_RECORD_KEY, JSON.stringify(next.slice(-MAX_FEEDBACK_RECORDS)));
 }
+
+/** Where a report came from: Manual Scan's Report & Block, or a real-time warning's Block & Report. */
+export type ReportSource = 'manual' | 'realtime';
 
 export type PhishingVirality = { viralScore: number; reportCount: number; isFirstReporter: boolean };
 
@@ -125,7 +128,7 @@ async function writeQueue(queue: QueuedReport[], userId: string) {
   await AsyncStorage.setItem(`${REPORT_QUEUE_KEY}.${userId}`, JSON.stringify(queue.slice(-MAX_QUEUED_REPORTS)));
 }
 
-async function syncReport(report: QueuedReport, userId: string): Promise<PhishingVirality> {
+async function syncReport(report: QueuedReport, source: ReportSource): Promise<PhishingVirality> {
   const deviceId = await registerDevice(report.ruleVersion);
   const { data, error } = await supabase.rpc('record_phishing_report', {
     p_device_id: deviceId,
@@ -133,6 +136,7 @@ async function syncReport(report: QueuedReport, userId: string): Promise<Phishin
     p_sample_sender: report.sampleSender,
     p_indicator_codes: report.indicatorCodes,
     p_rule_version: report.ruleVersion,
+    p_source: source,
   });
   if (error) throw error;
   const row = data?.[0];
@@ -169,7 +173,7 @@ export async function reportAndBlockMessage(
 
   if (!isSupabaseConfigured) return null;
   try {
-    const virality = await syncReport(report, userId);
+    const virality = await syncReport(report, 'manual');
     await serializeQueue(async () => {
       const queue = await readQueue(userId);
       await writeQueue(
@@ -199,7 +203,7 @@ async function flushUserQueue() {
   let synced = 0;
   for (const report of queued) {
     try {
-      await syncReport(report, userId);
+      await syncReport(report, 'manual');
       synced += 1;
     } catch (error) {
       logError('phishing-report-retry-failed', error);
@@ -221,7 +225,6 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
   if (!isSupabaseConfigured || !isNativeMonitoringAvailable()) return { synced: 0, pending: 0 };
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return { synced: 0, pending: 0 };
-  const userId = sessionData.session.user.id;
 
   let pending: PendingCommunityReport[];
   try {
@@ -244,7 +247,7 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
           createdAt: new Date(report.createdAt).toISOString(),
           attempts: 0,
         },
-        userId,
+        'realtime',
       );
       await markMessageFeedback(report.messageText, 'dangerous');
       await notifyCommunityReportResult(virality.reportCount <= 1, virality.reportCount);
@@ -294,8 +297,8 @@ function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
   );
 }
 
-async function readRankingCache(): Promise<ViralPhishingEntry[]> {
-  const raw = await AsyncStorage.getItem(RANKING_CACHE_KEY);
+async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntry[]> {
+  const raw = await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`);
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -305,13 +308,20 @@ async function readRankingCache(): Promise<ViralPhishingEntry[]> {
   }
 }
 
-/** The Dashboard's "Most reported phishing messages" ranking, cached for offline viewing. */
+/**
+ * The Dashboard's "Most reported phishing messages" ranking for one report source, cached per
+ * source for offline viewing. Counts and scores cover that source's reporters only.
+ */
 export async function getViralPhishingRanking(
+  reportSource: ReportSource,
   limit = 20,
 ): Promise<{ entries: ViralPhishingEntry[]; source: 'network' | 'cache' }> {
-  if (!isSupabaseConfigured) return { entries: await readRankingCache(), source: 'cache' };
+  if (!isSupabaseConfigured) return { entries: await readRankingCache(reportSource), source: 'cache' };
   try {
-    const { data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit });
+    const { data, error } = await supabase.rpc('get_viral_phishing_ranking', {
+      p_limit: limit,
+      p_source: reportSource,
+    });
     if (error) throw error;
     const entries: ViralPhishingEntry[] = (data ?? []).map((row) => ({
       reportId: row.report_id,
@@ -322,10 +332,10 @@ export async function getViralPhishingRanking(
       firstReportedAt: row.first_reported_at,
       lastReportedAt: row.last_reported_at,
     }));
-    await AsyncStorage.setItem(RANKING_CACHE_KEY, JSON.stringify(entries));
+    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource}`, JSON.stringify(entries));
     return { entries, source: 'network' };
   } catch (error) {
     logError('viral-phishing-ranking-load-failed', error);
-    return { entries: await readRankingCache(), source: 'cache' };
+    return { entries: await readRankingCache(reportSource), source: 'cache' };
   }
 }
