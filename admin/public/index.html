@@ -2,13 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>NotiCare · Admin</title>
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" defer></script>
   </head>
   <body data-session="signed-out">
-    <aside>
+    <aside id="sidebar">
       <a class="brand" href="/"
         ><span>NotiCare<small>Security console</small></span></a
       >
@@ -20,9 +20,22 @@
       <nav id="nav" aria-label="Dashboard navigation"></nav>
       <div class="sidebar-note">Research workspace</div>
     </aside>
+    <div id="nav-backdrop" class="nav-backdrop" hidden></div>
     <main>
       <header>
-        <div class="header-identity"><span class="eyebrow">NotiCare</span><span>Admin dashboard</span></div>
+        <div class="header-start">
+          <button
+            id="menu-toggle"
+            class="menu-toggle"
+            type="button"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            aria-label="Open navigation"
+          >
+            <span aria-hidden="true"></span>
+          </button>
+          <div class="header-identity"><span class="eyebrow">NotiCare</span><span>Admin dashboard</span></div>
+        </div>
         <div class="header-actions">
           <label class="appearance-label"
             >Appearance<select id="appearance">

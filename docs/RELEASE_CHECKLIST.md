@@ -7,7 +7,7 @@ Complete every applicable item before releasing NotiCare. A native scanner chang
 - [ ] The Dashboard says Active only when scanning is enabled, Notification Access is granted, the listener is connected, and a default Messages app is detected.
 - [ ] The onboarding and settings disclosure explain why Notification Access is needed and that NotiCare only examines the default SMS app.
 - [ ] “Blocked” is consistently explained as notification suppression, not SMS deletion.
-- [ ] The app does not request `READ_SMS`, become the default SMS app, use an accessibility service, or use an intrusive overlay.
+- [ ] The app does not request `READ_SMS`, become the default SMS app, or use an accessibility service. `SYSTEM_ALERT_WINDOW` is used only by the opt-in full-screen threat warning, and the Play Console declaration matches that use.
 - [ ] Local History contains only successfully suppressed, Dangerous, real-time notifications.
 - [ ] Manual Scan cannot open, preview, resolve, or upload a pasted URL or raw message.
 - [ ] Privacy policy, User Guide, support contact, retention periods, and deletion/sign-out behavior are finalized by the legal/privacy owner.

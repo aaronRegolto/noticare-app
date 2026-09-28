@@ -34,7 +34,7 @@ The status is Active only when notification access is granted, the service is co
 
 If a notification is marked blocked, the original SMS is still in your Messages inbox. NotiCare suppresses a notification only after you choose Block and Android allows it.
 
-In **Settings & Privacy → Warning Appearance**, choose **Full-screen warning** to show an immersive explanation for Suspicious and Dangerous detections when Android permits a background screen to open. Choose **Notification banner** for a compact alert. Both modes explain the detected warning signs and offer **Block** and **Ignore**. Android can restrict background activity launches, so an actionable banner always remains available as a fallback.
+In **Settings & Privacy → Warning Appearance**, choose **Full-screen warning** to show an immersive explanation for Suspicious and Dangerous detections. To cover the screen instantly while you are using another app (a game, TikTok, Facebook), allow **Display over other apps** when NotiCare asks. Without it, the full-screen warning appears only while your phone is locked or the screen is off. Choose **Notification banner** for a compact alert. Both modes explain the detected warning signs and offer **Block** and **Ignore**. An actionable notification always remains available as a fallback.
 
 ## Manually scan a message
 

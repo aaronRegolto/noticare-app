@@ -38,6 +38,17 @@ const systemThemeQuery =
   typeof matchMedia === 'function'
     ? matchMedia('(prefers-color-scheme: dark)')
     : { matches: false, addEventListener() {} };
+// Matches the stylesheet breakpoint where the sidebar becomes a slide-in drawer.
+const compactNavQuery =
+  typeof matchMedia === 'function' ? matchMedia('(max-width: 1024px)') : { matches: false, addEventListener() {} };
+function setNavOpen(open) {
+  const isOpen = open && compactNavQuery.matches;
+  document.body.classList.toggle('nav-open', isOpen);
+  $('#nav-backdrop').hidden = !isOpen;
+  $('#menu-toggle').setAttribute('aria-expanded', String(isOpen));
+  $('#menu-toggle').setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+}
+compactNavQuery.addEventListener('change', () => setNavOpen(false));
 function resolveTheme(preference) {
   return preference === 'system' ? (systemThemeQuery.matches ? 'dark' : 'light') : preference;
 }
@@ -143,6 +154,7 @@ function signOut() {
   $('#login').hidden = false;
   $('#logout').hidden = true;
   document.body.dataset.session = 'signed-out';
+  setNavOpen(false);
   renderNav();
 }
 function renderNav() {
@@ -663,18 +675,40 @@ $('#nav').onclick = (event) => {
     return;
   }
   const button = event.target.closest('[data-section]');
-  if (button) navigate(button.dataset.section);
+  if (button) {
+    setNavOpen(false);
+    navigate(button.dataset.section);
+  }
 };
+$('#menu-toggle').onclick = () => {
+  const open = !document.body.classList.contains('nav-open');
+  setNavOpen(open);
+  if (open) $('#nav-filter').focus({ preventScroll: true });
+};
+$('#nav-backdrop').onclick = () => setNavOpen(false);
 $('#nav-filter').oninput = renderNav;
 $('#nav-filter').onkeydown = (event) => {
-  if (event.key === 'Escape') {
+  if (event.key === 'Escape' && event.currentTarget.value) {
+    // The first Escape clears the search; the next one closes the mobile drawer.
+    event.preventDefault();
     event.currentTarget.value = '';
     renderNav();
   }
 };
 document.addEventListener('keydown', (event) => {
+  if (
+    event.key === 'Escape' &&
+    !event.defaultPrevented &&
+    document.body.classList.contains('nav-open') &&
+    !$('dialog[open]')
+  ) {
+    setNavOpen(false);
+    $('#menu-toggle').focus();
+    return;
+  }
   if (event.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
     event.preventDefault();
+    if (token) setNavOpen(true);
     $('#nav-filter').focus();
   }
 });

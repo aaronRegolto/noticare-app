@@ -10,11 +10,16 @@
   font-synthesis: none;
   --line: #e9e9e7;
   --muted: #666663;
+  --gutter: 48px;
+  --drawer-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 * {
   box-sizing: border-box;
 }
 html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--muted) transparent;
 }
@@ -104,8 +109,18 @@ button:active:not(:disabled) {
   white-space: pre-wrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  button {
-    transition: none;
+  html {
+    scroll-behavior: auto;
+  }
+  button,
+  aside,
+  body.nav-open aside,
+  .nav-backdrop,
+  .menu-toggle span,
+  .menu-toggle span::before,
+  .menu-toggle span::after {
+    transition: none !important;
+    animation: none !important;
   }
   button:active:not(:disabled) {
     transform: none;
@@ -115,6 +130,7 @@ body {
   margin: 0;
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--canvas);
 }
 aside {
@@ -241,7 +257,7 @@ body[data-session='signed-out'] .header-actions {
 }
 main {
   margin-left: 216px;
-  padding: 0 48px;
+  padding: 0 var(--gutter);
   width: calc(100% - 216px);
   min-width: 0;
 }
@@ -258,6 +274,71 @@ main {
   font-weight: 700;
   letter-spacing: 1.4px;
   color: var(--muted);
+}
+.header-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.menu-toggle {
+  display: none;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Three-line menu icon; morphs into an X while the drawer is open. */
+.menu-toggle span,
+.menu-toggle span::before,
+.menu-toggle span::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition:
+    transform 220ms var(--drawer-ease),
+    background-color 160ms ease;
+}
+.menu-toggle span {
+  position: relative;
+}
+.menu-toggle span::before,
+.menu-toggle span::after {
+  content: '';
+  position: absolute;
+  left: 0;
+}
+.menu-toggle span::before {
+  top: -6px;
+}
+.menu-toggle span::after {
+  top: 6px;
+}
+body.nav-open .menu-toggle span {
+  background: transparent;
+}
+body.nav-open .menu-toggle span::before {
+  transform: translateY(6px) rotate(45deg);
+}
+body.nav-open .menu-toggle span::after {
+  transform: translateY(-6px) rotate(-45deg);
+}
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: #101c24a6;
+  animation: fade-in 220ms ease;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 header {
   min-height: 76px;
@@ -430,13 +511,15 @@ summary:focus-visible {
 }
 .metric {
   padding: 24px;
-  border-right: 1px solid var(--line);
+  min-width: 0;
+  /* Right and bottom hairlines; the container clips the outer edges, so dividers stay
+     correct at any column count, including a partly filled last row. */
+  box-shadow:
+    1px 0 0 var(--line),
+    0 1px 0 var(--line);
 }
 .dashboard-metrics {
   box-shadow: 0 12px 30px rgba(18, 39, 31, 0.045);
-}
-.metric:last-child {
-  border-right: 0;
 }
 .metric small {
   color: var(--muted);
@@ -700,6 +783,8 @@ input[type='checkbox'] {
 }
 .table-wrap {
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
@@ -736,8 +821,10 @@ td {
 tr:last-child td {
   border-bottom: 0;
 }
-tr:hover td {
-  background: var(--subtle);
+@media (hover: hover) {
+  tr:hover td {
+    background: var(--subtle);
+  }
 }
 .pagination {
   display: flex;
@@ -813,65 +900,79 @@ footer {
 [hidden] {
   display: none !important;
 }
+/* ---------- Responsive layout ----------
+   > 1024px   laptop/desktop: fixed sidebar
+   <= 1024px  tablet: slide-in drawer, sticky header
+   <= 760px   phone: stacked panels, full-width filters
+   <= 520px   small phone: single-column details, full-width actions */
 @media (max-width: 1100px) {
-  main {
-    padding: 0 28px;
+  :root {
+    --gutter: 32px;
   }
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .metric {
-    border: 0;
-  }
-  .grid {
-    grid-template-columns: 1fr;
-  }
+  .grid,
   .overview-grid {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 760px) {
-  body {
-    display: block;
-  }
+@media (max-width: 1024px) {
   aside {
-    position: static;
-    width: 100%;
-    padding: 20px 18px 12px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    z-index: 50;
+    width: min(288px, 86vw);
+    padding: max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+    transform: translateX(-100%);
+    visibility: hidden;
+    overscroll-behavior: contain;
+    transition:
+      transform 260ms var(--drawer-ease),
+      visibility 0s linear 260ms;
   }
-  .brand {
-    padding: 0;
+  body.nav-open aside {
+    transform: none;
+    visibility: visible;
+    box-shadow: 0 0 60px #0000003d;
+    transition: transform 260ms var(--drawer-ease);
   }
-  .brand small {
-    display: inline;
-    margin-left: 10px;
+  body.nav-open {
+    overflow: hidden;
   }
-  .nav-label,
-  .sidebar-note {
-    display: none;
-  }
-  nav {
-    display: flex;
-    overflow: auto;
-    margin-top: 20px;
-    padding-bottom: 4px;
-  }
-  nav button {
-    white-space: nowrap;
+  body:not([data-session='signed-out']) .menu-toggle {
+    display: inline-grid;
   }
   main {
-    margin: 0;
+    margin-left: 0;
     width: 100%;
-    padding: 0 20px;
   }
   header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    flex-wrap: wrap;
     min-height: 64px;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: max(10px, env(safe-area-inset-top)) var(--gutter) 10px;
+    background: var(--canvas);
+    background: color-mix(in srgb, var(--canvas) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+  }
+  nav button {
+    padding: 11px 12px;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --gutter: 20px;
   }
   .heading {
-    margin-top: 30px;
+    flex-wrap: wrap;
     align-items: flex-start;
+    gap: 16px;
+    margin: 28px 0 24px;
+  }
+  h1 {
+    font-size: 25px;
   }
   .overview-hero {
     align-items: flex-start;
@@ -892,22 +993,85 @@ footer {
   .panel {
     padding: 22px;
   }
-  h1 {
-    font-size: 25px;
+  .toolbar {
+    align-items: stretch;
+  }
+  .toolbar label {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+  .toolbar input:not([type='checkbox']),
+  .toolbar select {
+    width: 100%;
+  }
+  .toolbar .check {
+    flex-basis: 100%;
+    padding-bottom: 0;
+  }
+  .toolbar > button {
+    flex: 1 1 auto;
+  }
+  .page-tools {
+    padding: 14px;
+  }
+  th,
+  td {
+    padding: 11px 14px;
+  }
+  td {
+    max-width: 260px;
+    min-width: 88px;
   }
   footer {
     flex-direction: column;
     gap: 6px;
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .login {
-    margin: 48px auto;
+    margin: 40px auto;
     padding: 28px;
+  }
+  /* 16px text stops iOS Safari from zooming the page when a field is focused. */
+  input:not([type='checkbox']),
+  select {
+    font-size: 16px;
+  }
+}
+@media (max-width: 600px) {
+  body:not([data-session='signed-out']) .header-identity {
+    display: none;
+  }
+  header {
+    gap: 10px;
+  }
+  .header-actions {
+    flex: 1;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .refresh-status {
+    min-width: 0;
+  }
+  .refresh-status:empty {
+    display: none;
+  }
+  /* Keep "Appearance" as the select's accessible name but drop it visually. */
+  header .appearance-label {
+    gap: 0;
+    font-size: 0;
+  }
+  header .appearance-label select {
+    padding: 8px 6px;
   }
 }
 @media (max-width: 520px) {
+  :root {
+    --gutter: 16px;
+  }
   .overview-hero {
     display: block;
-    padding: 26px;
+    padding: 24px;
+    border-radius: 16px;
   }
   .risk-orb {
     margin-top: 24px;
@@ -917,6 +1081,74 @@ footer {
   }
   .hero-actions button {
     width: 100%;
+  }
+  .metric {
+    padding: 16px;
+  }
+  .metric strong {
+    font-size: 24px;
+    margin-top: 10px;
+  }
+  .panel {
+    padding: 18px;
+    border-radius: 12px;
+  }
+  .panel-title h2,
+  .activity-panel h2 {
+    font-size: 17px;
+  }
+  .bar-row {
+    grid-template-columns: 84px minmax(0, 1fr) 44px;
+    gap: 10px;
+  }
+  .facts {
+    grid-template-columns: 1fr;
+  }
+  .toolbar label {
+    flex-basis: 100%;
+  }
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .pagination > div {
+    display: flex;
+    gap: 8px;
+  }
+  .pagination > div button {
+    flex: 1;
+  }
+  dialog,
+  #record-dialog {
+    width: calc(100vw - 24px);
+    max-height: 88dvh;
+    padding: 20px;
+    border-radius: 14px;
+  }
+  .login {
+    margin: 24px auto;
+    padding: 26px 20px;
+    border-radius: 12px;
+  }
+  .login h1 {
+    font-size: 26px;
+  }
+}
+/* Touch screens: comfortable tap targets and no grey tap flash. */
+@media (pointer: coarse) {
+  button,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:not(.sort-column):not(.text-button):not(.text-link):not(.interactive-bar),
+  select,
+  input:not([type='checkbox']):not([type='file']) {
+    min-height: 42px;
+  }
+  input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
   }
 }
 
@@ -1063,21 +1295,6 @@ footer {
 }
 .appearance-label select {
   padding: 7px 9px;
-}
-@media (max-width: 900px) {
-  header {
-    flex-wrap: wrap;
-    padding: 16px 0;
-  }
-}
-@media (max-width: 480px) {
-  .header-actions {
-    gap: 10px;
-  }
-  .appearance-label {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 
 /* Dataset workspace: strong hierarchy, deliberate color, actionable states. */
@@ -1352,5 +1569,23 @@ dialog::backdrop {
   }
   .dataset-card {
     padding: 22px;
+  }
+}
+@media (max-width: 520px) {
+  .library-hero {
+    padding: 24px;
+    border-radius: 16px;
+  }
+  .hero-button {
+    width: 100%;
+  }
+  .dataset-card-footer {
+    flex-wrap: wrap;
+  }
+  .dataset-card-footer button {
+    width: 100%;
+  }
+  .dataset-count strong {
+    font-size: 28px;
   }
 }

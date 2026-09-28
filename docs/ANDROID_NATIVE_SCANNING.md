@@ -12,7 +12,7 @@ NotiCare real-time scanning is Android-only and requires a development or releas
 4. Rejects NotiCare's own notifications and group summaries.
 5. Selects the latest structured message by timestamp, or a single expanded/main text payload, only after the package check. It never joins different notification fields or InboxStyle entries into one SMS. Missing, malformed, or ambiguous content is reported unavailable.
 
-Consequently, social, email, banking, shopping, and other unrelated notifications are never read, scored, saved, or queued by this service. The app does not request `READ_SMS`, does not become the default SMS app, and does not use an accessibility service or an overlay.
+Consequently, social, email, banking, shopping, and other unrelated notifications are never read, scored, saved, or queued by this service. The app does not request `READ_SMS`, does not become the default SMS app, and does not use an accessibility service. The only overlay is the opt-in full-screen threat warning described below, which requires the user-granted **Display over other apps** permission and is shown only when a Suspicious or Dangerous message is detected.
 
 If Android hides a notification preview, the listener records the non-sensitive runtime status `content_unavailable`; it does not guess at message content.
 
@@ -21,7 +21,7 @@ If Android hides a notification preview, the listener records the non-sensitive 
 The Kotlin evaluator is offline-only and mirrors the versioned TypeScript rules in `src/features/detection/rules.ts` (version `2026.09.10`). The bundled V3 LiteRT model uses its audited UTF-8 byte preprocessing and locked threshold, but can raise a rule-safe result to Suspicious only when concrete phishing evidence also exists. Generic urgency, instructions to click or reply, and text obfuscation alone cannot support that escalation. Messages with no supporting indicators, such as ordinary greetings, retain their rule result. Existing Suspicious and Dangerous rule results are preserved. Model loading failures, invalid outputs, or invalid thresholds fall back to the rules. Neither evaluator opens, resolves, previews, or fetches a URL. This decision-policy change has regression coverage; it is not a model retraining or a new measured accuracy claim.
 
 - **Safe:** leaves the notification visible and queues sanitized aggregate metadata.
-- **Suspicious / Dangerous:** shows a full-screen warning or actionable banner with reasons and **Block**/**Ignore** controls. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. A captured message is marked _blocked_ only when Android accepts that call. **Ignore** leaves the notification visible. The original SMS is never deleted from the Messages app. All scanned levels are saved in the encrypted local Messages inbox when storage is available.
+- **Suspicious / Dangerous:** shows a full-screen warning or actionable banner with reasons and **Block**/**Ignore** controls. With **Full-screen warning** selected (Pro): while the phone is unlocked and in use, `ThreatWarningOverlay` draws the warning over whatever app is open (requires **Display over other apps**); while locked or with the screen off, the notification's full-screen intent opens `ThreatWarningActivity`. Without the overlay permission, an in-use phone shows the heads-up banner. The actionable notification is always posted as a fallback. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. A captured message is marked _blocked_ only when Android accepts that call. **Ignore** leaves the notification visible. The original SMS is never deleted from the Messages app. All scanned levels are saved in the encrypted local Messages inbox when storage is available.
 
 Android does not provide a separate, synchronous “delivery suppressed” acknowledgement after `cancelNotification`; the app treats the platform accepting the cancellation call as the available best-effort success signal.
 
@@ -64,7 +64,7 @@ No listener callback sends a background SMS payload to JavaScript. Full message 
 
 ## Prebuild and checks
 
-`plugins/withNotificationListener.js` is the source of truth for prebuild. It writes the Kotlin templates from `plugins/android/`, copies the V3 model and metadata into private packaged assets, registers the listener, removes the obsolete Headless-JS and overlay components, and adds AndroidX DataStore, LiteRT, and JUnit dependencies.
+`plugins/withNotificationListener.js` is the source of truth for prebuild. It writes the Kotlin templates from `plugins/android/`, copies the V3 model and metadata into private packaged assets, registers the listener, removes the obsolete Headless-JS components and the legacy `WarningOverlayActivity`, and adds AndroidX DataStore, LiteRT, and JUnit dependencies.
 
 Run these on Windows with the installed JDK 21:
 

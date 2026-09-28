@@ -76,7 +76,12 @@ function updateManifest(manifest) {
     'xmlns:tools': manifest.manifest.$?.['xmlns:tools'] ?? TOOLS_NAMESPACE,
   };
   const permissions = asArray(manifest.manifest, 'uses-permission').filter(
-    (entry) => !DISALLOWED_PERMISSION_SET.has(entry?.$?.['android:name']),
+    (entry) =>
+      !DISALLOWED_PERMISSION_SET.has(entry?.$?.['android:name']) &&
+      // Drop stale removal markers left by older prebuilds for permissions now in use.
+      !(
+        FORMERLY_DISALLOWED_PERMISSIONS.includes(entry?.$?.['android:name']) && entry?.$?.['tools:node'] === 'remove'
+      ),
   );
 
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
