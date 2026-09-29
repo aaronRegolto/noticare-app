@@ -30,3 +30,4 @@ revoke all on function public.delete_my_account() from public, anon, authenticat
 grant execute on function public.delete_my_account() to authenticated;
 
 commit;
+  
