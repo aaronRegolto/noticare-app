@@ -51,8 +51,8 @@ object V3RiskEvaluator {
 
     val reason = ThreatReason(
       code = "v3-model-risk",
-      label = "On-device risk model",
-      description = "The on-device model supports the specific warning signs listed for this message. Its output alone does not establish smishing.",
+      label = "AI check",
+      description = "NotiCare's built-in AI agrees the warning signs above look like a scam. It only adds points when real warning signs are present.",
       weight = max(0, 30 - rules.score),
     )
     // ruleVersion must stay exactly rules.ruleVersion: it's checked for an exact
