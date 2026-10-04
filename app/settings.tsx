@@ -793,8 +793,9 @@ export default function SettingsScreen() {
               <View style={styles.languageIntro}>
                 <Text style={styles.appearanceTitle}>Messages and warnings in</Text>
                 <Text style={styles.appearanceSubtitle}>
-                  Applies to captured messages and to scam warning pop-ups and notifications. Messages are translated on
-                  this phone; links stay exactly as received, and scanning always uses the original message.
+                  Applies to captured messages, scam warning pop-ups and notifications, and scan results. Messages are
+                  translated on this phone; links stay exactly as received, and scanning always uses the original
+                  message.
                 </Text>
               </View>
               {MESSAGE_LANGUAGE_OPTIONS.map((option) => (

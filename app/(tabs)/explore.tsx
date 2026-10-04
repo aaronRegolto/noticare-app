@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScoreBreakdown } from '@/src/components/score-breakdown';
 import { BrandLogo } from '@/src/components/brand-logo';
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
+import { localizeReason, type WarningCopy } from '@/src/features/translation';
 import {
   getMessageFeedbackRecord,
   getMessageVirality,
@@ -35,6 +36,7 @@ import {
 } from '@/src/services/cameraScan';
 import { sendScanFeedback } from '@/src/services/feedback';
 import { logError } from '@/src/services/logger';
+import { useWarningCopy } from '@/src/services/messageTranslation';
 import {
   isNativeMonitoringAvailable,
   isTextRecognitionAvailable,
@@ -46,44 +48,11 @@ import type { ThemeColors } from '@/src/theme/palette';
 const navy = '#1E2D43';
 const maxCharacters = 12_000;
 
-const levelCopy: Record<
-  ThreatLevel,
-  {
-    title: string;
-    explanation: string;
-    action: string;
-    color: string;
-    surface: string;
-    icon: keyof typeof Ionicons.glyphMap;
-  }
-> = {
-  safe: {
-    title: 'Safe',
-    explanation:
-      'No significant phishing indicators were found. Stay cautious — NotiCare cannot guarantee every scam is detected.',
-    action:
-      'If a message asks for money or personal information later, verify it through the organization’s official app or website.',
-    color: '#007D59',
-    surface: '#E9FBF3',
-    icon: 'checkmark-circle',
-  },
-  suspicious: {
-    title: 'Suspicious',
-    explanation: 'This message has warning signs but not enough evidence to call it a likely scam.',
-    action: 'Do not tap links or reply with personal information. Verify the sender through an official channel first.',
-    color: '#A75C00',
-    surface: '#FFF6DF',
-    icon: 'warning',
-  },
-  dangerous: {
-    title: 'Dangerous',
-    explanation: 'Several strong phishing indicators were found together. Treat this message as dangerous.',
-    action:
-      'Do not open links or share passwords, PINs, or OTPs. Contact the organization using its official app, website, or verified number.',
-    color: '#B42318',
-    surface: '#FFF0F0',
-    icon: 'close-circle',
-  },
+// Each level's wording (title, explanation, action) comes from the chosen language's WarningCopy.
+const levelStyle: Record<ThreatLevel, { color: string; surface: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  safe: { color: '#007D59', surface: '#E9FBF3', icon: 'checkmark-circle' },
+  suspicious: { color: '#A75C00', surface: '#FFF6DF', icon: 'warning' },
+  dangerous: { color: '#B42318', surface: '#FFF0F0', icon: 'close-circle' },
 };
 
 function Header() {
@@ -116,36 +85,35 @@ function Header() {
  * shown separately as a badge, never as the score, so the number here matches the real-time
  * warning for the same message.
  */
-function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, viralityLoading: boolean) {
+function scoreDisplay(
+  result: ThreatResult,
+  virality: PhishingVirality | null,
+  viralityLoading: boolean,
+  copy: WarningCopy,
+) {
   const reportBadge =
     result.level === 'dangerous' && virality && virality.reportCount > 0
-      ? virality.reportCount === 1
-        ? '1 report'
-        : `${virality.reportCount} reports`
+      ? copy.reportBadge(virality.reportCount)
       : null;
   if (result.level === 'safe') {
-    return {
-      score: 0,
-      badge: null as string | null,
-      explanation: 'Safe messages always have a risk score of 0. No strong warning signs were found.',
-    };
+    return { score: 0, badge: null as string | null, explanation: copy.safeScoreExplanation };
   }
   if (result.level === 'suspicious') {
     return {
       score: result.score,
       badge: null as string | null,
-      explanation: `Scores from 30 to 69 are Suspicious. ${result.score}/100 means some warning signs were found, but not enough to call this a confirmed scam.`,
+      explanation: copy.suspiciousScoreExplanation(result.score),
     };
   }
   const community = viralityLoading
-    ? ' Checking whether other NotiCare users reported this exact message…'
+    ? copy.checkingReports
     : virality && virality.reportCount > 0
-      ? ` ${virality.reportCount === 1 ? '1 NotiCare user has' : `${virality.reportCount} NotiCare users have`} reported this exact message.`
-      : ' No one has reported this exact message yet. Tap Report to warn other NotiCare users.';
+      ? copy.reportedBy(virality.reportCount)
+      : copy.notReportedYet;
   return {
     score: result.score,
     badge: reportBadge,
-    explanation: `Scores of 70 and above are Dangerous. ${result.score}/100 means strong phishing signs were found.${community}`,
+    explanation: `${copy.dangerousScoreExplanation(result.score)} ${community}`,
   };
 }
 
@@ -167,9 +135,10 @@ function ResultCard({
 }) {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
-  const display = levelCopy[result.level];
+  const copy = useWarningCopy();
+  const display = { ...levelStyle[result.level], ...copy.levels[result.level] };
   const scanTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
-  const scored = scoreDisplay(result, virality, viralityLoading);
+  const scored = scoreDisplay(result, virality, viralityLoading, copy);
   return (
     <View style={[styles.resultCard, { borderColor: display.color }]} accessibilityLiveRegion="polite">
       <View style={[styles.resultHero, { backgroundColor: display.surface }]}>
@@ -183,22 +152,23 @@ function ResultCard({
               </View>
             ) : null}
           </View>
-          <Text style={styles.score}>{scored.score}/100 risk score</Text>
+          <Text style={styles.score}>{copy.riskScoreLine(scored.score)}</Text>
         </View>
       </View>
       <Text style={styles.resultExplanation}>{display.explanation}</Text>
       <Text style={styles.scoreExplanation}>{scored.explanation}</Text>
-      <Text style={styles.resultSectionTitle}>How the score was calculated</Text>
+      <Text style={styles.resultSectionTitle}>{copy.howScoreCalculated}</Text>
       <ScoreBreakdown
-        reasons={result.reasons}
+        reasons={result.reasons.map((reason) => localizeReason(reason, copy))}
         score={scored.score}
         level={result.level}
         accent={display.color}
         colors={colors}
+        copy={copy}
       />
       {result.urls.length ? (
         <>
-          <Text style={styles.resultSectionTitle}>Links found</Text>
+          <Text style={styles.resultSectionTitle}>{copy.linksFound}</Text>
           {result.urls.map((url, index) => (
             <View key={`${url.display}-${index}`} style={styles.urlRow}>
               <Ionicons name="link-outline" size={17} color="#A75C00" />
@@ -212,28 +182,26 @@ function ResultCard({
       <View style={styles.actionBox}>
         <Ionicons name="shield-outline" size={21} color={navy} />
         <View style={styles.actionCopy}>
-          <Text style={styles.actionTitle}>Recommended action</Text>
+          <Text style={styles.actionTitle}>{copy.recommendedAction}</Text>
           <Text style={styles.actionText}>{display.action}</Text>
         </View>
       </View>
-      <Text style={styles.meta}>
-        Scanned {scanTime} · Rule set {result.ruleVersion}
-      </Text>
+      <Text style={styles.meta}>{copy.scannedAt(scanTime, result.ruleVersion)}</Text>
       {feedbackState !== 'idle' && feedbackState !== 'sending' ? (
         <View style={styles.feedbackSent} accessibilityLiveRegion="polite">
           <Ionicons name="checkmark-circle" size={18} color="#007D59" />
           <Text style={styles.feedbackSentText}>
             {feedbackState === 'already_marked_safe'
-              ? 'You already marked this exact message as safe.'
+              ? copy.alreadyMarkedSafe
               : feedbackState === 'already_reported'
-                ? 'You already reported this exact message.'
+                ? copy.alreadyReported
                 : feedbackState === 'saved_locally'
                   ? feedbackKind === 'dangerous'
-                    ? 'Done'
-                    : 'Saved on this device only — it was not submitted to NotiCare’s servers.'
+                    ? copy.done
+                    : copy.savedOnDeviceOnly
                   : feedbackKind === 'dangerous'
-                    ? 'Reported. This exact message text was shared so other NotiCare users can be warned.'
-                    : 'Report sent. Your message text was not uploaded.'}
+                    ? copy.reportedAndShared
+                    : copy.markedSafeNotUploaded}
           </Text>
         </View>
       ) : (
@@ -243,10 +211,10 @@ function ResultCard({
             onPress={() => onFeedback('safe')}
             style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="Mark as safe"
+            accessibilityLabel={copy.markAsSafe}
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Saving report…' : 'Mark as safe'}</Text>
+            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? copy.savingReport : copy.markAsSafe}</Text>
           </Pressable>
           <Pressable
             disabled={feedbackState === 'sending'}
@@ -256,7 +224,7 @@ function ResultCard({
             accessibilityLabel="Report this message"
             accessibilityState={{ disabled: feedbackState === 'sending' }}
           >
-            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? 'Reporting…' : 'Report'}</Text>
+            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? copy.reporting : copy.report}</Text>
           </Pressable>
         </View>
       )}

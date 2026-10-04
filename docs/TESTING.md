@@ -108,6 +108,7 @@ Record Android version, Messages app/package/version, device model, build SHA, s
 - Airplane mode after the pack downloads: translation still works.
 - An older build without the translator: the Message language section is hidden.
 - With **Tagalog** chosen, a Suspicious and a Dangerous message show the warning pop-up (title, badge, advice, every warning sign, buttons) and the notifications in Tagalog, with the same score and link domains. Switching back to **Default** or **English** shows them in English. No download or connection is needed for this.
+- With **Tagalog** chosen, a Manual Scan result (level, explanations, warning signs, score breakdown, bands, recommended action, feedback buttons and messages) and an opened inbox message's warning signs are in Tagalog, with the same score and points.
 
 ## Regression gates
 

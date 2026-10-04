@@ -3,14 +3,15 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { ThreatLevel } from '@/src/features/detection';
+import { ENGLISH_WARNING_COPY, type WarningCopy } from '@/src/features/translation';
 import type { ThemeColors } from '@/src/theme/palette';
 
 type Reason = { code: string; label: string; description: string; weight: number };
 
-const BANDS: { level: ThreatLevel; label: string; range: string }[] = [
-  { level: 'safe', label: 'Safe', range: '0' },
-  { level: 'suspicious', label: 'Suspicious', range: '30–69' },
-  { level: 'dangerous', label: 'Dangerous', range: '70–100' },
+const BANDS: { level: ThreatLevel; range: string }[] = [
+  { level: 'safe', range: '0' },
+  { level: 'suspicious', range: '30–69' },
+  { level: 'dangerous', range: '70–100' },
 ];
 
 /**
@@ -25,12 +26,15 @@ export function ScoreBreakdown({
   level,
   accent,
   colors,
+  copy = ENGLISH_WARNING_COPY,
 }: {
+  /** Already in the chosen language (see localizeReason). */
   reasons: Reason[];
   score: number;
   level: ThreatLevel;
   accent: string;
   colors: ThemeColors;
+  copy?: WarningCopy;
 }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Also covers a Safe result that still carries weighted reasons, e.g. from an older native build.
@@ -49,38 +53,34 @@ export function ScoreBreakdown({
               <Text style={styles.title}>{reason.label}</Text>
               <Text style={styles.description}>{reason.description}</Text>
             </View>
-            <Text style={styles.points} accessibilityLabel={`${reason.weight} points`}>
+            <Text style={styles.points} accessibilityLabel={copy.pointsAccessibility(reason.weight)}>
               +{reason.weight}
             </Text>
           </View>
         ))
       ) : (
-        <Text style={styles.description}>No meaningful warning signs were found.</Text>
+        <Text style={styles.description}>{copy.noMeaningfulSigns}</Text>
       )}
 
       {listed.length ? (
         <View style={styles.sumRow}>
           <Text style={styles.sumLabel}>
-            Total{listed.length > 1 ? ` (${listed.map((reason) => reason.weight).join(' + ')})` : ''}
+            {copy.total}
+            {listed.length > 1 ? ` (${listed.map((reason) => reason.weight).join(' + ')})` : ''}
           </Text>
-          <Text style={styles.sumValue} accessibilityLabel={`Total ${rawTotal} points`}>
+          <Text style={styles.sumValue} accessibilityLabel={`${copy.total} ${copy.pointsAccessibility(rawTotal)}`}>
             {rawTotal}
           </Text>
         </View>
       ) : null}
 
       <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Risk score</Text>
+        <Text style={styles.totalLabel}>{copy.riskScore}</Text>
         <Text style={[styles.totalValue, { color: bandColor[level] }]}>{shownScore}/100</Text>
       </View>
-      {rawTotal > 100 ? (
-        <Text style={styles.note}>The signs add up to {rawTotal} points; the score is capped at 100.</Text>
-      ) : null}
+      {rawTotal > 100 ? <Text style={styles.note}>{copy.cappedNote(rawTotal)}</Text> : null}
 
-      <View
-        style={styles.bands}
-        accessibilityLabel={`Score bands: Safe 0, Suspicious 30 to 69, Dangerous 70 to 100. This message is ${level}.`}
-      >
+      <View style={styles.bands} accessibilityLabel={copy.bandsAccessibility(level)}>
         {BANDS.map((band) => {
           const active = band.level === level;
           return (
@@ -91,7 +91,7 @@ export function ScoreBreakdown({
                 active && { backgroundColor: bandColor[band.level], borderColor: bandColor[band.level] },
               ]}
             >
-              <Text style={[styles.bandLabel, active && styles.bandLabelActive]}>{band.label}</Text>
+              <Text style={[styles.bandLabel, active && styles.bandLabelActive]}>{copy.bands[band.level]}</Text>
               <Text style={[styles.bandRange, active && styles.bandLabelActive]}>{band.range}</Text>
             </View>
           );

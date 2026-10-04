@@ -19,13 +19,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/src/components/brand-logo';
 import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
-import { LANGUAGE_NAMES } from '@/src/features/translation';
+import { LANGUAGE_NAMES, localizeReason } from '@/src/features/translation';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { logError } from '@/src/services/logger';
 import {
   ensureLanguagePack,
   useMessageTranslationSettings,
   useTranslatedMessage,
+  useWarningCopy,
 } from '@/src/services/messageTranslation';
 import {
   clearHistory,
@@ -171,6 +172,7 @@ function DetailModal({
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
   const { language } = useMessageTranslationSettings();
+  const copy = useWarningCopy();
   const translation = useTranslatedMessage(record?.message);
   const [showOriginal, setShowOriginal] = useState(false);
   useEffect(() => setShowOriginal(false), [record?.id]);
@@ -178,7 +180,7 @@ function DetailModal({
   const tone = tones[record.level];
   const translated = translation?.status === 'translated' ? translation : null;
   // A Safe message always scores 0 (getHistoryRecord also zeroes older records), so it lists no warning signs.
-  const reasons = record.level === 'safe' ? [] : record.reasons;
+  const reasons = record.level === 'safe' ? [] : record.reasons.map((reason) => localizeReason(reason, copy));
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={styles.modalPage}>
@@ -254,8 +256,8 @@ function DetailModal({
               {translated && !showOriginal ? translated.text : record.message}
             </Text>
           </View>
-          <Text style={styles.detailLabel}>WARNING SIGNS</Text>
-          {!reasons.length && <Text style={styles.reasonText}>No significant warning signs detected.</Text>}
+          <Text style={styles.detailLabel}>{copy.warningSigns}</Text>
+          {!reasons.length && <Text style={styles.reasonText}>{copy.noSignificantSigns}</Text>}
           {reasons.map((reason) => (
             <View style={styles.reasonRow} key={reason.code}>
               <Ionicons name="alert-circle-outline" size={19} color="#B42318" />

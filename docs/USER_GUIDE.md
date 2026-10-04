@@ -56,7 +56,7 @@ Choose **Mark as safe** if you believe the message is legitimate, or **Report sm
 
 In **Settings → Message language**, choose **Tagalog** or **English** to show captured messages in that language, or **Default** to show them exactly as received. This is free on every plan.
 
-The same choice sets the language of NotiCare's scam warning pop-ups and notifications: **Tagalog** shows them in Tagalog, while **Default** and **English** show them in English. Warnings are written in both languages inside the app, so they appear instantly and work offline, with no download needed.
+The same choice sets the language of NotiCare's scam warning pop-ups, notifications, Manual Scan results, and the warning signs listed in an opened message: **Tagalog** shows them in Tagalog, while **Default** and **English** show them in English. Warnings are written in both languages inside the app, so they appear instantly and work offline, with no download needed.
 
 - NotiCare downloads a language pack (about 60 MB) once, over Wi-Fi only. Until then, messages show as received.
 - English and Taglish messages are translated to Tagalog, or Tagalog and Taglish messages to English. Taglish translations can be imperfect.

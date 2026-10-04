@@ -5,7 +5,9 @@ import {
   joinTranslatedSegments,
   planTranslation,
   splitForTranslation,
+  warningCopyFor,
   type MessageLanguage,
+  type WarningCopy,
 } from '@/src/features/translation';
 import { logError } from '@/src/services/logger';
 import {
@@ -163,6 +165,11 @@ export function useMessageTranslationSettings(): State & { available: boolean } 
     void loadMessageLanguage();
   }, []);
   return { ...current, available: isMessageTranslationAvailable() };
+}
+
+/** NotiCare's scan-result wording in the chosen language: Tagalog for Tagalog, otherwise English. */
+export function useWarningCopy(): WarningCopy {
+  return warningCopyFor(useMessageTranslationSettings().language);
 }
 
 /** A captured message's display text in the chosen language, falling back to the original. */
