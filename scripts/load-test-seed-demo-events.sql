@@ -48,7 +48,7 @@ begin
     'manual'::public.threat_source,
     level,
     case level
-      when 'safe' then (random() * 2)::smallint
+      when 'safe' then 0
       when 'suspicious' then 3 + (random() * 3)::smallint
       else 7 + (random() * 3)::smallint
     end,

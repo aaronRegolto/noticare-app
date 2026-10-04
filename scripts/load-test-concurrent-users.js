@@ -143,7 +143,7 @@ async function main() {
       p_device_id: session.deviceId,
       p_source: 'manual',
       p_threat_level: level,
-      p_score_bucket: level === 'dangerous' ? 9 : level === 'suspicious' ? 4 : 1,
+      p_score_bucket: level === 'dangerous' ? 9 : level === 'suspicious' ? 4 : 0,
       p_blocked: false,
       p_indicator_codes: ['urgency-pressure'],
       p_url_count: 0,

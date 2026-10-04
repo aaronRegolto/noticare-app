@@ -92,6 +92,7 @@ The client should cache the last successful aggregate result and fill missing da
 - `profiles` contains the authenticated user ID and only the last four phone digits.
 - `devices` stores a generated installation UUID, app/rule versions, and last-seen time. It stores no advertising or hardware ID.
 - `threat_events` stores classification metadata only. A database constraint blocks `blocked=true` unless the source is `realtime` and level is `dangerous`.
+- Safe results always carry a score of 0 (Safe 0, Suspicious 30–69, Dangerous 70–100; classification itself is unchanged). `20261004000200_safe_risk_score_zero.sql` adds triggers that store `score_bucket = 0` for every Safe `threat_events` row and turn a `risk_score` of 1–29 into 0 in `viral_phishing_reports` and `viral_phishing_report_events`, and it backfilled existing rows. The triggers coerce and never reject, because old app builds and queued uploads still send 1–29 and clients retry a failed upload forever. A `NULL` risk score stays `NULL`.
 - `community_daily_stats` and `community_hourly_stats` contain no user or device identifiers. A trigger excludes `is_demo=true` events.
 - `scan_feedback` records an expected classification and allow-listed rule codes, not a message.
 - `rule_sets` distributes the active checksummed rule bundle. Only active versions are readable by authenticated users.
