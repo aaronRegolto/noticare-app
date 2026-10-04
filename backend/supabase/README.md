@@ -32,7 +32,7 @@ Required secrets (`supabase secrets set --workdir backend NAME=value`):
 
 The app side needs `EXPO_PUBLIC_PAYMONGO_PRICE_MONTHLY` / `_ANNUAL` (display-only strings matching the secrets above — the actual charged amount always comes from the server-side secret).
 
-**Verify before relying on this in production**: the exact JSON path to `metadata` inside a `payment.paid` webhook event (in `paymongo-webhook/index.ts`) is a best-effort guess pending a real confirmed payload — check the logged raw payload against your first real test payment and adjust if the real path differs.
+`paymongo-webhook` must be deployed without JWT verification (set in `config.toml`; PayMongo can't send a Supabase JWT), and the live webhook registered in PayMongo must subscribe to `payment.paid` — not `checkout_session.payment.paid`, which QRPh payment intents never send. The webhook reads the Payment Intent's metadata at `data.attributes.data.attributes.metadata`, confirmed against a live `payment.paid` payload on 2026-10-04.
 
 ## Apply migrations
 

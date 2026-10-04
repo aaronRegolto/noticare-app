@@ -81,11 +81,9 @@ Deno.serve(async (req) => {
     return new Response('OK', { status: 200 });
   }
 
-  // IMPORTANT — verify before relying on this in production: the exact JSON
-  // path to metadata inside a payment.paid event payload could not be
-  // confirmed against PayMongo's docs at the time this was written. Check the
-  // logged raw payload below against your first real test payment and adjust
-  // this line if the real path differs.
+  // PayMongo copies the Payment Intent's metadata onto the Payment, so it sits
+  // at data.attributes.data.attributes.metadata (confirmed against a live
+  // payment.paid payload on 2026-10-04).
   console.log('paymongo-webhook received:', rawBody);
   const metadata = event.data.attributes.data.attributes.metadata;
   const userId = metadata?.user_id;

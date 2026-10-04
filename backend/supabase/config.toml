@@ -2,3 +2,8 @@
 # This file is safe to commit: production credentials belong in Supabase secrets,
 # never in this config file or an EXPO_PUBLIC_ environment variable.
 project_id = "noticare"
+
+# PayMongo calls this directly and can't send a Supabase JWT; the function
+# verifies the Paymongo-Signature header itself instead.
+[functions.paymongo-webhook]
+verify_jwt = false
