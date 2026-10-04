@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
-import { evaluateThreat, type ThreatResult } from '@/src/features/detection';
+import { evaluateThreat, finalizeRiskScore, finalizeThreatResult, type ThreatResult } from '@/src/features/detection';
 import { activeUserId, registerDevice } from '@/src/services/eventSync';
 import { logDiagnostic, logError } from '@/src/services/logger';
 import {
@@ -83,7 +83,10 @@ export type ViralPhishingEntry = {
   reportCount: number;
   firstReportedAt: string;
   lastReportedAt: string;
-  /** The detector's 0-100 risk score; null for reports filed before it was stored. */
+  /**
+   * The detector's risk score (Safe is always 0, otherwise 30–100); null for reports filed before
+   * it was stored. Older rows and cached rankings can hold a Safe 1–29, which reads as 0.
+   */
   riskScore: number | null;
 };
 
@@ -124,7 +127,9 @@ async function readQueue(userId: string): Promise<QueuedReport[]> {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isQueuedReport) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(isQueuedReport).map((report) => ({ ...report, riskScore: publicRiskScore(report.riskScore) }))
+      : [];
   } catch {
     return [];
   }
@@ -142,6 +147,15 @@ function isMissingSourceParameter(error: { code?: string } | null) {
   return error?.code === 'PGRST202';
 }
 
+/**
+ * A stored or received risk score as 0-100, or null when absent. It has no level with it, but any
+ * score under the Suspicious threshold is Safe, so the 1–29 that older builds queued and reported
+ * for Safe messages (still held in queues, server rows, and cached rankings) reads as 0.
+ */
+function publicRiskScore(value: unknown): number | null {
+  return typeof value === 'number' ? finalizeRiskScore(Math.max(0, Math.min(100, Math.round(value)))) : null;
+}
+
 async function syncReport(report: QueuedReport, source: ReportSource): Promise<PhishingVirality> {
   const deviceId = await registerDevice(report.ruleVersion);
   const args = {
@@ -151,8 +165,7 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
     p_indicator_codes: report.indicatorCodes,
     p_rule_version: report.ruleVersion,
   };
-  const riskScore =
-    typeof report.riskScore === 'number' ? Math.max(0, Math.min(100, Math.round(report.riskScore))) : null;
+  const riskScore = publicRiskScore(report.riskScore);
   let { data, error } = await supabase.rpc('record_phishing_report', {
     ...args,
     p_source: source,
@@ -187,7 +200,7 @@ export async function reportAndBlockMessage(
     sampleSender,
     indicatorCodes: result.reasons.map((reason) => reason.code).slice(0, 32),
     ruleVersion: result.ruleVersion,
-    riskScore: result.score,
+    riskScore: finalizeThreatResult(result).score,
     createdAt: new Date().toISOString(),
     attempts: 0,
   };
@@ -337,7 +350,7 @@ async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntr
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(isViralPhishingRow).map((entry) => ({ ...entry, riskScore: entry.riskScore ?? null }))
+      ? parsed.filter(isViralPhishingRow).map((entry) => ({ ...entry, riskScore: publicRiskScore(entry.riskScore) }))
       : [];
   } catch {
     return [];
@@ -374,7 +387,7 @@ export async function getViralPhishingRanking(
       firstReportedAt: row.first_reported_at,
       lastReportedAt: row.last_reported_at,
       // Absent until the risk-score migration is applied.
-      riskScore: typeof row.risk_score === 'number' ? row.risk_score : null,
+      riskScore: publicRiskScore(row.risk_score),
     }));
     const scored = await fillMissingRiskScores(entries);
     await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource}`, JSON.stringify(scored));

@@ -30,7 +30,7 @@ const pages = [
   {
     icon: 'speedometer-outline' as const,
     title: 'Understand the warnings',
-    body: 'Every message gets a risk score from 0 to 100. Safe (0–29) has no strong warning signs, Suspicious (30–69) means be careful, and Dangerous (70–100) is very likely a scam. For risky messages, NotiCare shows why and lets you choose Block & Report or Ignore.',
+    body: 'Every message gets a risk score from 0 to 100. Safe (0) has no strong warning signs, Suspicious (30–69) means be careful, and Dangerous (70–100) is very likely a scam. For risky messages, NotiCare shows why and lets you choose Block & Report or Ignore.',
     note: 'Blocking only hides the notification. The original SMS stays in your Messages app.',
   },
   {

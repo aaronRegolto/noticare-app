@@ -29,7 +29,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Threat levels',
-    body: 'Safe means no meaningful warning signs were found. Suspicious means caution is recommended. Dangerous means strong phishing evidence was found.',
+    body: 'Safe means no meaningful warning signs were found, and its risk score is always 0. Suspicious (30–69) means caution is recommended. Dangerous (70–100) means strong phishing evidence was found.',
   },
   {
     title: 'Choose Block & Report or Ignore',

@@ -34,7 +34,7 @@ Maintain a versioned, non-production corpus with at least 50 synthetic messages.
 - Shortened URLs, IP-address URLs, punycode, zero-width characters, spacing-obfuscated links, multiline text, and no-link social engineering.
 - Fake prizes, refunds, parcel delivery, account warning, credential/PIN/OTP requests, and ambiguous messages.
 
-Each fixture defines expected level, score, indicator codes, normalized URLs, and rule version. A parity test fails if Kotlin and TypeScript differ on any field that is shared between them.
+Each fixture defines expected level, score, indicator codes, normalized URLs, and rule version. A parity test fails if Kotlin and TypeScript differ on any field that is shared between them. Parity compares the raw rule output (`evaluateRules` in TypeScript, `SmishingEvaluator.evaluate` in Kotlin), before a Safe result's score is finalized to 0; regenerate the digest from `evaluateRules`, never from `evaluateThreat`.
 
 ## Supabase/RLS test cases
 
@@ -50,6 +50,10 @@ Use two phone-authenticated users, **A** and **B**, and distinct registered devi
 8. `is_demo=true` events never affect `get_community_stats`.
 9. `get_community_stats` accepts only the four documented ranges and returns no identifiers.
 10. Invalid/free-form indicator strings are rejected, proving the field cannot carry raw message text.
+11. A Safe `record_threat_event` sent with `p_score_bucket` 1 or 2 (as older app builds and queued events do) is accepted and stored with `score_bucket = 0`; its indicator codes are kept. Suspicious and Dangerous buckets are stored as sent, and the event is counted once in `get_community_stats`.
+12. `record_phishing_report` with `p_risk_score` 1–29 is accepted and stores 0 in both `viral_phishing_reports.risk_score` and the reporter's `viral_phishing_report_events.risk_score`. 0 and 30–100 are stored as sent, and `NULL` stays `NULL`.
+13. A message reported by A with a Safe score (for example 20) and by B with 85 shows 85 in `get_viral_phishing_ranking`; a message reported only with Safe scores shows 0. No ranking row has a risk score of 1–29.
+14. After applying `20261004000200_safe_risk_score_zero.sql`, the three "Check afterwards" queries at the end of that migration each return 0.
 
 ## Physical Android device procedure
 

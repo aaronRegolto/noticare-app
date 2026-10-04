@@ -8,15 +8,16 @@ import type { ThemeColors } from '@/src/theme/palette';
 type Reason = { code: string; label: string; description: string; weight: number };
 
 const BANDS: { level: ThreatLevel; label: string; range: string }[] = [
-  { level: 'safe', label: 'Safe', range: '0–29' },
+  { level: 'safe', label: 'Safe', range: '0' },
   { level: 'suspicious', label: 'Suspicious', range: '30–69' },
   { level: 'dangerous', label: 'Dangerous', range: '70–100' },
 ];
 
 /**
  * Shows how a risk score was reached: each warning sign with the points it added, the total,
- * and which band (Safe / Suspicious / Dangerous) the total falls in. The score is always the sum
- * of the signs' points, capped at 100 — the same rule both detectors use.
+ * and which band (Safe / Suspicious / Dangerous) the total falls in. The score is the sum of the
+ * signs' points, capped at 100 — the same rule both detectors use — except that a Safe message
+ * always scores 0, so it lists no signs or points at all.
  */
 export function ScoreBreakdown({
   reasons,
@@ -32,13 +33,16 @@ export function ScoreBreakdown({
   colors: ThemeColors;
 }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const rawTotal = reasons.reduce((sum, reason) => sum + reason.weight, 0);
+  // Also covers a Safe result that still carries weighted reasons, e.g. from an older native build.
+  const listed = level === 'safe' ? [] : reasons;
+  const shownScore = level === 'safe' ? 0 : score;
+  const rawTotal = listed.reduce((sum, reason) => sum + reason.weight, 0);
   const bandColor = { safe: colors.success, suspicious: colors.warning, dangerous: colors.danger };
 
   return (
     <View>
-      {reasons.length ? (
-        reasons.map((reason) => (
+      {listed.length ? (
+        listed.map((reason) => (
           <View key={reason.code} style={styles.row}>
             <Ionicons name="alert-circle-outline" size={18} color={accent} />
             <View style={styles.copy}>
@@ -54,10 +58,10 @@ export function ScoreBreakdown({
         <Text style={styles.description}>No meaningful warning signs were found.</Text>
       )}
 
-      {reasons.length ? (
+      {listed.length ? (
         <View style={styles.sumRow}>
           <Text style={styles.sumLabel}>
-            Total{reasons.length > 1 ? ` (${reasons.map((reason) => reason.weight).join(' + ')})` : ''}
+            Total{listed.length > 1 ? ` (${listed.map((reason) => reason.weight).join(' + ')})` : ''}
           </Text>
           <Text style={styles.sumValue} accessibilityLabel={`Total ${rawTotal} points`}>
             {rawTotal}
@@ -67,7 +71,7 @@ export function ScoreBreakdown({
 
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Risk score</Text>
-        <Text style={[styles.totalValue, { color: bandColor[level] }]}>{score}/100</Text>
+        <Text style={[styles.totalValue, { color: bandColor[level] }]}>{shownScore}/100</Text>
       </View>
       {rawTotal > 100 ? (
         <Text style={styles.note}>The signs add up to {rawTotal} points; the score is capped at 100.</Text>
@@ -75,7 +79,7 @@ export function ScoreBreakdown({
 
       <View
         style={styles.bands}
-        accessibilityLabel={`Score bands: Safe 0 to 29, Suspicious 30 to 69, Dangerous 70 to 100. This message is ${level}.`}
+        accessibilityLabel={`Score bands: Safe 0, Suspicious 30 to 69, Dangerous 70 to 100. This message is ${level}.`}
       >
         {BANDS.map((band) => {
           const active = band.level === level;

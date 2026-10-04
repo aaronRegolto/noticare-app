@@ -27,8 +27,12 @@ object V3RiskEvaluator {
 
   @Volatile private var runtime: Runtime? = null
 
+  /** The final result shown, stored and sent: Safe is finalized to 0 only after combine(). */
   @Synchronized
-  fun evaluate(context: Context, message: String): ThreatResult {
+  fun evaluate(context: Context, message: String): ThreatResult =
+    finalizeThreatResult(evaluateRaw(context, message))
+
+  private fun evaluateRaw(context: Context, message: String): ThreatResult {
     val rules = SmishingEvaluator.evaluate(message)
     if (!hasSupportingEvidence(rules)) return rules
     val probability = runCatching { predict(context.applicationContext, message) }.getOrNull() ?: return rules

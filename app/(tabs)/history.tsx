@@ -160,6 +160,8 @@ function DetailModal({
   const styles = useThemedStyles(colors);
   if (!record) return null;
   const tone = tones[record.level];
+  // A Safe message always scores 0 (getHistoryRecord also zeroes older records), so it lists no warning signs.
+  const reasons = record.level === 'safe' ? [] : record.reasons;
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={styles.modalPage}>
@@ -211,8 +213,8 @@ function DetailModal({
             </Text>
           </View>
           <Text style={styles.detailLabel}>WARNING SIGNS</Text>
-          {!record.reasons.length && <Text style={styles.reasonText}>No significant warning signs detected.</Text>}
-          {record.reasons.map((reason) => (
+          {!reasons.length && <Text style={styles.reasonText}>No significant warning signs detected.</Text>}
+          {reasons.map((reason) => (
             <View style={styles.reasonRow} key={reason.code}>
               <Ionicons name="alert-circle-outline" size={19} color="#B42318" />
               <View style={styles.reasonCopy}>

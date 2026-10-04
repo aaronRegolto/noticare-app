@@ -36,7 +36,7 @@ The separate telemetry queue is also encrypted. It contains only:
 - client-generated UUID
 - `realtime` source
 - threat level
-- coarse score bucket `0..10`
+- coarse score bucket `0..10` (always `0` for Safe)
 - blocked flag
 - stable rule codes
 - URL count
@@ -80,4 +80,4 @@ cd android
 .\gradlew.bat :app:testDebugUnitTest --tests com.aaronnkie12.noticareapp.bridge.SmishingEvaluatorParityTest --console=plain
 ```
 
-The focused unit test executes the shared 60-case synthetic TypeScript detection corpus against the Kotlin evaluator. In addition to broad risk classes, it verifies a canonical SHA-256 digest of every case's capped score, ordered reason codes, and URL count, so a rule-weight or reason-code drift fails native CI.
+The focused unit test executes the shared 60-case synthetic TypeScript detection corpus against the Kotlin evaluator. In addition to broad risk classes, it verifies a canonical SHA-256 digest of every case's capped score, ordered reason codes, and URL count, so a rule-weight or reason-code drift fails native CI. The digest is taken from the raw rule output (TypeScript `evaluateRules`), before Safe scores are finalized to 0.

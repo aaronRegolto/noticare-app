@@ -93,8 +93,9 @@ function Header() {
 
 /**
  * The risk score is always the detector's own score (the sum of the warning signs' points, capped
- * at 100). How many people reported the same text is shown separately as a badge, never as the
- * score, so the number here matches the real-time warning for the same message.
+ * at 100), except that a Safe message always scores 0. How many people reported the same text is
+ * shown separately as a badge, never as the score, so the number here matches the real-time
+ * warning for the same message.
  */
 function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, viralityLoading: boolean) {
   const reportBadge =
@@ -105,9 +106,9 @@ function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, v
       : null;
   if (result.level === 'safe') {
     return {
-      score: result.score,
+      score: 0,
       badge: null as string | null,
-      explanation: `Scores from 0 to 29 are Safe. ${result.score}/100 means no strong warning signs were found.`,
+      explanation: 'Safe messages always have a risk score of 0. No strong warning signs were found.',
     };
   }
   if (result.level === 'suspicious') {
@@ -168,7 +169,7 @@ function ResultCard({
       <Text style={styles.resultSectionTitle}>How the score was calculated</Text>
       <ScoreBreakdown
         reasons={result.reasons}
-        score={result.score}
+        score={scored.score}
         level={result.level}
         accent={display.color}
         colors={colors}

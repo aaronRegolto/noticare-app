@@ -1,5 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 
+import { finalizeThreatResult } from '@/src/features/detection';
+
 export type MonitoringState = 'active' | 'off' | 'permission_required' | 'service_disconnected' | 'sms_app_unavailable';
 
 export type ThreatLevel = 'safe' | 'suspicious' | 'dangerous';
@@ -93,7 +95,10 @@ export type PendingTelemetryEvent = {
   id: string;
   source: 'realtime';
   level: ThreatLevel;
-  /** Integer 0–10, safe for the Supabase `smallint` score-bucket field. */
+  /**
+   * Integer 0–10, safe for the Supabase `smallint` score-bucket field. Safe is always 0; older
+   * builds may have queued 1–2 for a Safe event, which flushNativeTelemetry sends as 0.
+   */
   scoreBucket: number;
   blocked: boolean;
   indicatorCodes: string[];
@@ -113,7 +118,10 @@ export type PendingCommunityReport = {
   sampleSender: string | null;
   indicatorCodes: string[];
   ruleVersion: string;
-  /** The detector's 0-100 risk score; null for reports queued before it was stored. */
+  /**
+   * The detector's risk score (Safe is always 0, otherwise 30–100); null for reports queued before
+   * it was stored. Older builds may have queued a Safe 1–29, which is sent as 0.
+   */
   riskScore?: number | null;
   createdAt: number;
 };
@@ -241,19 +249,31 @@ export function setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringS
   return requireAndroidNativeModule().setSubscriptionTier(tier);
 }
 
-/** Runs the same offline Kotlin evaluator used by background monitoring. */
+/**
+ * Runs the same offline Kotlin evaluator used by background monitoring. Finalizing here too means
+ * a Safe result always scores 0, even from a native build that still returns the raw 1–29.
+ */
 export function scanTextLocally(text: string): Promise<LocalThreatResult> {
-  return requireAndroidNativeModule().scanText(text);
+  return requireAndroidNativeModule().scanText(text).then(finalizeThreatResult);
+}
+
+/** Older builds stored Safe records with their raw 1–29 score; they read as 0 like every Safe result. */
+function finalizeHistorySummary(record: HistorySummary): HistorySummary {
+  return record.level === 'safe' ? { ...record, score: 0 } : record;
 }
 
 /** Lists captured SMS notifications for the active local profile, newest first. */
 export function getHistory(): Promise<HistorySummary[]> {
-  return requireAndroidNativeModule().getHistory();
+  return requireAndroidNativeModule()
+    .getHistory()
+    .then((records) => records.map(finalizeHistorySummary));
 }
 
-/** Decrypts a full History record only after the user explicitly opens it. */
+/** Decrypts a full History record only after the user explicitly opens it. Safe records read as 0. */
 export function getHistoryRecord(id: string): Promise<HistoryRecord | null> {
-  return requireAndroidNativeModule().getHistoryRecord(id);
+  return requireAndroidNativeModule()
+    .getHistoryRecord(id)
+    .then((record) => record && finalizeThreatResult(record));
 }
 
 /** Older installed native builds can still display their existing blocked history. */

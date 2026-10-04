@@ -55,7 +55,11 @@ async function readQueue(userId: string): Promise<QueueEvent[]> {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isQueueEvent) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter(isQueueEvent)
+          .map((event) => ({ ...event, scoreBucket: scoreBucket(event.level, event.scoreBucket) }))
+      : [];
   } catch {
     return [];
   }
@@ -94,7 +98,7 @@ export async function queueThreatEvent(
     occurredAt: new Date().toISOString(),
     source,
     level: result.level,
-    scoreBucket: Math.max(0, Math.min(10, Math.floor(result.score / 10))),
+    scoreBucket: scoreBucket(result.level, result.score / 10),
     blocked,
     indicatorCodes: result.reasons.map((reason) => reason.code).slice(0, 32),
     urlCount: Math.min(result.urls.length, 20),
@@ -188,9 +192,12 @@ async function flushUserQueue() {
   return { synced, pending: remaining.length };
 }
 
-function nativeScoreBucket(value: PendingTelemetryEvent['scoreBucket']) {
-  // Native telemetry holds a coarse 0..10 bucket, never an exact score.
-  return Math.max(0, Math.min(10, Math.trunc(value)));
+/**
+ * Telemetry holds a coarse 0..10 bucket, never an exact score. Safe is always bucket 0, including
+ * events an older build queued (in AsyncStorage or natively) with a Safe score's bucket of 1–2.
+ */
+function scoreBucket(level: ThreatLevel, value: number) {
+  return level === 'safe' ? 0 : Math.max(0, Math.min(10, Math.trunc(value)));
 }
 
 /** Uploads only the native encrypted queue's sanitized realtime metadata. */
@@ -216,7 +223,7 @@ export async function flushNativeTelemetry() {
         p_device_id: deviceId,
         p_source: 'realtime',
         p_threat_level: event.level,
-        p_score_bucket: nativeScoreBucket(event.scoreBucket),
+        p_score_bucket: scoreBucket(event.level, event.scoreBucket),
         p_blocked: event.blocked,
         p_indicator_codes: event.indicatorCodes.slice(0, 32),
         p_url_count: Math.min(event.urlCount, 20),

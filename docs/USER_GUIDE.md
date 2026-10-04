@@ -26,11 +26,13 @@ The status is Active only when notification access is granted, the service is co
 
 ## What the results mean
 
-| Result     | Meaning                                                  | What NotiCare does                                                       |
-| ---------- | -------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Safe       | No meaningful phishing signs were found.                 | Leaves the SMS notification alone.                                       |
-| Suspicious | There are warning signs, but not enough strong evidence. | Uses your selected warning style and lets you Block or Ignore it.         |
-| Dangerous  | Strong signs suggest phishing or credential theft.       | Shows Block and Ignore controls. The notification is suppressed only if you choose Block. |
+| Result     | Score  | Meaning                                                  | What NotiCare does                                                       |
+| ---------- | ------ | -------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Safe       | 0      | No meaningful phishing signs were found.                 | Leaves the SMS notification alone.                                       |
+| Suspicious | 30–69  | There are warning signs, but not enough strong evidence. | Uses your selected warning style and lets you Block or Ignore it.         |
+| Dangerous  | 70–100 | Strong signs suggest phishing or credential theft.       | Shows Block and Ignore controls. The notification is suppressed only if you choose Block. |
+
+A Safe result always shows a score of 0. It means no strong warning signs were found, not that the message is guaranteed to be safe.
 
 If a notification is marked blocked, the original SMS is still in your Messages inbox. NotiCare suppresses a notification only after you choose Block and Android allows it.
 

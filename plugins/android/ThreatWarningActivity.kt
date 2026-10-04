@@ -29,6 +29,8 @@ class ThreatWarningActivity : Activity() {
       return
     }
     reviewOnly = threat.reviewOnly
+    // A view-only re-scan of an already-blocked message can come back Safe: no alarming red bar.
+    if (threat.result.level == ThreatLevel.SAFE) window.statusBarColor = ThreatWarningView.safe
     setContentView(ThreatWarningView.build(this, threat, ::decide))
   }
 

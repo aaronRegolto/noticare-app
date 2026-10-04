@@ -22,6 +22,7 @@ export type DetectedUrl = {
 
 export type ThreatResult = {
   level: ThreatLevel;
+  /** 0 whenever level is safe, otherwise 30–100. Only the raw evaluateRules result can hold a Safe 1–29. */
   score: number;
   reasons: ThreatReason[];
   urls: DetectedUrl[];

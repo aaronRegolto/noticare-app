@@ -33,8 +33,18 @@ const URL_CONTEXT_SIGNALS = new Set([
 /**
  * Evaluates one SMS completely offline. It is deterministic, bounded, and never performs
  * a network request. The returned reason codes can be safely aggregated without raw text.
+ * This is the public result: a Safe message always scores 0 (see finalizeThreatResult).
  */
 export function evaluateThreat(message: string): ThreatResult {
+  return finalizeThreatResult(evaluateRules(message));
+}
+
+/**
+ * The raw rule result, before finalizing: the score is the capped sum of the reasons' weights,
+ * so a Safe message can still score 1–29 here. It mirrors Kotlin SmishingEvaluator.evaluate and
+ * is what the parity test hashes. Never show, store, or send it; use evaluateThreat instead.
+ */
+export function evaluateRules(message: string): ThreatResult {
   const normalized = normalizeMessage(message);
   const matches = collectTextRuleMatches(normalized.comparable);
   const urls = extractUrlEvidence(normalized.normalized);
@@ -110,6 +120,25 @@ export function getThreatLevel(score: number): ThreatLevel {
   if (score >= DETECTION_RULE_BUNDLE.thresholds.dangerous) return 'dangerous';
   if (score >= DETECTION_RULE_BUNDLE.thresholds.suspicious) return 'suspicious';
   return 'safe';
+}
+
+/**
+ * Safe always shows 0. The level is already decided from the raw score; a Safe result then keeps
+ * its reason codes, labels, and descriptions (anonymous telemetry uses the codes for rule tuning),
+ * but every weight becomes 0 so the points still add up to the score. Other levels are returned
+ * unchanged. Idempotent, so it also normalizes Safe results stored or queued by older builds.
+ */
+export function finalizeThreatResult<T extends ThreatResult>(result: T): T {
+  if (result.level !== 'safe') return result;
+  return { ...result, score: 0, reasons: result.reasons.map((reason) => ({ ...reason, weight: 0 })) };
+}
+
+/**
+ * For a final score stored without its level, such as a community report's risk score. Any score
+ * under the Suspicious threshold is Safe, so it reads as 0.
+ */
+export function finalizeRiskScore(score: number): number {
+  return getThreatLevel(score) === 'safe' ? 0 : score;
 }
 
 function collectTextRuleMatches(text: string): MatchedTextRule[] {

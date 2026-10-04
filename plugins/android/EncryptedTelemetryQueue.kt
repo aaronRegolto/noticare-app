@@ -49,7 +49,7 @@ object EncryptedTelemetryQueue {
         id = UUID.randomUUID().toString(),
         source = "realtime",
         level = result.level.wireValue,
-        scoreBucket = scoreBucket(result.score),
+        scoreBucket = normalizeTelemetryScoreBucket(result.level.wireValue, scoreBucket(result.score)),
         blocked = blocked,
         indicatorCodes = result.reasons.map(ThreatReason::code).distinct().sorted(),
         urlCount = result.urls.size,
@@ -202,7 +202,8 @@ object EncryptedTelemetryQueue {
       id = id,
       source = "realtime",
       level = level,
-      scoreBucket = json.optInt("scoreBucket").coerceIn(0, 10),
+      // Safe events queued by older builds can carry bucket 1–2; Safe always uploads as 0.
+      scoreBucket = normalizeTelemetryScoreBucket(level, json.optInt("scoreBucket")),
       blocked = json.optBoolean("blocked"),
       indicatorCodes = codes,
       urlCount = json.optInt("urlCount").coerceAtLeast(0),

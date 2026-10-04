@@ -28,7 +28,7 @@ For anonymous community trends, the app may upload:
 
 - A random, idempotent client event UUID.
 - An app-generated anonymous installation UUID (not an Android, advertising, or hardware ID).
-- Event source (`realtime` or `manual`), threat level, a score bucket, rule version, timestamp, stable indicator codes, URL count, and whether a realtime Dangerous notification was successfully suppressed.
+- Event source (`realtime` or `manual`), threat level, a score bucket (always 0 for Safe), rule version, timestamp, stable indicator codes, URL count, and whether a realtime Dangerous notification was successfully suppressed.
 - User feedback classification and stable rule codes.
 
 The database turns this metadata into aggregate hourly and daily counts. The Dashboard sees only aggregate time buckets, never another person's events.

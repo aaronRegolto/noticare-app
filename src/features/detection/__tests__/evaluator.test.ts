@@ -1,8 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { evaluateThreat } from '../evaluator';
+import { evaluateRules, evaluateThreat, finalizeRiskScore, finalizeThreatResult } from '../evaluator';
 import { normalizeMessage } from '../normalize';
 import { DETECTION_RULE_BUNDLE } from '../rules';
+import type { ThreatResult } from '../types';
 import { DETECTION_CORPUS } from './corpus';
 
 describe('offline phishing detection corpus', () => {
@@ -24,8 +25,7 @@ describe('offline phishing detection corpus', () => {
   it.each(DETECTION_CORPUS)('$id classifies as $expectedLevel', (testCase) => {
     const result = evaluateThreat(testCase.message);
     expect(result.level).toBe(testCase.expectedLevel);
-    expect(result.score).toBeGreaterThanOrEqual(0);
-    expect(result.score).toBeLessThanOrEqual(100);
+    expectPublicScore(result);
     expect(result.ruleVersion).toBe(DETECTION_RULE_BUNDLE.version);
 
     if (testCase.expectedUrlCount !== undefined) {
@@ -58,7 +58,82 @@ describe('credential wording regressions', () => {
     'Your six-digit OTP is 123456. Never share it.',
     'Payment received. Thank you.',
   ])('safe: %s', (message) => {
-    expect(evaluateThreat(message).level).toBe('safe');
+    const result = evaluateThreat(message);
+    expect(result.level).toBe('safe');
+    expect(result.score).toBe(0);
+  });
+});
+
+/** Public bands: Safe 0 (every reason weighs 0), Suspicious 30–69, Dangerous 70–100. */
+function expectPublicScore(result: ThreatResult) {
+  if (result.level === 'safe') {
+    expect(result.score).toBe(0);
+    expect(result.reasons.every((reason) => reason.weight === 0)).toBe(true);
+  } else if (result.level === 'suspicious') {
+    expect(result.score).toBeGreaterThanOrEqual(DETECTION_RULE_BUNDLE.thresholds.suspicious);
+    expect(result.score).toBeLessThan(DETECTION_RULE_BUNDLE.thresholds.dangerous);
+  } else {
+    expect(result.score).toBeGreaterThanOrEqual(DETECTION_RULE_BUNDLE.thresholds.dangerous);
+    expect(result.score).toBeLessThanOrEqual(DETECTION_RULE_BUNDLE.scoreCap);
+  }
+}
+
+const corpusMessage = (id: string) => {
+  const testCase = DETECTION_CORPUS.find((candidate) => candidate.id === id);
+  if (!testCase) throw new Error(`Missing corpus case ${id}`);
+  return testCase.message;
+};
+
+describe('Safe always scores 0', () => {
+  // The only Safe corpus cases with a non-zero raw score; Kotlin SmishingEvaluator must match it.
+  it.each([
+    ['benign-click-language', 'link-or-reply-pressure'],
+    ['benign-limited-promo', 'urgency-pressure'],
+  ])('%s keeps raw 12 in evaluateRules but scores 0 publicly', (id, code) => {
+    const raw = evaluateRules(corpusMessage(id));
+    expect(raw.level).toBe('safe');
+    expect(raw.score).toBe(12);
+    expect(raw.reasons.map((reason) => [reason.code, reason.weight])).toEqual([[code, 12]]);
+
+    const finalized = { ...raw, score: 0, reasons: raw.reasons.map((reason) => ({ ...reason, weight: 0 })) };
+    expect(evaluateThreat(corpusMessage(id))).toEqual(finalized);
+    expect(finalizeThreatResult(raw)).toEqual(finalized);
+    // Finalizing never mutates the raw result it was given.
+    expect(raw.score).toBe(12);
+    expect(raw.reasons[0].weight).toBe(12);
+  });
+
+  it.each(DETECTION_CORPUS)('$id: evaluateThreat is the finalized raw result', (testCase) => {
+    const raw = evaluateRules(testCase.message);
+    const result = evaluateThreat(testCase.message);
+    expect(result).toEqual(finalizeThreatResult(raw));
+    expect(result.level).toBe(raw.level);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(raw.reasons.map((reason) => reason.code));
+    expect(finalizeThreatResult(result)).toEqual(result);
+    if (raw.level !== 'safe') expect(finalizeThreatResult(raw)).toBe(raw);
+  });
+
+  it('zeroes a legacy Safe result and leaves other levels untouched', () => {
+    const reason = { code: 'urgency-pressure', label: 'Urgency', description: 'Pressure', weight: 18 };
+    const legacySafe: ThreatResult = { level: 'safe', score: 18, reasons: [reason], urls: [], ruleVersion: 'v' };
+    const once = finalizeThreatResult(legacySafe);
+    expect(once).toEqual({ ...legacySafe, score: 0, reasons: [{ ...reason, weight: 0 }] });
+    expect(finalizeThreatResult(once)).toEqual(once);
+
+    const suspicious: ThreatResult = { ...legacySafe, level: 'suspicious', score: 30 };
+    expect(finalizeThreatResult(suspicious)).toBe(suspicious);
+  });
+
+  it.each([
+    [0, 0],
+    [12, 0],
+    [29, 0],
+    [30, 30],
+    [69, 69],
+    [70, 70],
+    [100, 100],
+  ])('finalizeRiskScore(%i) is %i', (score, expected) => {
+    expect(finalizeRiskScore(score)).toBe(expected);
   });
 });
 
@@ -108,6 +183,7 @@ describe('Philippine scam families (rule set 2026.09.29)', () => {
   it.each(PHILIPPINE_LEGITIMATE_LOOKALIKES)('safe with no warning signs: %s', (message) => {
     const result = evaluateThreat(message);
     expect(result.level).toBe('safe');
+    expect(result.score).toBe(0);
     expect(result.reasons).toEqual([]);
   });
 });

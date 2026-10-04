@@ -17,10 +17,19 @@ import android.widget.TextView
 object ThreatWarningView {
   val danger = Color.rgb(190, 45, 42)
   private val caution = Color.rgb(178, 103, 0)
+  // Matches the Safe badge in the History screen.
+  val safe = Color.rgb(8, 118, 83)
 
   fun build(context: Context, threat: PendingThreat, onDecide: (block: Boolean) -> Unit): ScrollView {
     val dangerous = threat.result.level == ThreatLevel.DANGEROUS
-    val accent = if (dangerous) danger else caution
+    // Only reachable for a view-only re-scan of a message the user already blocked, which can now
+    // come back Safe (for example after a rule update). Safe always shows 0 and no points.
+    val isSafe = threat.result.level == ThreatLevel.SAFE
+    val accent = when {
+      dangerous -> danger
+      isSafe -> safe
+      else -> caution
+    }
     val scroll = ScrollView(context).apply {
       setBackgroundColor(Color.rgb(248, 249, 252))
       isFillViewport = true
@@ -32,7 +41,7 @@ object ThreatWarningView {
     }
 
     root.addView(TextView(context).apply {
-      text = "!"
+      text = if (isSafe) "✓" else "!"
       textSize = 38f
       setTextColor(Color.WHITE)
       gravity = Gravity.CENTER
@@ -46,6 +55,7 @@ object ThreatWarningView {
       else -> "Suspicious message"
     }
     val subtitle = when {
+      reviewOnly && isSafe -> "You blocked and reported this message before, so NotiCare hid it again. A fresh check no longer finds significant warning signs."
       reviewOnly -> "You blocked and reported this message before, so NotiCare hid it again. Here's why it was flagged."
       dangerous -> "NotiCare found strong warning signs. Review why before deciding."
       else -> "NotiCare found warning signs that need your attention."
@@ -56,16 +66,40 @@ object ThreatWarningView {
     val risk = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(context.dp(18), context.dp(16), context.dp(18), context.dp(16))
-      background = context.rounded(if (dangerous) Color.rgb(255, 236, 235) else Color.rgb(255, 246, 225), 18f)
-      addView(context.label("${if (dangerous) "HIGH RISK" else "CAUTION"} · ${threat.result.score}/100", 14f, accent, true))
-      addView(context.label("Do not tap links or share passwords, PINs, or OTP codes.", 15f, Color.rgb(101, 35, 32), false).withTop(context, 6))
+      background = context.rounded(
+        when {
+          dangerous -> Color.rgb(255, 236, 235)
+          isSafe -> Color.rgb(229, 246, 238)
+          else -> Color.rgb(255, 246, 225)
+        },
+        18f,
+      )
+      val badge = when {
+        dangerous -> "HIGH RISK"
+        isSafe -> "SAFE"
+        else -> "CAUTION"
+      }
+      addView(context.label("$badge · ${threat.result.score}/100", 14f, accent, true))
+      addView(
+        context.label(
+          if (isSafe) "Still, never share passwords, PINs, or OTP codes." else "Do not tap links or share passwords, PINs, or OTP codes.",
+          15f,
+          if (isSafe) Color.rgb(38, 59, 84) else Color.rgb(101, 35, 32),
+          false,
+        ).withTop(context, 6),
+      )
     }
     root.addView(risk, context.matchWidth(top = 24))
 
     root.addView(context.label("How the score was calculated", 18f, Color.rgb(25, 38, 57), true).withTop(context, 26))
 
+    // Safe shows no points at all: its score is always 0.
+    val scoredReasons = if (isSafe) emptyList() else threat.result.reasons
+    if (isSafe) {
+      root.addView(context.label("No significant warning signs detected.", 14f, Color.rgb(91, 108, 130), false).withTop(context, 10))
+    }
     // Every sign is listed (not just the first few) so the points always add up to the score.
-    threat.result.reasons.forEach { reason ->
+    scoredReasons.forEach { reason ->
       val card = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(16), context.dp(14), context.dp(16), context.dp(14))
@@ -85,9 +119,9 @@ object ThreatWarningView {
       root.addView(card, context.matchWidth(top = 10))
     }
 
-    val rawTotal = threat.result.reasons.sumOf { it.weight }
-    if (threat.result.reasons.isNotEmpty()) {
-      val weights = threat.result.reasons.map { it.weight }
+    val rawTotal = scoredReasons.sumOf { it.weight }
+    if (scoredReasons.isNotEmpty()) {
+      val weights = scoredReasons.map { it.weight }
       val sum = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -121,7 +155,7 @@ object ThreatWarningView {
     }
     root.addView(
       context.label(
-        "Safe 0–29 · Suspicious 30–69 · Dangerous 70–100",
+        "Safe 0 · Suspicious 30–69 · Dangerous 70–100",
         13f,
         Color.rgb(92, 107, 127),
         false,
@@ -129,7 +163,7 @@ object ThreatWarningView {
     )
 
     val domains = threat.result.urls.mapNotNull { it.normalizedDomain }.distinct().take(3)
-    if (domains.isNotEmpty()) {
+    if (domains.isNotEmpty() && !isSafe) {
       root.addView(context.label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, accent, true).withTop(context, 16))
     }
     if (reviewOnly) {

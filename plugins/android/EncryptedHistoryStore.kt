@@ -62,7 +62,8 @@ object EncryptedHistoryStore {
     if (message.isBlank()) return SaveResult.Unavailable("content_unavailable")
 
     return runCatching {
-      val record = BlockedHistoryRecord(
+      // Safe is always stored as 0, whatever score/weights the caller passes.
+      val record = normalizeHistoryRecord(BlockedHistoryRecord(
         id = UUID.randomUUID().toString(),
         ownerScope = ownerScope,
         sender = sender?.takeIf { it.isNotBlank() },
@@ -76,7 +77,7 @@ object EncryptedHistoryStore {
         ruleVersion = ruleVersion,
         level = level,
         blocked = false,
-      )
+      ))
       val merged = readRecords(context).toMutableList().apply { add(record) }
       writeRecords(context, pruneOldestBeyondCap(merged, ownerScope, retentionLimit))
       incrementLifetimeBlocked(context, ownerScope)
@@ -329,7 +330,9 @@ object EncryptedHistoryStore {
     json ?: return null
     val id = json.optString("id").takeIf { it.isNotBlank() } ?: return null
     val message = json.optString("message").takeIf { it.isNotBlank() } ?: return null
-    return BlockedHistoryRecord(
+    // Safe records saved by older builds (score 1–29, weighted reasons) read back as Safe 0. Every
+    // write re-serializes what was read, so the next write persists the normalized values.
+    return normalizeHistoryRecord(BlockedHistoryRecord(
       id = id,
       // Legacy records without a scope remain encrypted but are intentionally
       // invisible to every account on a shared device.
@@ -346,7 +349,7 @@ object EncryptedHistoryStore {
       urls = urlsFromJson(json.optJSONArray("urls")),
       sourcePackage = json.optString("sourcePackage"),
       ruleVersion = json.optString("ruleVersion", SmishingEvaluator.RULE_VERSION),
-    )
+    ))
   }
 
   private fun reasonsFromJson(array: JSONArray?): List<ThreatReason> = buildList {
