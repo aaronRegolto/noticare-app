@@ -2,6 +2,8 @@
 // no recurring/subscription concept — see paymongo-create-qrph-payment). This
 // is the primary path to granting Pro; paymongo-check-payment is a client-side
 // fallback for when this is slow to arrive, and does the identical grant.
+// Both go through the grant_pro_for_payment RPC, which grants each Payment
+// Intent's term only once, so retries and the fallback can't stack.
 //
 // Signature verification per docs.paymongo.com/docs/developer-tools-webhook-setup-management:
 // the `Paymongo-Signature` header is `t=<timestamp>,te=<test-sig>,li=<live-sig>`;
@@ -18,6 +20,7 @@ type PaymongoWebhookEvent = {
       type: string;
       data: {
         attributes: {
+          payment_intent_id?: string;
           metadata?: { user_id?: string; interval?: string };
         };
       };
@@ -85,20 +88,21 @@ Deno.serve(async (req) => {
   // at data.attributes.data.attributes.metadata (confirmed against a live
   // payment.paid payload on 2026-10-04).
   console.log('paymongo-webhook received:', rawBody);
-  const metadata = event.data.attributes.data.attributes.metadata;
-  const userId = metadata?.user_id;
-  const days = intervalDays[metadata?.interval ?? ''];
-  if (!userId || !days) return new Response('OK', { status: 200 });
+  const payment = event.data.attributes.data.attributes;
+  const paymentIntentId = payment.payment_intent_id;
+  const userId = payment.metadata?.user_id;
+  const days = intervalDays[payment.metadata?.interval ?? ''];
+  if (!paymentIntentId || !userId || !days) return new Response('OK', { status: 200 });
 
-  const proExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  const { error } = await supabase
-    .from('profiles')
-    .update({ plan: 'pro', pro_expires_at: proExpiresAt })
-    .eq('user_id', userId);
+  const { error } = await supabase.rpc('grant_pro_for_payment', {
+    p_payment_intent_id: paymentIntentId,
+    p_user_id: userId,
+    p_term_days: days,
+  });
 
   if (error) {
-    console.error('paymongo-webhook: failed to update profile plan', error);
+    console.error('paymongo-webhook: failed to grant Pro', error);
     return new Response('Internal error', { status: 500 });
   }
 

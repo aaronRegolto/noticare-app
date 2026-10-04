@@ -163,6 +163,35 @@ export type Database = {
           },
         ]
       }
+      pro_payment_grants: {
+        Row: {
+          granted_at: string
+          payment_intent_id: string
+          term_days: number
+          user_id: string
+        }
+        Insert: {
+          granted_at?: string
+          payment_intent_id: string
+          term_days: number
+          user_id: string
+        }
+        Update: {
+          granted_at?: string
+          payment_intent_id?: string
+          term_days?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pro_payment_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -470,6 +499,14 @@ export type Database = {
           sample_sender: string
           viral_score: number
         }[]
+      }
+      grant_pro_for_payment: {
+        Args: {
+          p_payment_intent_id: string
+          p_term_days: number
+          p_user_id: string
+        }
+        Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
       list_linked_phones: {

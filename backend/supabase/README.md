@@ -34,6 +34,8 @@ The app side needs `EXPO_PUBLIC_PAYMONGO_PRICE_MONTHLY` / `_ANNUAL` (display-onl
 
 `paymongo-webhook` must be deployed without JWT verification (set in `config.toml`; PayMongo can't send a Supabase JWT), and the live webhook registered in PayMongo must subscribe to `payment.paid` — not `checkout_session.payment.paid`, which QRPh payment intents never send. The webhook reads the Payment Intent's metadata at `data.attributes.data.attributes.metadata`, confirmed against a live `payment.paid` payload on 2026-10-04.
 
+Both `paymongo-webhook` and `paymongo-check-payment` grant Pro through the `grant_pro_for_payment` RPC (`20261004000100_pro_payment_grants.sql`, service role only). It records each Payment Intent once in `pro_payment_grants`, so webhook retries, the in-app check, or replaying an old Payment Intent id never grant a second term, and it extends from the current expiry while Pro is still active instead of resetting to a fresh term. Apply that migration before deploying either function.
+
 ## Apply migrations
 
 `backend` is the Supabase CLI work directory; it contains this `supabase/` directory and its `config.toml`. Install and authenticate the CLI, then link it to the intended project:

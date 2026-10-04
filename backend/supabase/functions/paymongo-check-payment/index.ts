@@ -2,8 +2,10 @@
 // the source of truth for actually granting Pro (see paymongo-webhook), but
 // QRPh codes expire in minutes and webhook delivery can lag, so this lets the
 // client force an immediate re-check against PayMongo instead of only waiting.
-// If the payment already succeeded, this grants Pro itself (idempotently) so
-// the user doesn't have to wait on the webhook at all.
+// If the payment already succeeded, this grants Pro itself so the user doesn't
+// have to wait on the webhook at all. The grant_pro_for_payment RPC grants each
+// Payment Intent's term only once, so re-checking an old payment (or racing the
+// webhook) can't extend Pro again.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { jsonResponse, paymongoRequest, requireUserId } from '../_shared/paymongo.ts';
@@ -11,6 +13,7 @@ import { jsonResponse, paymongoRequest, requireUserId } from '../_shared/paymong
 type CheckPaymentBody = { paymentIntentId: string };
 type PaymentIntentResponse = {
   data: {
+    id: string;
     attributes: {
       status: string;
       metadata?: { user_id?: string; interval?: string };
@@ -39,11 +42,11 @@ Deno.serve(async (req) => {
     const days = intervalDays[metadata?.interval ?? ''] ?? 30;
 
     const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const proExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-    const { error } = await service
-      .from('profiles')
-      .update({ plan: 'pro', pro_expires_at: proExpiresAt })
-      .eq('user_id', userId);
+    const { data: proExpiresAt, error } = await service.rpc('grant_pro_for_payment', {
+      p_payment_intent_id: intent.data.id,
+      p_user_id: userId,
+      p_term_days: days,
+    });
     if (error) throw error;
 
     return jsonResponse({ status: 'succeeded', proExpiresAt });
