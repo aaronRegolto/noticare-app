@@ -18,6 +18,10 @@ const sections = [
     'Notification titles, clipboard contents, OTPs, complete sender numbers, raw URLs, encryption keys, and hardware/advertising IDs are never uploaded. Message text is never uploaded either — with one exception below.',
   ],
   [
+    'Scanning text from a photo',
+    'Manual Scan’s Photo option reads the text in a photo or screenshot on this phone, then deletes the photo; the photo is never uploaded. The camera is used only when you tap Take photo. Google’s on-device text reader (ML Kit) sends Google anonymous usage statistics, such as phone model, app version, and how long reading took, but never the photo or its text.',
+  ],
+  [
     'Reporting a message: the one exception',
     'Tapping Block & Report on a warning, or Report on a Manual Scan result, shares that exact message’s text and risk score so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list without any information about who reported them. This only happens when you choose to report a message — never automatically.',
   ],

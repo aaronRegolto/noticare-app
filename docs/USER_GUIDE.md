@@ -46,6 +46,14 @@ In **Settings & Privacy → Warning Appearance**, choose **Full-screen warning**
 
 NotiCare reads the clipboard only when you tap Paste. It shows URLs as text and does not open them. A Manual Scan does not add a message to the captured Messages inbox.
 
+To check a message on someone else's phone, or one sent to you as a screenshot:
+
+1. In **Manual Scan**, tap **Photo**, then **Take photo** or **Choose screenshot**.
+2. Crop to just the message, leaving out names, times, and other messages.
+3. Check that the text NotiCare read matches the message, especially any links, then tap **Scan Message**.
+
+The photo is read on your phone and deleted right after; it is never uploaded. NotiCare asks for camera access only the first time you tap **Take photo**. For a clearer read, turn the other phone's brightness up and avoid glare.
+
 Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. Reports contain classification metadata, never message text. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
 
 ## View and delete captured messages

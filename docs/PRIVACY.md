@@ -17,6 +17,7 @@ NotiCare analyzes available SMS notification text on the device. It does not use
 | History profile scope              | Keep one signed-in account from seeing another's History | A one-way hash in Android DataStore; never uploaded                                                            |
 | Local History encryption key       | Encrypt blocked History                                  | Android Keystore; never export or upload                                                                       |
 | Clipboard text                     | Manual Scan after the user taps Paste                    | Memory/local UI only; never uploaded                                                                           |
+| Photo or screenshot of a message   | Manual Scan after the user taps Photo                    | Text read on device by ML Kit's bundled model; the image is deleted from the app cache and never uploaded      |
 
 If encrypted local History cannot be initialized, the app must not save raw messages. It should show a privacy-safe diagnostic state instead.
 

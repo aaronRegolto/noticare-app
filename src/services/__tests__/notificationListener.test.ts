@@ -2,6 +2,8 @@ import { NativeModules } from 'react-native';
 import {
   getHistory,
   getHistoryRecord,
+  isTextRecognitionAvailable,
+  recognizeTextInImage,
   scanTextLocally,
   type HistoryRecord,
   type HistorySummary,
@@ -63,4 +65,20 @@ test('History saved with a Safe 1–29 score reads as 0', async () => {
 
   native.getHistoryRecord.mockResolvedValueOnce(null);
   expect(await getHistoryRecord('missing')).toBeNull();
+});
+
+test('reading text from a photo needs a build with the on-device recognizer', async () => {
+  const module = NativeModules.NotificationListenerModule as Record<string, unknown>;
+  expect(isTextRecognitionAvailable()).toBe(false);
+  await expect(recognizeTextInImage('file:///cache/a.jpeg')).rejects.toThrow('cannot read text from photos');
+
+  const blocks = { blocks: [{ lines: ['Hello'] }] };
+  module.recognizeTextInImage = jest.fn().mockResolvedValue(blocks);
+  try {
+    expect(isTextRecognitionAvailable()).toBe(true);
+    expect(await recognizeTextInImage('file:///cache/a.jpeg')).toBe(blocks);
+    expect(module.recognizeTextInImage).toHaveBeenCalledWith('file:///cache/a.jpeg');
+  } finally {
+    delete module.recognizeTextInImage;
+  }
 });

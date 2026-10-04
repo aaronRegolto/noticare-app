@@ -82,6 +82,19 @@ Record Android version, Messages app/package/version, device model, build SHA, s
 - Manual scans use the same rule version as the native scanner.
 - A Manual Scan can send anonymous classification metadata but never `blocked=true` and never creates encrypted blocked History.
 
+## Manual Scan photo checks
+
+- **Take photo**, first time: Android asks for camera access. Allow: after cropping, the text fills the box with the "Text read from a photo" note and is not scanned until Scan is tapped.
+- Deny camera access: an explanation appears and nothing opens. Deny with "Don't ask again": the explanation offers **Open settings**.
+- **Choose screenshot**: Android's photo picker opens without any permission prompt.
+- A photo with no text (or too blurry): "No text found" with advice; the box is unchanged.
+- A link split across two lines on the other phone's screen reads back as one link; a Tagalog word broken at its hyphen (`i-` / `click`) reads back joined.
+- Cancel at the camera, crop, or picker step: nothing changes.
+- The photo note stays while the user corrects the text, and clearing or pasting removes it.
+- After reading, `adb shell run-as <package> ls cache/ImagePicker` shows no leftover image.
+- Airplane mode: reading text still works (the model is bundled).
+- Turn on Developer options → "Don't keep activities", take a photo: on return, the text still fills the box.
+
 ## Regression gates
 
 Block a release if package filtering occurs after extras access, raw content appears in logs/network assertions, RLS isolation fails, evaluator parity fails, a demo event reaches aggregate data, or the native physical-device test is missing.

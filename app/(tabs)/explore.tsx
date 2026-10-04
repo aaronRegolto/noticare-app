@@ -2,8 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScoreBreakdown } from '@/src/components/score-breakdown';
@@ -17,9 +17,19 @@ import {
   type PhishingVirality,
 } from '@/src/services/communityReports';
 import { flushQueuedThreatEvents, queueThreatEvent } from '@/src/services/eventSync';
+import {
+  readMessageFromImage,
+  readMessageFromPendingImage,
+  type ImageTextResult,
+  type ImageTextSource,
+} from '@/src/services/cameraScan';
 import { sendScanFeedback } from '@/src/services/feedback';
 import { logError } from '@/src/services/logger';
-import { isNativeMonitoringAvailable, scanTextLocally } from '@/src/services/notificationListener';
+import {
+  isNativeMonitoringAvailable,
+  isTextRecognitionAvailable,
+  scanTextLocally,
+} from '@/src/services/notificationListener';
 import { useAppTheme } from '@/src/theme/ThemeProvider';
 import type { ThemeColors } from '@/src/theme/palette';
 
@@ -259,6 +269,10 @@ export default function ScanScreen() {
   const [viralityLoading, setViralityLoading] = useState(false);
   const feedbackBusy = useRef(false);
   const scanVersion = useRef(0);
+  const canReadPhotos = useMemo(() => isTextRecognitionAvailable(), []);
+  const [readingImage, setReadingImage] = useState(false);
+  // Text read from a photo can contain misread characters, so the user is asked to check it.
+  const [textFromPhoto, setTextFromPhoto] = useState(false);
 
   const onPaste = useCallback(async () => {
     const clipboardText = await Clipboard.getStringAsync();
@@ -267,12 +281,85 @@ export default function ScanScreen() {
       return;
     }
     setMessage(clipboardText.slice(0, maxCharacters));
+    setTextFromPhoto(false);
     scanVersion.current++;
     setResult(null);
     setFeedbackState('idle');
     setVirality(null);
     setViralityLoading(false);
   }, []);
+
+  const applyImageText = useCallback((read: ImageTextResult) => {
+    switch (read.status) {
+      case 'ok':
+        setMessage(read.text.slice(0, maxCharacters));
+        setTextFromPhoto(true);
+        scanVersion.current++;
+        setResult(null);
+        setFeedbackState('idle');
+        setVirality(null);
+        setViralityLoading(false);
+        return;
+      case 'no-text':
+        Alert.alert(
+          'No text found',
+          'Fill the frame with the message, turn the other screen’s brightness up, and avoid glare, then try again.',
+        );
+        return;
+      case 'permission-denied':
+        Alert.alert(
+          'Camera access needed',
+          'NotiCare uses the camera only to read a message you photograph. The photo stays on this phone.',
+          read.canAskAgain
+            ? [{ text: 'OK' }]
+            : [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Open settings', onPress: () => void Linking.openSettings() },
+              ],
+        );
+        return;
+      case 'unavailable':
+        Alert.alert('Not available', 'Install the latest NotiCare build to read text from photos.');
+        return;
+      case 'error':
+        Alert.alert('Could not read the photo', 'Try again, or paste the message text instead.');
+        return;
+      case 'canceled':
+        return;
+    }
+  }, []);
+
+  const readImage = useCallback(
+    async (source: ImageTextSource) => {
+      setReadingImage(true);
+      try {
+        applyImageText(await readMessageFromImage(source));
+      } finally {
+        setReadingImage(false);
+      }
+    },
+    [applyImageText],
+  );
+
+  const onPhoto = useCallback(() => {
+    Alert.alert('Scan text from a photo', 'The photo is read on this phone, then deleted. It is never uploaded.', [
+      { text: 'Take photo', onPress: () => void readImage('camera') },
+      { text: 'Choose screenshot', onPress: () => void readImage('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [readImage]);
+
+  // Android can close the app while the camera is open; finish reading the photo on return.
+  useEffect(() => {
+    if (!canReadPhotos) return;
+    let active = true;
+    void readMessageFromPendingImage().then((read) => {
+      if (active && read) applyImageText(read);
+    });
+    return () => {
+      active = false;
+    };
+  }, [applyImageText, canReadPhotos]);
 
   const handleScan = useCallback(async () => {
     const trimmed = message.trim();
@@ -410,6 +497,7 @@ export default function ScanScreen() {
               value={message}
               onChangeText={(text) => {
                 setMessage(text.slice(0, maxCharacters));
+                if (!text) setTextFromPhoto(false);
                 scanVersion.current++;
                 setResult(null);
                 setFeedbackState('idle');
@@ -435,9 +523,23 @@ export default function ScanScreen() {
               <Ionicons name="clipboard-outline" size={18} color={colors.link} />
               <Text style={styles.secondaryText}>Paste</Text>
             </Pressable>
+            {canReadPhotos ? (
+              <Pressable
+                onPress={onPhoto}
+                disabled={readingImage}
+                style={[styles.secondaryButton, readingImage && styles.secondaryDisabled]}
+                accessibilityRole="button"
+                accessibilityLabel="Scan text from a photo or screenshot"
+                accessibilityState={{ disabled: readingImage, busy: readingImage }}
+              >
+                <Ionicons name="camera-outline" size={18} color={colors.link} />
+                <Text style={styles.secondaryText}>{readingImage ? 'Reading…' : 'Photo'}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => {
                 setMessage('');
+                setTextFromPhoto(false);
                 scanVersion.current++;
                 setResult(null);
                 setFeedbackState('idle');
@@ -453,6 +555,14 @@ export default function ScanScreen() {
               <Text style={styles.secondaryText}>Clear</Text>
             </Pressable>
           </View>
+          {textFromPhoto && message ? (
+            <View style={styles.photoNote} accessibilityLiveRegion="polite">
+              <Ionicons name="camera-outline" size={15} color={colors.warning} />
+              <Text style={styles.photoNoteText}>
+                Text read from a photo. Check it matches the message — especially any links — then tap Scan.
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.privacyText}>
             <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
             uploaded — unless you tap Report, which shares that exact message so other NotiCare users can be warned
@@ -610,6 +720,8 @@ function createStyles(colors: ThemeColors) {
     },
     secondaryDisabled: { opacity: 0.45 },
     secondaryText: { color: colors.textSecondary, fontWeight: '700' },
+    photoNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12 },
+    photoNoteText: { flex: 1, color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
     privacyText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 13 },
     scanButton: {
       height: 52,

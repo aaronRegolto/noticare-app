@@ -11,6 +11,9 @@ const {
 const DEFAULT_ANDROID_PACKAGE = 'com.noticare.noticareapp';
 const DATASTORE_DEPENDENCY = 'androidx.datastore:datastore-preferences:1.1.7';
 const LITERT_DEPENDENCY = 'com.google.ai.edge.litert:litert:2.1.1';
+// On-device text recognition for Manual Scan's photo option. The bundled Latin model works offline
+// from first launch, with no Google Play services download.
+const MLKIT_TEXT_RECOGNITION_DEPENDENCY = 'com.google.mlkit:text-recognition:16.0.1';
 const JUNIT_DEPENDENCY = 'junit:junit:4.13.2';
 const TEMPLATE_ROOT = path.join(__dirname, 'android');
 
@@ -195,6 +198,9 @@ function addDataStoreDependency(contents) {
   }
   if (!contents.includes(LITERT_DEPENDENCY)) {
     missingLines.push(`    implementation(\"${LITERT_DEPENDENCY}\")`);
+  }
+  if (!contents.includes(MLKIT_TEXT_RECOGNITION_DEPENDENCY)) {
+    missingLines.push(`    implementation(\"${MLKIT_TEXT_RECOGNITION_DEPENDENCY}\")`);
   }
   if (!contents.includes(JUNIT_DEPENDENCY)) {
     missingLines.push(`    testImplementation(\"${JUNIT_DEPENDENCY}\")`);

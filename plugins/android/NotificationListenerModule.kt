@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import java.io.IOException
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -12,6 +13,11 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import __NOTICARE_PACKAGE__.bridge.BlockedHistoryRecord
 import __NOTICARE_PACKAGE__.bridge.EncryptedCommunityReportQueue
 import __NOTICARE_PACKAGE__.bridge.EncryptedHistoryStore
@@ -239,6 +245,33 @@ class NotificationListenerModule(
       runCatching { threatResultMap(V3RiskEvaluator.evaluate(appContext, text)) }
         .onSuccess(promise::resolve)
         .onFailure { error -> promise.reject("manual_scan_failed", "Unable to scan this message locally.", error) }
+    }
+  }
+
+  /**
+   * Reads the text in a photo or screenshot the user picked for Manual Scan, with ML Kit's bundled
+   * on-device model. Nothing is uploaded, logged, or stored; the app deletes the image afterwards.
+   * Resolves { blocks: [{ lines: [...] }] } in reading order, capped at the Manual Scan input limit.
+   */
+  @ReactMethod
+  fun recognizeTextInImage(uri: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val image = InputImage.fromFilePath(appContext, Uri.parse(uri))
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+          recognizedTextMap(Tasks.await(recognizer.process(image)))
+        } finally {
+          recognizer.close()
+        }
+      }.onSuccess(promise::resolve)
+        .onFailure { error ->
+          if (error is IOException || error is IllegalArgumentException) {
+            promise.reject("image_unreadable", "Unable to open this image.", error)
+          } else {
+            promise.reject("text_recognition_failed", "Unable to read text in this image.", error)
+          }
+        }
     }
   }
 
@@ -506,7 +539,27 @@ class NotificationListenerModule(
     if (value == null) putNull(name) else putString(name, value)
   }
 
+  private fun recognizedTextMap(text: Text): WritableMap {
+    val blocks = Arguments.createArray()
+    var remaining = MAX_RECOGNIZED_CHARACTERS
+    for (block in text.textBlocks) {
+      if (remaining <= 0) break
+      val lines = Arguments.createArray()
+      for (line in block.lines) {
+        if (remaining <= 0) break
+        val value = line.text.trim()
+        if (value.isEmpty()) continue
+        lines.pushString(value.take(remaining))
+        remaining -= value.length
+      }
+      if (lines.size() > 0) blocks.pushMap(Arguments.createMap().apply { putArray("lines", lines) })
+    }
+    return Arguments.createMap().apply { putArray("blocks", blocks) }
+  }
+
   companion object {
     const val NAME = "NotificationListenerModule"
+    // Matches Manual Scan's input limit; anything past it would be cut off in the text box anyway.
+    private const val MAX_RECOGNIZED_CHARACTERS = 12_000
   }
 }

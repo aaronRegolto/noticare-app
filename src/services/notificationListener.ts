@@ -149,7 +149,12 @@ type NotificationListenerNativeModule = {
   getPendingCommunityReports?(): Promise<PendingCommunityReport[]>;
   ackCommunityReports?(ids: string[]): Promise<number>;
   notifyCommunityReportResult?(isNew: boolean, reportCount: number): Promise<boolean>;
+  /** Missing from builds installed before Manual Scan could read photos. */
+  recognizeTextInImage?(uri: string): Promise<RecognizedImageText>;
 };
+
+/** Text read on this device from a photo or screenshot: paragraphs, each as its wrapped lines. */
+export type RecognizedImageText = { blocks: { lines: string[] }[] };
 
 const nativeModule = NativeModules.NotificationListenerModule as NotificationListenerNativeModule | undefined;
 
@@ -255,6 +260,20 @@ export function setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringS
  */
 export function scanTextLocally(text: string): Promise<LocalThreatResult> {
   return requireAndroidNativeModule().scanText(text).then(finalizeThreatResult);
+}
+
+/** True in a native build that can read text from a photo for Manual Scan. */
+export function isTextRecognitionAvailable(): boolean {
+  return Platform.OS === 'android' && typeof nativeModule?.recognizeTextInImage === 'function';
+}
+
+/** Reads the text in a local image with the on-device recognizer. The image is not uploaded. */
+export function recognizeTextInImage(uri: string): Promise<RecognizedImageText> {
+  const native = requireAndroidNativeModule();
+  if (!native.recognizeTextInImage) {
+    return Promise.reject(new Error('This NotiCare build cannot read text from photos. Install the latest build.'));
+  }
+  return native.recognizeTextInImage(uri);
 }
 
 /** Older builds stored Safe records with their raw 1–29 score; they read as 0 like every Safe result. */
