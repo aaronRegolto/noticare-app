@@ -24,7 +24,6 @@ import { useAppTheme } from '@/src/theme/ThemeProvider';
 import type { ThemeColors } from '@/src/theme/palette';
 
 const navy = '#1E2D43';
-const emerald = '#00B87C';
 const maxCharacters = 12_000;
 
 const levelCopy: Record<

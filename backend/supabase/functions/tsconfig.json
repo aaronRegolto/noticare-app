@@ -1,0 +1,21 @@
+{
+  // Editor and `npm run typecheck:functions` checking for the Edge Functions. They run on Deno, which
+  // the app's root tsconfig doesn't model, so it excludes this folder. Supabase deploys with Deno and
+  // ignores this file; the authoritative check is `deno check <function>/index.ts`.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "paths": {
+      // Deno fetches this URL at deploy time; for type checking, use the same major version installed for the app.
+      "https://esm.sh/@supabase/supabase-js@2": ["../../../node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

@@ -8,6 +8,7 @@
     "android": "powershell -ExecutionPolicy Bypass -File scripts/run-android.ps1",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "typecheck:functions": "tsc -p backend/supabase/functions",
     "test": "jest --config jest.config.js",
     "test:detection": "jest src/features/detection/__tests__/evaluator.test.ts --config jest.config.js",
     "format": "prettier --write .",

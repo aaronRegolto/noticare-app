@@ -36,7 +36,9 @@ function hookError(status: number, message: string) {
   });
 }
 
-function base64ToBytes(value: string): Uint8Array {
+// The return type is inferred on purpose: newer TypeScript types this as Uint8Array<ArrayBuffer>,
+// which crypto.subtle.importKey requires, and a plain `: Uint8Array` annotation widens it away.
+function base64ToBytes(value: string) {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
 
