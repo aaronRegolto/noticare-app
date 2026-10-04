@@ -23,6 +23,8 @@ import __NOTICARE_PACKAGE__.bridge.EncryptedCommunityReportQueue
 import __NOTICARE_PACKAGE__.bridge.EncryptedHistoryStore
 import __NOTICARE_PACKAGE__.bridge.EncryptedTelemetryQueue
 import __NOTICARE_PACKAGE__.bridge.ExtractedUrl
+import __NOTICARE_PACKAGE__.bridge.MessageTranslator
+import __NOTICARE_PACKAGE__.bridge.WarningCopy
 import __NOTICARE_PACKAGE__.bridge.NotiCareNotifications
 import __NOTICARE_PACKAGE__.bridge.RealtimeScanPreferences
 import __NOTICARE_PACKAGE__.bridge.ScanRuntime
@@ -270,6 +272,71 @@ class NotificationListenerModule(
             promise.reject("image_unreadable", "Unable to open this image.", error)
           } else {
             promise.reject("text_recognition_failed", "Unable to read text in this image.", error)
+          }
+        }
+    }
+  }
+
+  /** Identifies a captured message's language on this device ("en", "fil", or "und"). */
+  @ReactMethod
+  fun identifyMessageLanguage(text: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching { MessageTranslator.identifyLanguage(text) }
+        .onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("language_id_failed", "Unable to identify the message language.", error) }
+    }
+  }
+
+  /** Mirrors Settings → Message language so native warnings and notifications use the same language. */
+  @ReactMethod
+  fun setMessageLanguagePreference(language: String, promise: Promise) {
+    runCatching { WarningCopy.setLanguage(appContext, if (language == "tl" || language == "en") language else "default") }
+      .onSuccess { promise.resolve(true) }
+      .onFailure { error -> promise.reject("language_preference_failed", "Unable to save the message language.", error) }
+  }
+
+  /** "ready" once the English and Tagalog translation models are on this device, otherwise "missing". */
+  @ReactMethod
+  fun getTranslationModelStatus(promise: Promise) {
+    bridgeScope.launch {
+      runCatching { if (MessageTranslator.isModelReady()) "ready" else "missing" }
+        .onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("translation_status_failed", "Unable to check the language pack.", error) }
+    }
+  }
+
+  /** Downloads the translation models over Wi-Fi only; rejects with wifi_required on other networks. */
+  @ReactMethod
+  fun downloadTranslationModels(promise: Promise) {
+    bridgeScope.launch {
+      runCatching { MessageTranslator.downloadModels(appContext) }
+        .onSuccess { promise.resolve("ready") }
+        .onFailure { error ->
+          if (error is MessageTranslator.WifiRequiredException) {
+            promise.reject("wifi_required", "Connect to Wi-Fi to download the language pack.", error)
+          } else {
+            promise.reject("download_failed", "Unable to download the language pack.", error)
+          }
+        }
+    }
+  }
+
+  /**
+   * Translates message segments for display only. Links are never passed in (the app keeps them
+   * as received), and nothing is uploaded, logged, or stored.
+   */
+  @ReactMethod
+  fun translateSegments(segments: ReadableArray, source: String, target: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val texts = (0 until segments.size()).map { index -> segments.getString(index) ?: "" }
+        Arguments.createArray().apply { MessageTranslator.translate(texts, source, target).forEach(::pushString) }
+      }.onSuccess(promise::resolve)
+        .onFailure { error ->
+          if (error is MessageTranslator.ModelMissingException) {
+            promise.reject("model_missing", "The language pack is not downloaded yet.", error)
+          } else {
+            promise.reject("translation_failed", "Unable to translate this message.", error)
           }
         }
     }

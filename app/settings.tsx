@@ -11,7 +11,14 @@ import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
 import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
 import { detectPhilippineCarrier } from '@/src/features/auth/phone';
+import type { MessageLanguage } from '@/src/features/translation';
 import { logError } from '@/src/services/logger';
+import {
+  ensureLanguagePack,
+  setMessageLanguage,
+  useMessageTranslationSettings,
+  type LanguagePackStatus,
+} from '@/src/services/messageTranslation';
 import { deleteAccount, isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
 import {
   getInstalledBrowsers,
@@ -110,6 +117,27 @@ function PhoneChip({
   );
 }
 
+const MESSAGE_LANGUAGE_OPTIONS: { value: MessageLanguage; label: string; description: string }[] = [
+  { value: 'default', label: 'Default', description: 'Messages exactly as received; warnings in English' },
+  { value: 'tl', label: 'Tagalog', description: 'Messages translated to Tagalog; warnings in Tagalog' },
+  { value: 'en', label: 'English', description: 'Messages translated to English; warnings in English' },
+];
+
+function languagePackCopy(pack: LanguagePackStatus) {
+  switch (pack) {
+    case 'ready':
+      return 'Language pack ready. Translation works offline.';
+    case 'downloading':
+      return 'Downloading the language pack (about 60 MB) on Wi-Fi… Messages show as received until it finishes.';
+    case 'wifi-required':
+      return 'Connect to Wi-Fi to download the language pack (about 60 MB). Messages show as received until then.';
+    case 'failed':
+      return 'The language pack couldn’t download. Check your Wi-Fi connection and try again.';
+    default:
+      return 'Checking the language pack…';
+  }
+}
+
 function SettingRow({
   icon,
   title,
@@ -153,6 +181,12 @@ export default function SettingsScreen() {
   const [browsers, setBrowsers] = useState<InstalledBrowser[]>([]);
   const [browsersError, setBrowsersError] = useState<string | null>(null);
   const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
+  const translation = useMessageTranslationSettings();
+
+  // Check the language pack (and finish a download that was waiting for Wi-Fi) when Settings opens.
+  useEffect(() => {
+    if (translation.available && translation.language !== 'default') void ensureLanguagePack();
+  }, [translation.available, translation.language]);
 
   const refreshLinkedPhones = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -752,6 +786,56 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
+        {translation.available ? (
+          <>
+            <Text style={styles.sectionLabel}>MESSAGE LANGUAGE</Text>
+            <View style={styles.card}>
+              <View style={styles.languageIntro}>
+                <Text style={styles.appearanceTitle}>Messages and warnings in</Text>
+                <Text style={styles.appearanceSubtitle}>
+                  Applies to captured messages and to scam warning pop-ups and notifications. Messages are translated on
+                  this phone; links stay exactly as received, and scanning always uses the original message.
+                </Text>
+              </View>
+              {MESSAGE_LANGUAGE_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => void setMessageLanguage(option.value)}
+                  style={styles.browserRow}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: translation.language === option.value }}
+                  accessibilityLabel={`${option.label}. ${option.description}`}
+                >
+                  <View style={styles.flex}>
+                    <Text style={styles.browserLabel}>{option.label}</Text>
+                    <Text style={styles.cardSubtitle}>{option.description}</Text>
+                  </View>
+                  <Ionicons
+                    name={translation.language === option.value ? 'radio-button-on' : 'radio-button-off'}
+                    size={20}
+                    color={translation.language === option.value ? colors.accent : colors.textMuted}
+                  />
+                </Pressable>
+              ))}
+              {translation.language !== 'default' ? (
+                <View style={styles.languagePack}>
+                  <Text style={styles.retentionNote}>{languagePackCopy(translation.pack)}</Text>
+                  {translation.pack === 'wifi-required' || translation.pack === 'failed' ? (
+                    <Pressable
+                      onPress={() => void ensureLanguagePack()}
+                      style={styles.retryStatusButton}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="cloud-download-outline" size={15} color={colors.link} />
+                      <Text style={styles.retryStatusText}>Try again</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+
         <Text style={styles.sectionLabel}>APPEARANCE</Text>
         <View style={styles.appearanceCard}>
           <Text style={styles.appearanceTitle}>Theme</Text>
@@ -940,6 +1024,8 @@ function createStyles(colors: ThemeColors) {
       gap: 9,
     },
     flex: { flex: 1 },
+    languageIntro: { padding: 16, paddingBottom: 12 },
+    languagePack: { paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
     messagesTitle: { color: colors.textSecondary, fontSize: 11, fontWeight: '800' },
     messagesValue: { color: colors.textPrimary, fontSize: 12, marginTop: 3 },
     permissionButton: {

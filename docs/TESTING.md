@@ -97,6 +97,18 @@ Record Android version, Messages app/package/version, device model, build SHA, s
 - Airplane mode: reading text still works (the model is bundled).
 - Turn on Developer options → "Don't keep activities", take a photo: on return, the text still fills the box.
 
+## Message language checks
+
+- Settings → Message language → **Tagalog** on mobile data: status says to connect to Wi-Fi; inbox messages show as received. On Wi-Fi, **Try again** (or reopening Settings/Messages) downloads the pack and the status turns ready.
+- With the pack ready: an English message's preview and details show in Tagalog, the list card says "Translated", and details offer **Show original** / **Show translation**.
+- A Tagalog message stays as received with Tagalog chosen; with **English** chosen it is translated to English.
+- A message containing `http://gcash-verify.xyz/login`, `bit.ly/abc`, or an email address keeps each exactly as received in the translation.
+- **Default** shows every message exactly as received.
+- The scan result, score, and warning signs of a message are the same in every language setting.
+- Airplane mode after the pack downloads: translation still works.
+- An older build without the translator: the Message language section is hidden.
+- With **Tagalog** chosen, a Suspicious and a Dangerous message show the warning pop-up (title, badge, advice, every warning sign, buttons) and the notifications in Tagalog, with the same score and link domains. Switching back to **Default** or **English** shows them in English. No download or connection is needed for this.
+
 ## Regression gates
 
 Block a release if package filtering occurs after extras access, raw content appears in logs/network assertions, RLS isolation fails, evaluator parity fails, a demo event reaches aggregate data, or the native physical-device test is missing.

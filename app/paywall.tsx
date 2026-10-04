@@ -36,7 +36,12 @@ const featureLibrary = {
   manualScan: {
     title: 'Unlimited manual scan',
     description:
-      'Paste any text into NotiCare to check it for phishing on demand, as many times as you like — this is never limited, on any plan.',
+      'Photograph a message on any screen, upload a screenshot, or paste text to check it for phishing on demand, as many times as you like — this is never limited, on any plan.',
+  },
+  messageLanguage: {
+    title: 'Messages and warnings in Tagalog or English',
+    description:
+      'Show captured messages and scam warnings in Tagalog or English. Messages are translated on your phone; links stay exactly as received, and scanning always uses the original message. Free on every plan.',
   },
   communityReport: {
     title: 'Report phishing to the community',
@@ -62,6 +67,7 @@ const tierCopy = {
       featureLibrary.automaticScansLimited,
       featureLibrary.historyLimited,
       featureLibrary.manualScan,
+      featureLibrary.messageLanguage,
       featureLibrary.communityReport,
     ],
   },
@@ -71,6 +77,7 @@ const tierCopy = {
       featureLibrary.automaticScansUnlimited,
       featureLibrary.historyFull,
       featureLibrary.manualScan,
+      featureLibrary.messageLanguage,
       featureLibrary.communityReport,
       featureLibrary.viralRanking,
       featureLibrary.fullScreenWarnings,

@@ -24,22 +24,24 @@ object NotiCareNotifications {
   fun ensureChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = context.getSystemService(NotificationManager::class.java) ?: return
+    // Re-creating a channel only updates its name and description, so these follow the chosen language.
+    val copy = WarningCopy.forContext(context)
     manager.createNotificationChannel(
       NotificationChannel(
         cautionChannelId,
-        "NotiCare cautions",
+        copy.cautionChannelName,
         NotificationManager.IMPORTANCE_DEFAULT,
       ).apply {
-        description = "Warnings about suspicious SMS notifications."
+        description = copy.cautionChannelDescription
       },
     )
     manager.createNotificationChannel(
       NotificationChannel(
         dangerChannelId,
-        "NotiCare danger warnings",
+        copy.dangerChannelName,
         NotificationManager.IMPORTANCE_HIGH,
       ).apply {
-        description = "High-priority warnings for SMS notifications NotiCare suppressed."
+        description = copy.dangerChannelDescription
         // Alarm-style audio attributes make Android route this like a call/alarm
         // rather than a normal notification, so it still sounds even when the
         // phone is set to vibrate-only for regular notifications.
@@ -61,23 +63,24 @@ object NotiCareNotifications {
     manager.createNotificationChannel(
       NotificationChannel(
         repeatChannelId,
-        "Repeat blocked messages",
+        copy.repeatChannelName,
         NotificationManager.IMPORTANCE_HIGH,
       ).apply {
-        description = "Lets you know when a message you already blocked arrives again."
+        description = copy.repeatChannelDescription
       },
     )
   }
 
   fun showCaution(context: Context, score: Int) {
     ensureChannels(context)
+    val copy = WarningCopy.forContext(context)
     notificationManager(context)?.notify(
       cautionNotificationId,
       builder(context, cautionChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("NotiCare: suspicious SMS")
-        .setContentText("A message showed warning signs (risk score $score/100). Do not open links until you verify it.")
-        .setStyle(Notification.BigTextStyle().bigText("A message showed warning signs (risk score $score/100). Do not open links until you verify it."))
+        .setContentTitle(copy.cautionTitle)
+        .setContentText(copy.cautionBody(score))
+        .setStyle(Notification.BigTextStyle().bigText(copy.cautionBody(score)))
         .setContentIntent(historyIntent(context, null))
         .setAutoCancel(true)
         .setCategory(Notification.CATEGORY_STATUS)
@@ -97,17 +100,18 @@ object NotiCareNotifications {
    */
   fun showDangerChoice(context: Context, pending: PendingThreat, fullScreen: Boolean) {
     ensureChannels(context)
-    val reasonSummary = pending.result.reasons.take(2).joinToString("; ") { it.label }
-      .ifBlank { "Multiple phishing indicators were detected" }
-    val body = "Risk ${pending.result.score}/100: $reasonSummary. Choose Block & Report or Ignore."
+    val copy = WarningCopy.forContext(context)
+    val reasonSummary = pending.result.reasons.take(2).joinToString("; ") { copy.reasonLabel(it) }
+      .ifBlank { copy.defaultReasonSummary }
+    val body = copy.dangerBody(pending.result.score, reasonSummary)
     val notification = builder(context, dangerChannelId)
       .setSmallIcon(context.applicationInfo.icon)
-      .setContentTitle("Possible phishing message")
+      .setContentTitle(copy.titleDangerous)
       .setContentText(body)
       .setStyle(Notification.BigTextStyle().bigText(body))
       .setContentIntent(warningIntent(context, pending.token))
-      .addAction(Notification.Action.Builder(null, "Ignore", decisionIntent(context, pending.token, false)).build())
-      .addAction(Notification.Action.Builder(null, "Block & Report", decisionIntent(context, pending.token, true)).build())
+      .addAction(Notification.Action.Builder(null, copy.ignore, decisionIntent(context, pending.token, false)).build())
+      .addAction(Notification.Action.Builder(null, copy.blockAndReport, decisionIntent(context, pending.token, true)).build())
       .setAutoCancel(false)
       .setOngoing(true)
       .setCategory(Notification.CATEGORY_ERROR)
@@ -130,17 +134,14 @@ object NotiCareNotifications {
   /** A message the user already blocked arrived again and was handled without a warning. */
   fun showBlockedAgain(context: Context, hidden: Boolean, reviewToken: String) {
     ensureChannels(context)
-    val detail = if (hidden) {
-      "Already blocked. You blocked this message before, so NotiCare hid it again. Tap to see why it was flagged."
-    } else {
-      "Already blocked. You blocked this message before, but Android didn't let NotiCare hide it this time. Don't open its links or reply. Tap to see why it was flagged."
-    }
+    val copy = WarningCopy.forContext(context)
+    val detail = if (hidden) copy.blockedAgainHidden else copy.blockedAgainShown
     notificationManager(context)?.notify(
       repeatNotificationId,
       builder(context, repeatChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("Blocked message notification")
-        .setContentText("Already blocked")
+        .setContentTitle(copy.blockedAgainTitle)
+        .setContentText(copy.titleAlreadyBlocked)
         .setStyle(Notification.BigTextStyle().bigText(detail))
         // Opens the view-only warning (score breakdown and a Close button), never a new decision.
         .setContentIntent(warningIntent(context, reviewToken))
@@ -159,23 +160,16 @@ object NotiCareNotifications {
 
   fun showBlocked(context: Context, recordId: String?, score: Int, historySaved: Boolean, level: String, reported: Boolean) {
     ensureChannels(context)
-    val storageText = if (historySaved) {
-      "The original SMS was not deleted. A protected local copy is available in NotiCare Messages."
-    } else {
-      "The original SMS was not deleted. No protected local message copy was saved."
-    }
-    val reportText = if (reported) {
-      " Saved to report to other NotiCare users once you're online."
-    } else {
-      ""
-    }
-    val classification = if (level == "dangerous") "likely smishing" else "suspicious SMS"
-    val body = "A $classification notification was suppressed (risk score $score/100). $storageText$reportText"
+    val copy = WarningCopy.forContext(context)
+    val storageText = if (historySaved) copy.historySaved else copy.historyNotSaved
+    val reportText = if (reported) copy.reportQueued else ""
+    val dangerous = level == "dangerous"
+    val body = "${copy.blockedBody(dangerous, score)} $storageText$reportText"
     notificationManager(context)?.notify(
       recordId?.hashCode() ?: (6200 + score),
       builder(context, dangerChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("NotiCare blocked a $classification")
+        .setContentTitle(copy.blockedTitle(dangerous))
         .setContentText(body)
         .setStyle(Notification.BigTextStyle().bigText(body))
         .setContentIntent(historyIntent(context, recordId))
@@ -194,16 +188,13 @@ object NotiCareNotifications {
    */
   fun showCommunityReportResult(context: Context, isNew: Boolean, reportCount: Int) {
     ensureChannels(context)
-    val body = if (isNew) {
-      "Your reported message was new — thanks for helping warn other NotiCare users."
-    } else {
-      "Your report added to an existing message: $reportCount NotiCare users have now reported it."
-    }
+    val copy = WarningCopy.forContext(context)
+    val body = if (isNew) copy.reportNew else copy.reportExisting(reportCount)
     notificationManager(context)?.notify(
       6300 + reportCount,
       builder(context, dangerChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("Phishing report shared")
+        .setContentTitle(copy.reportSharedTitle)
         .setContentText(body)
         .setStyle(Notification.BigTextStyle().bigText(body))
         .setAutoCancel(true)
@@ -216,12 +207,13 @@ object NotiCareNotifications {
   /** Shown at most once per calendar month when the free tier's automatic-scan quota is used up. */
   fun showQuotaExceeded(context: Context) {
     ensureChannels(context)
-    val body = "You've used this month's 10 free automatic scans. Upgrade to NotiCare Pro for unlimited real-time protection."
+    val copy = WarningCopy.forContext(context)
+    val body = copy.quotaBody
     notificationManager(context)?.notify(
       cautionNotificationId + 1,
       builder(context, cautionChannelId)
         .setSmallIcon(context.applicationInfo.icon)
-        .setContentTitle("Free scan limit reached")
+        .setContentTitle(copy.quotaTitle)
         .setContentText(body)
         .setStyle(Notification.BigTextStyle().bigText(body))
         .setContentIntent(paywallIntent(context))

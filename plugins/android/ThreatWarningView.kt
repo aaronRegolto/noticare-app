@@ -21,6 +21,7 @@ object ThreatWarningView {
   val safe = Color.rgb(8, 118, 83)
 
   fun build(context: Context, threat: PendingThreat, onDecide: (block: Boolean) -> Unit): ScrollView {
+    val copy = WarningCopy.forContext(context)
     val dangerous = threat.result.level == ThreatLevel.DANGEROUS
     // Only reachable for a view-only re-scan of a message the user already blocked, which can now
     // come back Safe (for example after a rule update). Safe always shows 0 and no points.
@@ -50,15 +51,15 @@ object ThreatWarningView {
     }, LinearLayout.LayoutParams(context.dp(80), context.dp(80)))
     val reviewOnly = threat.reviewOnly
     val title = when {
-      reviewOnly -> "Already blocked"
-      dangerous -> "Possible phishing message"
-      else -> "Suspicious message"
+      reviewOnly -> copy.titleAlreadyBlocked
+      dangerous -> copy.titleDangerous
+      else -> copy.titleSuspicious
     }
     val subtitle = when {
-      reviewOnly && isSafe -> "You blocked and reported this message before, so NotiCare hid it again. A fresh check no longer finds significant warning signs."
-      reviewOnly -> "You blocked and reported this message before, so NotiCare hid it again. Here's why it was flagged."
-      dangerous -> "NotiCare found strong warning signs. Review why before deciding."
-      else -> "NotiCare found warning signs that need your attention."
+      reviewOnly && isSafe -> copy.subtitleReviewSafe
+      reviewOnly -> copy.subtitleReview
+      dangerous -> copy.subtitleDangerous
+      else -> copy.subtitleSuspicious
     }
     root.addView(context.label(title, 27f, Color.rgb(25, 38, 57), true).withTop(context, 22))
     root.addView(context.label(subtitle, 16f, Color.rgb(82, 99, 122), false).withTop(context, 10))
@@ -75,14 +76,14 @@ object ThreatWarningView {
         18f,
       )
       val badge = when {
-        dangerous -> "HIGH RISK"
-        isSafe -> "SAFE"
-        else -> "CAUTION"
+        dangerous -> copy.badgeHighRisk
+        isSafe -> copy.badgeSafe
+        else -> copy.badgeCaution
       }
       addView(context.label("$badge · ${threat.result.score}/100", 14f, accent, true))
       addView(
         context.label(
-          if (isSafe) "Still, never share passwords, PINs, or OTP codes." else "Do not tap links or share passwords, PINs, or OTP codes.",
+          if (isSafe) copy.adviceSafe else copy.adviceRisky,
           15f,
           if (isSafe) Color.rgb(38, 59, 84) else Color.rgb(101, 35, 32),
           false,
@@ -91,12 +92,12 @@ object ThreatWarningView {
     }
     root.addView(risk, context.matchWidth(top = 24))
 
-    root.addView(context.label("How the score was calculated", 18f, Color.rgb(25, 38, 57), true).withTop(context, 26))
+    root.addView(context.label(copy.howScoreCalculated, 18f, Color.rgb(25, 38, 57), true).withTop(context, 26))
 
     // Safe shows no points at all: its score is always 0.
     val scoredReasons = if (isSafe) emptyList() else threat.result.reasons
     if (isSafe) {
-      root.addView(context.label("No significant warning signs detected.", 14f, Color.rgb(91, 108, 130), false).withTop(context, 10))
+      root.addView(context.label(copy.noSignificantSigns, 14f, Color.rgb(91, 108, 130), false).withTop(context, 10))
     }
     // Every sign is listed (not just the first few) so the points always add up to the score.
     scoredReasons.forEach { reason ->
@@ -108,13 +109,13 @@ object ThreatWarningView {
           orientation = LinearLayout.HORIZONTAL
           gravity = Gravity.CENTER_VERTICAL
           addView(
-            context.label(reason.label, 15f, Color.rgb(38, 59, 84), true).apply { gravity = Gravity.START },
+            context.label(copy.reasonLabel(reason), 15f, Color.rgb(38, 59, 84), true).apply { gravity = Gravity.START },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
           )
           addView(context.label("+${reason.weight}", 15f, accent, true).apply { gravity = Gravity.END })
         }
         addView(header)
-        addView(context.label(reason.description, 14f, Color.rgb(91, 108, 130), false).apply { gravity = Gravity.START }.withTop(context, 4))
+        addView(context.label(copy.reasonDescription(reason), 14f, Color.rgb(91, 108, 130), false).apply { gravity = Gravity.START }.withTop(context, 4))
       }
       root.addView(card, context.matchWidth(top = 10))
     }
@@ -128,7 +129,7 @@ object ThreatWarningView {
         setPadding(context.dp(16), context.dp(12), context.dp(16), 0)
         addView(
           context.label(
-            if (weights.size > 1) "Total (${weights.joinToString(" + ")})" else "Total",
+            if (weights.size > 1) "${copy.total} (${weights.joinToString(" + ")})" else copy.total,
             14f,
             Color.rgb(82, 99, 122),
             true,
@@ -144,18 +145,18 @@ object ThreatWarningView {
       gravity = Gravity.CENTER_VERTICAL
       setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
       addView(
-        context.label("Risk score", 15f, Color.rgb(25, 38, 57), true).apply { gravity = Gravity.START },
+        context.label(copy.riskScore, 15f, Color.rgb(25, 38, 57), true).apply { gravity = Gravity.START },
         LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
       )
       addView(context.label("${threat.result.score}/100", 17f, accent, true).apply { gravity = Gravity.END })
     }
     root.addView(total, context.matchWidth(top = 6))
     if (rawTotal > 100) {
-      root.addView(context.label("The signs add up to $rawTotal points; the score is capped at 100.", 12f, Color.rgb(92, 107, 127), false))
+      root.addView(context.label(copy.cappedNote(rawTotal), 12f, Color.rgb(92, 107, 127), false))
     }
     root.addView(
       context.label(
-        "Safe 0 · Suspicious 30–69 · Dangerous 70–100",
+        copy.legend,
         13f,
         Color.rgb(92, 107, 127),
         false,
@@ -164,12 +165,12 @@ object ThreatWarningView {
 
     val domains = threat.result.urls.mapNotNull { it.normalizedDomain }.distinct().take(3)
     if (domains.isNotEmpty() && !isSafe) {
-      root.addView(context.label("Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}", 14f, accent, true).withTop(context, 16))
+      root.addView(context.label(copy.suspiciousDomains(domains), 14f, accent, true).withTop(context, 16))
     }
     if (reviewOnly) {
-      root.addView(context.label("Nothing else to do. It isn't reported or counted again, and the original SMS stays in your Messages app.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
+      root.addView(context.label(copy.reviewOnlyNote, 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
       root.addView(Button(context).apply {
-        text = "Close"
+        text = copy.close
         textSize = 16f
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
@@ -180,10 +181,10 @@ object ThreatWarningView {
       scroll.addView(root)
       return scroll
     }
-    root.addView(context.label("Block & Report hides this notification, saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves the notification visible.", 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
+    root.addView(context.label(copy.actionsExplained, 13f, Color.rgb(92, 107, 127), false).withTop(context, 22))
 
     root.addView(Button(context).apply {
-      text = "Block & Report"
+      text = copy.blockAndReport
       textSize = 16f
       setTextColor(Color.WHITE)
       typeface = Typeface.DEFAULT_BOLD
@@ -192,7 +193,7 @@ object ThreatWarningView {
       setOnClickListener { onDecide(true) }
     }, context.matchWidth(height = 56, top = 24))
     root.addView(Button(context).apply {
-      text = "Ignore and keep visible"
+      text = copy.ignoreAndKeepVisible
       textSize = 16f
       setTextColor(Color.rgb(47, 67, 91))
       typeface = Typeface.DEFAULT_BOLD

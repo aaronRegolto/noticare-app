@@ -8,16 +8,17 @@ NotiCare analyzes available SMS notification text on the device. It does not use
 
 ## What stays on the device
 
-| Data                               | Why                                                      | Storage/lifetime                                                                                               |
-| ---------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Full SMS notification text         | Local phishing analysis and a blocked-record detail view | Memory during analysis; encrypted local History only when a Dangerous notification was successfully suppressed |
-| Complete sender/display details    | Local display and sender masking                         | Local only; never sent to Supabase                                                                             |
-| Raw extracted URLs                 | Explain a local scan result without opening a link       | Local only; rendered as non-clickable text                                                                     |
-| Scan preference and service status | Keep the real-time switch correct after restart          | Android DataStore                                                                                              |
-| History profile scope              | Keep one signed-in account from seeing another's History | A one-way hash in Android DataStore; never uploaded                                                            |
-| Local History encryption key       | Encrypt blocked History                                  | Android Keystore; never export or upload                                                                       |
-| Clipboard text                     | Manual Scan after the user taps Paste                    | Memory/local UI only; never uploaded                                                                           |
-| Photo or screenshot of a message   | Manual Scan after the user taps Photo                    | Text read on device by ML Kit's bundled model; the image is deleted from the app cache and never uploaded      |
+| Data                               | Why                                                               | Storage/lifetime                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Full SMS notification text         | Local phishing analysis and a blocked-record detail view          | Memory during analysis; encrypted local History only when a Dangerous notification was successfully suppressed        |
+| Complete sender/display details    | Local display and sender masking                                  | Local only; never sent to Supabase                                                                                    |
+| Raw extracted URLs                 | Explain a local scan result without opening a link                | Local only; rendered as non-clickable text                                                                            |
+| Scan preference and service status | Keep the real-time switch correct after restart                   | Android DataStore                                                                                                     |
+| History profile scope              | Keep one signed-in account from seeing another's History          | A one-way hash in Android DataStore; never uploaded                                                                   |
+| Local History encryption key       | Encrypt blocked History                                           | Android Keystore; never export or upload                                                                              |
+| Clipboard text                     | Manual Scan after the user taps Paste                             | Memory/local UI only; never uploaded                                                                                  |
+| Photo or screenshot of a message   | Manual Scan after the user taps Take a photo or Upload screenshot | Text read on device by ML Kit's bundled model; the image is deleted from the app cache and never uploaded             |
+| Translated message text            | Messages inbox when a message language is chosen                  | Translated on device by ML Kit (language pack downloaded once on Wi-Fi); in-memory display cache only; never uploaded |
 
 If encrypted local History cannot be initialized, the app must not save raw messages. It should show a privacy-safe diagnostic state instead.
 

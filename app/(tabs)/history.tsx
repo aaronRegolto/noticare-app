@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -19,8 +19,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/src/components/brand-logo';
 import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
+import { LANGUAGE_NAMES } from '@/src/features/translation';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { logError } from '@/src/services/logger';
+import {
+  ensureLanguagePack,
+  useMessageTranslationSettings,
+  useTranslatedMessage,
+} from '@/src/services/messageTranslation';
 import {
   clearHistory,
   deleteHistoryRecord,
@@ -111,6 +117,9 @@ const RecordCard = memo(function RecordCard({
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
   const tone = tones[record.level];
+  // Only the SMS excerpt is translated; the redacted fallback is NotiCare's own text.
+  const translation = useTranslatedMessage(record.preview);
+  const translated = translation?.status === 'translated';
   return (
     <Pressable
       onPress={() => onOpen(record.id)}
@@ -135,13 +144,16 @@ const RecordCard = memo(function RecordCard({
         </View>
       </View>
       <Text style={styles.redactedPreview} numberOfLines={2}>
-        {record.preview ?? record.redactedPreview}
+        {translated ? translation.text : (record.preview ?? record.redactedPreview)}
       </Text>
       <View style={styles.recordFooter}>
         <Text style={[styles.score, { color: tone.color }]}>
           {isMessageBlocked(record) ? 'Notification blocked' : `Risk score ${record.score}/100`}
         </Text>
-        <Text style={styles.signs}>{record.isRead ? 'Read' : '● Unread'}</Text>
+        <Text style={styles.signs}>
+          {translated ? 'Translated · ' : ''}
+          {record.isRead ? 'Read' : '● Unread'}
+        </Text>
       </View>
     </Pressable>
   );
@@ -158,8 +170,13 @@ function DetailModal({
 }) {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
+  const { language } = useMessageTranslationSettings();
+  const translation = useTranslatedMessage(record?.message);
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => setShowOriginal(false), [record?.id]);
   if (!record) return null;
   const tone = tones[record.level];
+  const translated = translation?.status === 'translated' ? translation : null;
   // A Safe message always scores 0 (getHistoryRecord also zeroes older records), so it lists no warning signs.
   const reasons = record.level === 'safe' ? [] : record.reasons;
   return (
@@ -207,9 +224,34 @@ function DetailModal({
             {messageSender(record)}
           </Text>
           <Text style={styles.detailLabel}>MESSAGE STORED ON THIS DEVICE</Text>
+          {translated ? (
+            <View style={styles.translationBar}>
+              <Ionicons name="language-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.translationText}>
+                {showOriginal ? 'Original message' : `Translated from ${LANGUAGE_NAMES[translated.from]}`}
+              </Text>
+              <Pressable
+                onPress={() => setShowOriginal((value) => !value)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={showOriginal ? 'Show translation' : 'Show original message'}
+              >
+                <Text style={styles.translationToggle}>{showOriginal ? 'Show translation' : 'Show original'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {translation?.status === 'pack-missing' && language !== 'default' ? (
+            <View style={styles.translationBar}>
+              <Ionicons name="cloud-download-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.translationText}>
+                Shown as received. The {LANGUAGE_NAMES[language]} translation appears once the language pack downloads
+                on Wi-Fi.
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.messageBox}>
             <Text selectable style={styles.messageText}>
-              {record.message}
+              {translated && !showOriginal ? translated.text : record.message}
             </Text>
           </View>
           <Text style={styles.detailLabel}>WARNING SIGNS</Text>
@@ -269,6 +311,14 @@ export default function HistoryScreen() {
   const openedLink = useRef<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { language: messageLanguage, pack: languagePack } = useMessageTranslationSettings();
+
+  // Finish a language pack download that was waiting for Wi-Fi.
+  useEffect(() => {
+    if (messageLanguage !== 'default' && languagePack !== 'ready' && languagePack !== 'downloading') {
+      void ensureLanguagePack();
+    }
+  }, [messageLanguage, languagePack]);
 
   const load = useCallback(async (openRecordId?: string, quiet = false) => {
     const current = ++request.current;
@@ -855,6 +905,9 @@ function createStyles(colors: ThemeColors) {
       boxShadow: '0 2px 8px #1e2d4308',
     },
     messageText: { color: colors.textPrimary, fontSize: 16, lineHeight: 25 },
+    translationBar: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+    translationText: { flex: 1, color: colors.textSecondary, fontSize: 12.5, lineHeight: 17 },
+    translationToggle: { color: colors.link, fontSize: 12.5, fontWeight: '700' },
     reasonRow: {
       backgroundColor: colors.surface,
       borderRadius: 10,

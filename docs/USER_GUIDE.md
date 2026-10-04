@@ -52,6 +52,18 @@ To check an SMS on your own phone, long-press it in your Messages app, tap **Cop
 
 Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. Reports contain classification metadata, never message text. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
 
+## Read messages in Tagalog or English
+
+In **Settings → Message language**, choose **Tagalog** or **English** to show captured messages in that language, or **Default** to show them exactly as received. This is free on every plan.
+
+The same choice sets the language of NotiCare's scam warning pop-ups and notifications: **Tagalog** shows them in Tagalog, while **Default** and **English** show them in English. Warnings are written in both languages inside the app, so they appear instantly and work offline, with no download needed.
+
+- NotiCare downloads a language pack (about 60 MB) once, over Wi-Fi only. Until then, messages show as received.
+- English and Taglish messages are translated to Tagalog, or Tagalog and Taglish messages to English. Taglish translations can be imperfect.
+- Links and email addresses always stay exactly as received.
+- Open a message and tap **Show original** to see the exact wording that was received.
+- Translation is for reading only: NotiCare always scans the original message, so a translation never changes a result.
+
 ## View and delete captured messages
 
 **Messages** shows every SMS notification scanned while monitoring is on: Safe, Suspicious, and Dangerous, including messages you ignore or block. These copies remain encrypted and scoped to the signed-in profile. It does not import earlier SMS, unrelated app notifications, or Manual Scan results. The app does not send or reply to SMS.

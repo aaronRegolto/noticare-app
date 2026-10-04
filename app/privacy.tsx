@@ -22,6 +22,10 @@ const sections = [
     'Manual Scan reads the text in a photo or screenshot on this phone, then deletes the photo; the photo is never uploaded. The camera is used only when you tap Take a photo. Google’s on-device text reader (ML Kit) sends Google anonymous usage statistics, such as phone model, app version, and how long reading took, but never the photo or its text.',
   ],
   [
+    'Message language',
+    'If you choose Tagalog or English in Settings, captured messages are translated on this phone for display; message text is never sent for translation. NotiCare downloads Google’s language pack (about 60 MB) once over Wi-Fi. Links stay exactly as received, and scanning always uses the original message. ML Kit sends Google anonymous usage statistics for translation too, never the message text.',
+  ],
+  [
     'Reporting a message: the one exception',
     'Tapping Block & Report on a warning, or Report on a Manual Scan result, shares that exact message’s text and risk score so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list without any information about who reported them. This only happens when you choose to report a message — never automatically.',
   ],

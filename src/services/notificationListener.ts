@@ -151,6 +151,12 @@ type NotificationListenerNativeModule = {
   notifyCommunityReportResult?(isNew: boolean, reportCount: number): Promise<boolean>;
   /** Missing from builds installed before Manual Scan could read photos. */
   recognizeTextInImage?(uri: string): Promise<RecognizedImageText>;
+  /** The four translation methods are missing from builds installed before message translation. */
+  identifyMessageLanguage?(text: string): Promise<string>;
+  getTranslationModelStatus?(): Promise<'ready' | 'missing'>;
+  downloadTranslationModels?(): Promise<'ready'>;
+  translateSegments?(segments: string[], source: 'en' | 'tl', target: 'en' | 'tl'): Promise<string[]>;
+  setMessageLanguagePreference?(language: 'default' | 'tl' | 'en'): Promise<boolean>;
 };
 
 /** Text read on this device from a photo or screenshot: paragraphs, each as its wrapped lines. */
@@ -274,6 +280,58 @@ export function recognizeTextInImage(uri: string): Promise<RecognizedImageText> 
     return Promise.reject(new Error('This NotiCare build cannot read text from photos. Install the latest build.'));
   }
   return native.recognizeTextInImage(uri);
+}
+
+/**
+ * Tells the native warning screen and notifications which language to use. A no-op outside an
+ * Android build, or in one installed before warnings were translated.
+ */
+export async function setNativeMessageLanguage(language: 'default' | 'tl' | 'en'): Promise<void> {
+  if (Platform.OS !== 'android' || !nativeModule?.setMessageLanguagePreference) return;
+  await nativeModule.setMessageLanguagePreference(language);
+}
+
+/** True in a native build that can translate captured messages on this device. */
+export function isMessageTranslationAvailable(): boolean {
+  return Platform.OS === 'android' && typeof nativeModule?.translateSegments === 'function';
+}
+
+function requireTranslation() {
+  const native = requireAndroidNativeModule();
+  if (
+    !native.identifyMessageLanguage ||
+    !native.getTranslationModelStatus ||
+    !native.downloadTranslationModels ||
+    !native.translateSegments
+  ) {
+    throw new Error('This NotiCare build cannot translate messages. Install the latest build.');
+  }
+  return native as Required<
+    Pick<
+      NotificationListenerNativeModule,
+      'identifyMessageLanguage' | 'getTranslationModelStatus' | 'downloadTranslationModels' | 'translateSegments'
+    >
+  >;
+}
+
+/** ML Kit's language code for a message ("en", "fil", ...), or "und" when it can't tell. */
+export function identifyMessageLanguage(text: string): Promise<string> {
+  return Promise.resolve().then(() => requireTranslation().identifyMessageLanguage(text));
+}
+
+/** Whether the English and Tagalog language pack is on this device. */
+export function getTranslationModelStatus(): Promise<'ready' | 'missing'> {
+  return Promise.resolve().then(() => requireTranslation().getTranslationModelStatus());
+}
+
+/** Downloads the language pack over Wi-Fi only; rejects with code "wifi_required" otherwise. */
+export function downloadTranslationModels(): Promise<'ready'> {
+  return Promise.resolve().then(() => requireTranslation().downloadTranslationModels());
+}
+
+/** Translates message segments on this device; rejects with code "model_missing" before download. */
+export function translateSegments(segments: string[], source: 'en' | 'tl', target: 'en' | 'tl'): Promise<string[]> {
+  return Promise.resolve().then(() => requireTranslation().translateSegments(segments, source, target));
 }
 
 /** Older builds stored Safe records with their raw 1–29 score; they read as 0 like every Safe result. */

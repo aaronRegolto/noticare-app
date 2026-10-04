@@ -14,6 +14,11 @@ const LITERT_DEPENDENCY = 'com.google.ai.edge.litert:litert:2.1.1';
 // On-device text recognition for Manual Scan's photo option. The bundled Latin model works offline
 // from first launch, with no Google Play services download.
 const MLKIT_TEXT_RECOGNITION_DEPENDENCY = 'com.google.mlkit:text-recognition:16.0.1';
+// On-device English/Tagalog translation of captured messages for display. The language models
+// (about 30 MB each) download on Wi-Fi when the user picks a message language; language
+// identification is bundled.
+const MLKIT_TRANSLATE_DEPENDENCY = 'com.google.mlkit:translate:17.0.3';
+const MLKIT_LANGUAGE_ID_DEPENDENCY = 'com.google.mlkit:language-id:17.0.6';
 const JUNIT_DEPENDENCY = 'junit:junit:4.13.2';
 const TEMPLATE_ROOT = path.join(__dirname, 'android');
 
@@ -202,6 +207,9 @@ function addDataStoreDependency(contents) {
   if (!contents.includes(MLKIT_TEXT_RECOGNITION_DEPENDENCY)) {
     missingLines.push(`    implementation(\"${MLKIT_TEXT_RECOGNITION_DEPENDENCY}\")`);
   }
+  for (const dependency of [MLKIT_TRANSLATE_DEPENDENCY, MLKIT_LANGUAGE_ID_DEPENDENCY]) {
+    if (!contents.includes(dependency)) missingLines.push(`    implementation(\"${dependency}\")`);
+  }
   if (!contents.includes(JUNIT_DEPENDENCY)) {
     missingLines.push(`    testImplementation(\"${JUNIT_DEPENDENCY}\")`);
   }
@@ -323,11 +331,14 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['ThreatWarningOverlay.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningOverlay.kt')],
     ['BlockedMessageStore.kt', path.join(sourceRoot, 'bridge', 'BlockedMessageStore.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
+    ['MessageTranslator.kt', path.join(sourceRoot, 'bridge', 'MessageTranslator.kt')],
+    ['WarningCopy.kt', path.join(sourceRoot, 'bridge', 'WarningCopy.kt')],
     ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
     ['V3RiskEvaluatorTest.kt', path.join(testSourceRoot, 'bridge', 'V3RiskEvaluatorTest.kt')],
     ['NotificationInputTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationInputTest.kt')],
     ['ModelEvaluationTest.kt', path.join(testSourceRoot, 'bridge', 'ModelEvaluationTest.kt')],
     ['BlockedMessageStoreTest.kt', path.join(testSourceRoot, 'bridge', 'BlockedMessageStoreTest.kt')],
+    ['WarningCopyTest.kt', path.join(testSourceRoot, 'bridge', 'WarningCopyTest.kt')],
   ];
 
   for (const [templatePath, destinationPath] of mappings) {
