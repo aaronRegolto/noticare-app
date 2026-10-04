@@ -37,7 +37,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Manual Scan',
-    body: 'Long-press an SMS in Messages, tap Copy, return to NotiCare, tap Paste, then choose Scan message. To check a message on someone else’s phone, tap Photo to photograph it or choose a screenshot; NotiCare reads the text on this phone and deletes the photo. Check the text, especially links, before you scan. NotiCare never opens links it finds.',
+    body: 'Tap Take a photo and point your camera at the message — even on someone else’s phone — or tap Upload screenshot. NotiCare reads the text on this phone and deletes the photo. Check the text, especially any links, then tap Check message. You can also copy an SMS in Messages and tap Paste text. NotiCare never opens links it finds.',
   },
   {
     title: 'Safe Link Protection',

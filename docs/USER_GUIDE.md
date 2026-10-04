@@ -40,19 +40,15 @@ In **Settings & Privacy → Warning Appearance**, choose **Full-screen warning**
 
 ## Manually scan a message
 
-1. Long-press the SMS in your Messages app and tap **Copy**.
-2. Return to NotiCare and open **Manual Scan**.
-3. Tap **Paste**, review the text, then tap **Scan Message**.
+Use **Manual Scan** to check a message you weren't sent directly, such as one on a friend's phone or in a screenshot.
 
-NotiCare reads the clipboard only when you tap Paste. It shows URLs as text and does not open them. A Manual Scan does not add a message to the captured Messages inbox.
-
-To check a message on someone else's phone, or one sent to you as a screenshot:
-
-1. In **Manual Scan**, tap **Photo**, then **Take photo** or **Choose screenshot**.
+1. Open **Manual Scan** and tap **Take a photo**, then point your camera at the message. Or tap **Upload screenshot**.
 2. Crop to just the message, leaving out names, times, and other messages.
-3. Check that the text NotiCare read matches the message, especially any links, then tap **Scan Message**.
+3. Check that the text NotiCare read matches the message, especially any links, then tap **Check message**.
 
-The photo is read on your phone and deleted right after; it is never uploaded. NotiCare asks for camera access only the first time you tap **Take photo**. For a clearer read, turn the other phone's brightness up and avoid glare.
+The photo is read on your phone and deleted right after; it is never uploaded. NotiCare asks for camera access only the first time you tap **Take a photo**. For a clearer read, turn the other phone's brightness up and avoid glare.
+
+To check an SMS on your own phone, long-press it in your Messages app, tap **Copy**, then tap **Paste text** in Manual Scan. NotiCare reads the clipboard only when you tap Paste text. It shows URLs as text and does not open them. A Manual Scan does not add a message to the captured Messages inbox.
 
 Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. Reports contain classification metadata, never message text. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
 

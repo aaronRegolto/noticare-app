@@ -19,7 +19,7 @@ const sections = [
   ],
   [
     'Scanning text from a photo',
-    'Manual Scan’s Photo option reads the text in a photo or screenshot on this phone, then deletes the photo; the photo is never uploaded. The camera is used only when you tap Take photo. Google’s on-device text reader (ML Kit) sends Google anonymous usage statistics, such as phone model, app version, and how long reading took, but never the photo or its text.',
+    'Manual Scan reads the text in a photo or screenshot on this phone, then deletes the photo; the photo is never uploaded. The camera is used only when you tap Take a photo. Google’s on-device text reader (ML Kit) sends Google anonymous usage statistics, such as phone model, app version, and how long reading took, but never the photo or its text.',
   ],
   [
     'Reporting a message: the one exception',

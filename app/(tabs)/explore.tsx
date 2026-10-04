@@ -3,7 +3,17 @@ import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScoreBreakdown } from '@/src/components/score-breakdown';
@@ -341,13 +351,15 @@ export default function ScanScreen() {
     [applyImageText],
   );
 
-  const onPhoto = useCallback(() => {
-    Alert.alert('Scan text from a photo', 'The photo is read on this phone, then deleted. It is never uploaded.', [
-      { text: 'Take photo', onPress: () => void readImage('camera') },
-      { text: 'Choose screenshot', onPress: () => void readImage('library') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [readImage]);
+  const clearMessage = useCallback(() => {
+    setMessage('');
+    setTextFromPhoto(false);
+    scanVersion.current++;
+    setResult(null);
+    setFeedbackState('idle');
+    setVirality(null);
+    setViralityLoading(false);
+  }, []);
 
   // Android can close the app while the camera is open; finish reading the photo on return.
   useEffect(() => {
@@ -465,33 +477,124 @@ export default function ScanScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.scannerIcon}>
-          <Ionicons name="scan-outline" size={38} color={colors.headerText} />
+          <Ionicons name={canReadPhotos ? 'camera-outline' : 'scan-outline'} size={36} color={colors.headerText} />
         </View>
-        <Text style={styles.heading}>Text Scanner</Text>
-        <Text style={styles.subheading}>Paste a suspicious message to check it for scam warning signs</Text>
+        <Text style={styles.heading}>Scan a Message</Text>
+        <Text style={styles.subheading}>
+          {canReadPhotos
+            ? 'Photograph a suspicious text — even on someone else’s phone — and NotiCare checks it for scam warning signs.'
+            : 'Paste a suspicious text and NotiCare checks it for scam warning signs.'}
+        </Text>
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryChip}>
-            <Ionicons name="shield-checkmark" size={14} color={colors.accent} />
-            <Text style={styles.summaryChipText}>Privacy-first</Text>
+            <Ionicons name="phone-portrait-outline" size={14} color={colors.accent} />
+            <Text style={styles.summaryChipText}>Checked on this phone</Text>
           </View>
+          {canReadPhotos ? (
+            <View style={styles.summaryChip}>
+              <Ionicons name="eye-off-outline" size={14} color={colors.accent} />
+              <Text style={styles.summaryChipText}>Photos never uploaded</Text>
+            </View>
+          ) : null}
           <View style={styles.summaryChip}>
-            <Ionicons name="flash" size={14} color={colors.accent} />
-            <Text style={styles.summaryChipText}>Instant scan</Text>
-          </View>
-          <View style={styles.summaryChip}>
-            <Ionicons name="people" size={14} color={colors.accent} />
+            <Ionicons name="people-outline" size={14} color={colors.accent} />
             <Text style={styles.summaryChipText}>Community alerts</Text>
           </View>
         </View>
 
         <View style={styles.analysisCard}>
+          {canReadPhotos ? (
+            <>
+              <Pressable
+                onPress={() => void readImage('camera')}
+                disabled={readingImage}
+                style={({ pressed }) => [
+                  styles.captureButton,
+                  readingImage && styles.captureButtonBusy,
+                  pressed && styles.scanButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Take a photo of the message"
+                accessibilityHint="Opens the camera. The photo is read on this phone, then deleted."
+                accessibilityState={{ disabled: readingImage, busy: readingImage }}
+              >
+                <View style={styles.captureIcon}>
+                  {readingImage ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={24} color="#fff" />
+                  )}
+                </View>
+                <View style={styles.captureCopy}>
+                  <Text style={styles.captureTitle}>{readingImage ? 'Reading text…' : 'Take a photo'}</Text>
+                  <Text style={styles.captureHint}>Point your camera at the message on any screen</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.85)" />
+              </Pressable>
+              <View style={styles.inputActions}>
+                <Pressable
+                  onPress={() => void readImage('library')}
+                  disabled={readingImage}
+                  style={[styles.secondaryButton, readingImage && styles.secondaryDisabled]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Upload a screenshot of the message"
+                  accessibilityState={{ disabled: readingImage }}
+                >
+                  <Ionicons name="image-outline" size={18} color={colors.link} />
+                  <Text style={styles.secondaryText}>Upload screenshot</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onPaste}
+                  disabled={readingImage}
+                  style={[styles.secondaryButton, readingImage && styles.secondaryDisabled]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Paste message text from the clipboard"
+                >
+                  <Ionicons name="clipboard-outline" size={18} color={colors.link} />
+                  <Text style={styles.secondaryText}>Paste text</Text>
+                </Pressable>
+              </View>
+              <View style={styles.steps} accessibilityLabel="Capture the message, review the text, then check it">
+                {['Capture', 'Review text', 'Check'].map((step, index) => (
+                  <View key={step} style={styles.step}>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.stepText}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.divider} />
+            </>
+          ) : null}
+
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Message Analysis</Text>
-            <Text style={styles.count}>
-              {message.length}/{maxCharacters}
-            </Text>
+            <Text style={styles.cardTitle}>Message text</Text>
+            <View style={styles.cardHeaderEnd}>
+              <Text style={styles.count}>
+                {message.length}/{maxCharacters}
+              </Text>
+              {message ? (
+                <Pressable
+                  onPress={clearMessage}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear message"
+                >
+                  <Text style={styles.clearLink}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
+          {textFromPhoto && message ? (
+            <View style={styles.photoNote} accessibilityLiveRegion="polite">
+              <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+              <Text style={styles.photoNoteText}>
+                Read from your photo. Make sure it matches the message — especially any links — before checking.
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.inputWrap}>
             <TextInput
               value={message}
@@ -504,73 +607,35 @@ export default function ScanScreen() {
                 setVirality(null);
                 setViralityLoading(false);
               }}
-              placeholder="Paste your message here…"
+              placeholder={
+                canReadPhotos
+                  ? 'Text from your photo appears here. You can also type or paste a message.'
+                  : 'Paste or type the message here…'
+              }
               placeholderTextColor="#7B8AA3"
               multiline
               maxLength={maxCharacters}
               textAlignVertical="top"
               style={styles.input}
-              accessibilityLabel="SMS message to scan"
+              accessibilityLabel="Message text to check"
             />
           </View>
-          <View style={styles.inputActions}>
-            <Pressable
-              onPress={onPaste}
-              style={styles.secondaryButton}
-              accessibilityRole="button"
-              accessibilityLabel="Paste SMS from clipboard"
-            >
-              <Ionicons name="clipboard-outline" size={18} color={colors.link} />
-              <Text style={styles.secondaryText}>Paste</Text>
-            </Pressable>
-            {canReadPhotos ? (
+          {canReadPhotos ? null : (
+            <View style={styles.inputActions}>
               <Pressable
-                onPress={onPhoto}
-                disabled={readingImage}
-                style={[styles.secondaryButton, readingImage && styles.secondaryDisabled]}
+                onPress={onPaste}
+                style={styles.secondaryButton}
                 accessibilityRole="button"
-                accessibilityLabel="Scan text from a photo or screenshot"
-                accessibilityState={{ disabled: readingImage, busy: readingImage }}
+                accessibilityLabel="Paste message text from the clipboard"
               >
-                <Ionicons name="camera-outline" size={18} color={colors.link} />
-                <Text style={styles.secondaryText}>{readingImage ? 'Reading…' : 'Photo'}</Text>
+                <Ionicons name="clipboard-outline" size={18} color={colors.link} />
+                <Text style={styles.secondaryText}>Paste text</Text>
               </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => {
-                setMessage('');
-                setTextFromPhoto(false);
-                scanVersion.current++;
-                setResult(null);
-                setFeedbackState('idle');
-                setVirality(null);
-                setViralityLoading(false);
-              }}
-              disabled={!message}
-              style={[styles.secondaryButton, !message && styles.secondaryDisabled]}
-              accessibilityRole="button"
-              accessibilityLabel="Clear message"
-            >
-              <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
-              <Text style={styles.secondaryText}>Clear</Text>
-            </Pressable>
-          </View>
-          {textFromPhoto && message ? (
-            <View style={styles.photoNote} accessibilityLiveRegion="polite">
-              <Ionicons name="camera-outline" size={15} color={colors.warning} />
-              <Text style={styles.photoNoteText}>
-                Text read from a photo. Check it matches the message — especially any links — then tap Scan.
-              </Text>
             </View>
-          ) : null}
-          <Text style={styles.privacyText}>
-            <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
-            uploaded — unless you tap Report, which shares that exact message so other NotiCare users can be warned
-            about it.
-          </Text>
+          )}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Scan message"
+            accessibilityLabel="Check message for scams"
             disabled={!message.trim() || scanning}
             onPress={handleScan}
             style={({ pressed }) => [
@@ -579,9 +644,16 @@ export default function ScanScreen() {
               pressed && message.trim() && styles.scanButtonPressed,
             ]}
           >
-            <Ionicons name="scan-outline" size={19} color="#fff" />
-            <Text style={styles.scanButtonText}>{scanning ? 'Scanning locally…' : 'Scan message'}</Text>
+            <Ionicons name="shield-checkmark-outline" size={19} color="#fff" />
+            <Text style={styles.scanButtonText}>{scanning ? 'Checking on this phone…' : 'Check message'}</Text>
           </Pressable>
+          <View style={styles.privacyRow}>
+            <Ionicons name="lock-closed-outline" size={13} color={colors.textMuted} />
+            <Text style={styles.privacyText}>
+              {canReadPhotos ? 'Photos and messages are' : 'Messages are'} checked on this phone and never uploaded.
+              Only a message you choose to Report is shared, to warn other NotiCare users.
+            </Text>
+          </View>
         </View>
 
         {result ? (
@@ -683,11 +755,54 @@ function createStyles(colors: ThemeColors) {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    captureButton: {
+      minHeight: 72,
+      borderRadius: 16,
+      backgroundColor: colors.accent,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      shadowColor: '#0D3C39',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+    captureButtonBusy: { opacity: 0.85 },
+    captureIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 14,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    captureCopy: { flex: 1 },
+    captureTitle: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+    captureHint: { color: 'rgba(255,255,255,0.85)', fontSize: 12.5, marginTop: 2 },
+    steps: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 2 },
+    step: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    stepNumber: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepNumberText: { color: colors.accent, fontSize: 11, fontWeight: '800' },
+    stepText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
+    divider: { height: 1, backgroundColor: colors.border, marginVertical: 18 },
     cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
+    cardHeaderEnd: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    cardTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
     count: { color: colors.textMuted, fontSize: 12 },
+    clearLink: { color: colors.link, fontSize: 13, fontWeight: '700' },
     inputWrap: {
-      marginTop: 16,
+      marginTop: 12,
       borderRadius: 14,
       backgroundColor: colors.surfaceAlt,
       borderWidth: 1,
@@ -720,9 +835,18 @@ function createStyles(colors: ThemeColors) {
     },
     secondaryDisabled: { opacity: 0.45 },
     secondaryText: { color: colors.textSecondary, fontWeight: '700' },
-    photoNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12 },
-    photoNoteText: { flex: 1, color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
-    privacyText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 13 },
+    photoNote: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      marginTop: 12,
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor: colors.warningSoft,
+    },
+    photoNoteText: { flex: 1, color: colors.textPrimary, fontSize: 12.5, lineHeight: 18 },
+    privacyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 14 },
+    privacyText: { flex: 1, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
     scanButton: {
       height: 52,
       backgroundColor: colors.accent,

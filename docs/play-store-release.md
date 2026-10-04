@@ -73,9 +73,9 @@ upload a locally built release: the local Gradle config signs it with the debug 
 | App activity → Other actions (scan results) | Collected. Purpose: Analytics, App functionality. Required when signed in. |
 | Device or other IDs | Collected (random installation ID). Purpose: App functionality. |
 | Financial info → Purchase history | Collected (plan status only). Payments go through PayMongo. |
-| App info and performance → Diagnostics | Collected by Google ML Kit when Manual Scan's Photo option is used (device model, OS and app version, latency, image size; never the image or its text). Purpose: Analytics. Confirm against Google's ML Kit data disclosure. |
+| App info and performance → Diagnostics | Collected by Google ML Kit when a photo is scanned in Manual Scan (device model, OS and app version, latency, image size; never the image or its text). Purpose: Analytics. Confirm against Google's ML Kit data disclosure. |
 
-Photos are not declared: Manual Scan's Photo option reads the image on the device and deletes it, and nothing from it
+Photos are not declared: Manual Scan reads the image on the device and deletes it, and nothing from it
 is uploaded. The camera permission needs no Play Console form.
 
 **Account deletion URL:** `https://admin.noticare.site/delete-account`

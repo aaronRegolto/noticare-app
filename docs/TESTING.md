@@ -84,9 +84,11 @@ Record Android version, Messages app/package/version, device model, build SHA, s
 
 ## Manual Scan photo checks
 
-- **Take photo**, first time: Android asks for camera access. Allow: after cropping, the text fills the box with the "Text read from a photo" note and is not scanned until Scan is tapped.
+- **Take a photo**, first time: Android asks for camera access. Allow: after cropping, the text fills the box with the "Read from your photo" note and is not checked until **Check message** is tapped.
 - Deny camera access: an explanation appears and nothing opens. Deny with "Don't ask again": the explanation offers **Open settings**.
-- **Choose screenshot**: Android's photo picker opens without any permission prompt.
+- **Upload screenshot**: Android's photo picker opens without any permission prompt.
+- While text is being read, the capture buttons are disabled and the main button shows "Reading text…".
+- In a build without the text reader (Expo Go or an older install), the camera options are hidden and **Paste text** appears under the text box.
 - A photo with no text (or too blurry): "No text found" with advice; the box is unchanged.
 - A link split across two lines on the other phone's screen reads back as one link; a Tagalog word broken at its hyphen (`i-` / `click`) reads back joined.
 - Cancel at the camera, crop, or picker step: nothing changes.
