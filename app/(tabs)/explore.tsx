@@ -134,12 +134,15 @@ function ResultCard({
   result,
   onFeedback,
   feedbackState,
+  feedbackKind,
   virality,
   viralityLoading,
 }: {
   result: ThreatResult;
   onFeedback: (kind: 'safe' | 'dangerous') => void;
   feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported';
+  /** The button tapped: Report uploads the message text at any level, Mark as safe never does. */
+  feedbackKind: 'safe' | 'dangerous';
   virality: PhishingVirality | null;
   viralityLoading: boolean;
 }) {
@@ -206,10 +209,10 @@ function ResultCard({
               : feedbackState === 'already_reported'
                 ? 'You already reported this exact message.'
                 : feedbackState === 'saved_locally'
-                  ? result.level === 'dangerous'
+                  ? feedbackKind === 'dangerous'
                     ? 'Done'
                     : 'Saved on this device only — it was not submitted to NotiCare’s servers.'
-                  : result.level === 'dangerous'
+                  : feedbackKind === 'dangerous'
                     ? 'Reported. This exact message text was shared so other NotiCare users can be warned.'
                     : 'Report sent. Your message text was not uploaded.'}
           </Text>
@@ -252,6 +255,7 @@ export default function ScanScreen() {
   const [feedbackState, setFeedbackState] = useState<
     'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported'
   >('idle');
+  const [feedbackKind, setFeedbackKind] = useState<'safe' | 'dangerous'>('safe');
   const [virality, setVirality] = useState<PhishingVirality | null>(null);
   const [viralityLoading, setViralityLoading] = useState(false);
   const feedbackBusy = useRef(false);
@@ -344,7 +348,10 @@ export default function ScanScreen() {
             logError('manual-report-and-block-failed', error);
           }
         }
-        if (version === scanVersion.current) setFeedbackState(status);
+        if (version === scanVersion.current) {
+          setFeedbackKind(kind);
+          setFeedbackState(status);
+        }
       } catch (error) {
         logError('manual-feedback-failed', error);
         if (version === scanVersion.current) {
@@ -449,8 +456,8 @@ export default function ScanScreen() {
           </View>
           <Text style={styles.privacyText}>
             <Ionicons name="lock-closed-outline" size={12} /> Your SMS is analyzed on this device and its text is never
-            uploaded — unless you tap Report on a Dangerous result, which shares that exact message so other NotiCare
-            users can be warned about it.
+            uploaded — unless you tap Report, which shares that exact message so other NotiCare users can be warned
+            about it.
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -473,6 +480,7 @@ export default function ScanScreen() {
             result={result}
             onFeedback={handleFeedback}
             feedbackState={feedbackState}
+            feedbackKind={feedbackKind}
             virality={virality}
             viralityLoading={viralityLoading}
           />

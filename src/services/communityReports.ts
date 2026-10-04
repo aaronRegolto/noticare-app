@@ -184,9 +184,11 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
 
 /**
  * Saves a "Report & Block" tap to the on-device queue immediately (this always
- * succeeds, online or off), then tries to sync it right away. Only a Dangerous
- * result's exact text is ever queued here — this is the one path in the app
- * that intentionally uploads message content, and only on explicit user action.
+ * succeeds, online or off), then tries to sync it right away. It queues the
+ * exact text of a message the user chose to report — Block & Report on a
+ * warning, or Report on a Manual Scan result of any level. This is the one path
+ * in the app that intentionally uploads message content, and only on explicit
+ * user action.
  */
 export async function reportAndBlockMessage(
   messageText: string,

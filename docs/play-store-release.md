@@ -69,7 +69,7 @@ upload a locally built release: the local Gradle config signs it with the debug 
 | Encrypted in transit? | Yes |
 | Users can request deletion? | Yes, in the app and at https://admin.noticare.site/delete-account |
 | Personal info → Phone number | Collected. Purpose: Account management. Required. |
-| Messages → SMS or MMS | Collected **and shared** (other users see reported scam text). Purpose: App functionality, Fraud prevention and security. **Optional** (only on Block & Report). |
+| Messages → SMS or MMS | Collected **and shared** (other users see reported scam text). Purpose: App functionality, Fraud prevention and security. **Optional** (only when the user reports a message: Block & Report on a warning, or Report on a Manual Scan result). |
 | App activity → Other actions (scan results) | Collected. Purpose: Analytics, App functionality. Required when signed in. |
 | Device or other IDs | Collected (random installation ID). Purpose: App functionality. |
 | Financial info → Purchase history | Collected (plan status only). Payments go through PayMongo. |

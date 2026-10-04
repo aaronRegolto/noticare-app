@@ -18,8 +18,8 @@ const sections = [
     'Notification titles, clipboard contents, OTPs, complete sender numbers, raw URLs, encryption keys, and hardware/advertising IDs are never uploaded. Message text is never uploaded either — with one exception below.',
   ],
   [
-    'Block & Report: the one exception',
-    'Tapping Block & Report on a risky message shares that exact message’s text and risk score so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list without any information about who reported them. This only happens when you tap Block & Report — never automatically.',
+    'Reporting a message: the one exception',
+    'Tapping Block & Report on a warning, or Report on a Manual Scan result, shares that exact message’s text and risk score so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list without any information about who reported them. This only happens when you choose to report a message — never automatically.',
   ],
   [
     'Your controls',
