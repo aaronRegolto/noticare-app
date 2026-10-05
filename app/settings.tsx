@@ -9,6 +9,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 import { useOnboarding } from '@/src/providers/OnboardingProvider';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
+import { OptionSheet, SettingsAlert, SettingsItem, SettingsSection, SheetOption } from '@/src/components/settings-ui';
 import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
 import { detectPhilippineCarrier } from '@/src/features/auth/phone';
 import type { MessageLanguage } from '@/src/features/translation';
@@ -43,7 +44,7 @@ import {
   type MonitoringStatus,
 } from '@/src/services/notificationListener';
 import { useAppTheme } from '@/src/theme/ThemeProvider';
-import type { ThemeColors } from '@/src/theme/palette';
+import { ACCENTS, type ThemeColors, type ThemeMode } from '@/src/theme/palette';
 
 function maskPhone(phone: string | undefined) {
   if (!phone) return 'Signed in securely';
@@ -123,6 +124,8 @@ const MESSAGE_LANGUAGE_OPTIONS: { value: MessageLanguage; label: string; descrip
   { value: 'en', label: 'English', description: 'Messages translated to English; warnings in English' },
 ];
 
+const THEME_MODE_LABELS: Record<ThemeMode, string> = { light: 'Light', dark: 'Dark', system: 'System' };
+
 function languagePackCopy(pack: LanguagePackStatus) {
   switch (pack) {
     case 'ready':
@@ -136,36 +139,6 @@ function languagePackCopy(pack: LanguagePackStatus) {
     default:
       return 'Checking the language pack…';
   }
-}
-
-function SettingRow({
-  icon,
-  title,
-  subtitle,
-  onPress,
-  destructive = false,
-  colors,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle?: string;
-  onPress: () => void;
-  destructive?: boolean;
-  colors: ThemeColors;
-}) {
-  const styles = useThemedStyles(colors);
-  return (
-    <Pressable onPress={onPress} style={styles.settingRow} accessibilityRole="button">
-      <View style={[styles.settingIcon, destructive && styles.settingIconDanger]}>
-        <Ionicons name={icon} size={20} color={destructive ? colors.danger : colors.link} />
-      </View>
-      <View style={styles.settingCopy}>
-        <Text style={[styles.settingTitle, destructive && styles.dangerText]}>{title}</Text>
-        {subtitle ? <Text style={styles.settingSubtitle}>{subtitle}</Text> : null}
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-    </Pressable>
-  );
 }
 
 export default function SettingsScreen() {
@@ -182,6 +155,7 @@ export default function SettingsScreen() {
   const [browsersError, setBrowsersError] = useState<string | null>(null);
   const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
   const translation = useMessageTranslationSettings();
+  const [sheet, setSheet] = useState<'browser' | 'alerts' | 'language' | 'appearance' | null>(null);
 
   // Check the language pack (and finish a download that was waiting for Wi-Fi) when Settings opens.
   useEffect(() => {
@@ -513,6 +487,18 @@ export default function SettingsScreen() {
     ? { title: 'Unavailable', tone: colors.danger, message: statusError }
     : humanStatus(status, colors);
 
+  const linkProtection = !isNativeLinkHandlerAvailable()
+    ? { value: 'Unavailable', tone: 'muted' as const, subtitle: 'Install the Android app to use this.' }
+    : defaultBrowserActive === null
+      ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links before they open' }
+      : defaultBrowserActive
+        ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links before they open' }
+        : { value: 'Off', tone: 'warning' as const, subtitle: 'Tap to set NotiCare as your default browser' };
+  const primaryCarrier = session?.user.phone ? detectPhilippineCarrier(session.user.phone) : null;
+  const preferredBrowser = browsers.find((browser) => browser.isPreferred)?.label;
+  const languageLabel = MESSAGE_LANGUAGE_OPTIONS.find((option) => option.value === translation.language)?.label;
+  const appearanceLabel = `${THEME_MODE_LABELS[mode]} · ${ACCENTS.find((item) => item.id === accent)?.label ?? ''}`;
+
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
       <StatusBar style="light" />
@@ -529,395 +515,315 @@ export default function SettingsScreen() {
         <View style={styles.headerSpacer} />
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.profile}>
-          <View style={styles.profileHeaderRow}>
-            <View style={styles.profileIcon}>
-              <Ionicons name="person-outline" size={24} color={colors.textPrimary} />
+        <View style={styles.account}>
+          <View style={styles.accountRow}>
+            <View style={styles.avatar}>
+              <Ionicons name="person" size={22} color={colors.accent} />
             </View>
-            <Text style={styles.profileTitle}>Your account</Text>
-          </View>
-          <View style={styles.phoneChipsRow}>
-            {session?.user.phone ? (
-              <PhoneChip phone={session.user.phone} primary colors={colors} />
-            ) : (
-              <Text style={styles.profilePhone}>{maskPhone(session?.user.phone)}</Text>
-            )}
-            {linkedPhones.map((phone) => (
-              <PhoneChip key={phone} phone={phone} colors={colors} onRemove={() => confirmUnlinkPhone(phone)} />
-            ))}
-            {!isDevelopmentPhoneLogin ? (
-              <Pressable
-                onPress={() => router.push('/link-phone')}
-                style={styles.addPhoneChip}
-                accessibilityRole="button"
-                accessibilityLabel="Add another phone number"
-              >
-                <Ionicons name="add" size={18} color={colors.accent} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-
-        <Text style={styles.sectionLabel}>PLAN</Text>
-        <View style={styles.card}>
-          <SettingRow
-            icon="star-outline"
-            title={subscriptionTier === 'free' ? 'Free plan' : 'Pro plan'}
-            subtitle={
-              subscriptionTier === 'free'
-                ? '10 automatic scans/month · Upgrade for unlimited protection'
-                : 'Unlimited scans, full history, viral phishing ranking'
-            }
-            onPress={() => router.push('/paywall')}
-            colors={colors}
-          />
-        </View>
-
-        <Text style={styles.sectionLabel}>REAL-TIME PROTECTION</Text>
-        <View style={styles.card}>
-          <View style={styles.scanRow}>
-            <View style={styles.scanLabel}>
-              <View style={[styles.statusDot, { backgroundColor: current.tone }]} />
-              <View>
-                <Text style={styles.cardTitle}>Real-Time Scanning</Text>
-                <Text style={styles.cardSubtitle}>{current.title}</Text>
-              </View>
-            </View>
-            <Switch
-              value={Boolean(status?.scanningEnabled)}
-              disabled={saving || !status}
-              onValueChange={(value) => void changeScanning(value)}
-              trackColor={{ false: '#AFBBCB', true: colors.accent }}
-              thumbColor={status?.scanningEnabled ? colors.accent : '#fff'}
-              accessibilityLabel="Turn real-time scanning on or off"
-            />
-          </View>
-          <Text style={styles.statusCopy}>{current.message}</Text>
-          {statusError ? (
-            <Pressable
-              onPress={() => void refreshStatus()}
-              style={styles.retryStatusButton}
-              accessibilityRole="button"
-              accessibilityLabel="Retry Android monitoring status"
-            >
-              <Ionicons name="refresh-outline" size={17} color={colors.link} />
-              <Text style={styles.retryStatusText}>Retry status</Text>
-            </Pressable>
-          ) : null}
-          <View style={styles.messagesApp}>
-            <Ionicons name="chatbubble-outline" size={19} color={colors.textSecondary} />
             <View style={styles.flex}>
-              <Text style={styles.messagesTitle}>Current Messages app</Text>
-              <Text style={styles.messagesValue}>
-                {status?.defaultSmsAppName ?? 'Not detected'}
-                {status?.defaultSmsPackage ? ` · ${status.defaultSmsPackage}` : ''}
+              <Text style={styles.accountTitle}>Your account</Text>
+              <Text style={styles.accountPhone}>
+                {maskPhone(session?.user.phone)}
+                {primaryCarrier ? ` · ${primaryCarrier}` : ''}
               </Text>
             </View>
-          </View>
-          {status && !status.appNotificationsGranted ? (
             <Pressable
-              onPress={() => void openAppNotificationSettings()}
-              style={styles.permissionButton}
+              onPress={() => router.push('/paywall')}
+              style={[styles.planBadge, subscriptionTier === 'pro' && styles.planBadgePro]}
               accessibilityRole="button"
+              accessibilityLabel={`${subscriptionTier === 'pro' ? 'Pro' : 'Free'} plan. View plans`}
             >
-              <Text style={styles.permissionText}>Turn on warning notifications</Text>
-            </Pressable>
-          ) : null}
-          {status?.historyStorageAvailable === false ? (
-            <Text style={styles.storageWarning}>
-              Message history is unavailable right now. Full message content will not be saved until this is fixed.
-            </Text>
-          ) : null}
-          {status?.batteryOptimizationExempt === false ? (
-            <View style={styles.batteryWarning}>
-              <Text style={styles.batteryWarningText}>
-                Android’s battery manager can pause NotiCare in the background and delay or miss new messages. In App
-                info, open Battery and choose Unrestricted to keep scanning reliable.
-              </Text>
-              <Pressable
-                onPress={() => void requestIgnoreBatteryOptimizations().then(() => void refreshStatus())}
-                style={styles.batteryWarningButton}
-                accessibilityRole="button"
-              >
-                <Text style={styles.batteryWarningButtonText}>Open App info</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-
-        <Text style={styles.sectionLabel}>SAFE LINK PROTECTION</Text>
-        <View style={styles.card}>
-          <Pressable
-            onPress={defaultBrowserActive === false ? fixDefaultBrowser : undefined}
-            style={styles.scanRow}
-            accessibilityRole={defaultBrowserActive === false ? 'button' : undefined}
-            accessibilityLabel={
-              !isNativeLinkHandlerAvailable()
-                ? 'Browser protection is not available in this preview.'
-                : defaultBrowserActive
-                  ? 'Protection on. NotiCare is your default browser.'
-                  : 'Protection off. Tap to set NotiCare as your default browser.'
-            }
-          >
-            <View style={styles.scanLabel}>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor: !isNativeLinkHandlerAvailable()
-                      ? colors.textMuted
-                      : defaultBrowserActive
-                        ? colors.accent
-                        : colors.warning,
-                  },
-                ]}
+              <Ionicons
+                name={subscriptionTier === 'pro' ? 'star' : 'star-outline'}
+                size={13}
+                color={subscriptionTier === 'pro' ? colors.accentContrast : colors.accent}
               />
-              <View>
-                <Text style={styles.cardTitle}>
-                  {!isNativeLinkHandlerAvailable()
-                    ? 'Protection unavailable'
-                    : defaultBrowserActive === null
-                      ? 'Checking…'
-                      : defaultBrowserActive
-                        ? 'Protection ON'
-                        : 'Protection OFF'}
-                </Text>
-                <Text style={styles.cardSubtitle}>
-                  {!isNativeLinkHandlerAvailable()
-                    ? 'Install the Android app to manage this.'
-                    : defaultBrowserActive === null
-                      ? 'Checking…'
-                      : defaultBrowserActive
-                        ? 'NotiCare checks links before they open.'
-                        : 'Tap to fix — set NotiCare as your default browser.'}
-                </Text>
-              </View>
-            </View>
-          </Pressable>
-          <View style={styles.scanRow}>
-            <View style={styles.scanLabel}>
-              <Ionicons name="shield-checkmark-outline" size={19} color={colors.textSecondary} />
-              <View>
-                <Text style={styles.cardTitle}>Open safe links in</Text>
-                <Text style={styles.cardSubtitle}>
-                  {browsers.find((browser) => browser.isPreferred)?.label ?? 'No browser chosen yet'}
-                </Text>
-              </View>
-            </View>
+              <Text style={[styles.planBadgeText, subscriptionTier === 'pro' && styles.planBadgeTextPro]}>
+                {subscriptionTier === 'pro' ? 'Pro' : 'Free'}
+              </Text>
+            </Pressable>
           </View>
-          {browsersError ? (
-            <Text style={styles.statusCopy}>{browsersError}</Text>
-          ) : browsers.length === 0 ? (
-            <Text style={styles.statusCopy}>
-              No other browser is installed on this device. Install one (e.g. Chrome) to open safe links.
-            </Text>
-          ) : (
-            browsers.map((browser) => (
-              <Pressable
-                key={browser.packageName}
-                onPress={() => void choosePreferredBrowser(browser.packageName)}
-                style={styles.browserRow}
-                accessibilityRole="button"
-                accessibilityLabel={`Use ${browser.label} for safe links`}
-              >
-                <Text style={styles.browserLabel}>{browser.label}</Text>
-                {browser.isPreferred ? <Ionicons name="checkmark-circle" size={19} color={colors.accent} /> : null}
-              </Pressable>
-            ))
-          )}
-        </View>
-
-        <Text style={styles.sectionLabel}>ALERT STYLE</Text>
-        <View style={styles.appearanceCard}>
-          <Text style={styles.appearanceTitle}>How should phishing warnings appear?</Text>
-          <Text style={styles.appearanceSubtitle}>
-            Choose the alert style that feels right for you.
-            {subscriptionTier !== 'pro' ? ' Full-screen warnings require NotiCare Pro.' : ''}
-          </Text>
-          <WarningAppearanceSelector
-            value={status?.fullScreenWarnings ? 'full-screen' : 'banner'}
-            disabled={saving || !status}
-            onChange={(mode) => void changeWarningStyle(mode === 'full-screen')}
-          />
-          {status?.fullScreenWarnings && status.overlayPermitted === false ? (
-            <View style={styles.batteryWarning}>
-              <Text style={styles.batteryWarningText}>
-                Full-screen warnings can only cover other apps with the &quot;Display over other apps&quot; permission.
-                Until it is allowed, warnings show as a banner while you are using your phone.
-              </Text>
-              <Pressable
-                onPress={() => void requestOverlayPermission().then(() => void refreshStatus())}
-                style={styles.batteryWarningButton}
-                accessibilityRole="button"
-              >
-                <Text style={styles.batteryWarningButtonText}>Allow display over other apps</Text>
-              </Pressable>
-            </View>
-          ) : null}
-          {status?.fullScreenWarnings && status.fullScreenIntentPermitted === false ? (
-            <View style={styles.batteryWarning}>
-              <Text style={styles.batteryWarningText}>
-                Android is currently blocking full-screen warnings for NotiCare, so dangerous messages will only show as
-                a banner. Allow full-screen notifications to restore the immersive warning.
-              </Text>
-              <Pressable
-                onPress={() => void requestFullScreenIntentPermission().then(() => void refreshStatus())}
-                style={styles.batteryWarningButton}
-                accessibilityRole="button"
-              >
-                <Text style={styles.batteryWarningButtonText}>Allow full-screen notifications</Text>
-              </Pressable>
-            </View>
-          ) : null}
-          {status?.dndBypassGranted === false ? (
-            <View style={styles.batteryWarning}>
-              <Text style={styles.batteryWarningText}>
-                Dangerous-message alerts currently stay silent while your phone is in Do Not Disturb. Allow Do Not
-                Disturb access so NotiCare can still sound and vibrate for phishing warnings.
-              </Text>
-              <Pressable
-                onPress={() => void requestNotificationPolicyAccess().then(() => void refreshStatus())}
-                style={styles.batteryWarningButton}
-                accessibilityRole="button"
-              >
-                <Text style={styles.batteryWarningButtonText}>Allow Do Not Disturb access</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-
-        {translation.available ? (
-          <>
-            <Text style={styles.sectionLabel}>MESSAGE LANGUAGE</Text>
-            <View style={styles.card}>
-              <View style={styles.languageIntro}>
-                <Text style={styles.appearanceTitle}>Messages and warnings in</Text>
-                <Text style={styles.appearanceSubtitle}>
-                  Applies to captured messages, scam warning pop-ups and notifications, and scan results. Messages are
-                  translated on this phone; links stay exactly as received, and scanning always uses the original
-                  message.
-                </Text>
-              </View>
-              {MESSAGE_LANGUAGE_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.value}
-                  onPress={() => void setMessageLanguage(option.value)}
-                  style={styles.browserRow}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: translation.language === option.value }}
-                  accessibilityLabel={`${option.label}. ${option.description}`}
-                >
-                  <View style={styles.flex}>
-                    <Text style={styles.browserLabel}>{option.label}</Text>
-                    <Text style={styles.cardSubtitle}>{option.description}</Text>
-                  </View>
-                  <Ionicons
-                    name={translation.language === option.value ? 'radio-button-on' : 'radio-button-off'}
-                    size={20}
-                    color={translation.language === option.value ? colors.accent : colors.textMuted}
-                  />
-                </Pressable>
+          {linkedPhones.length || !isDevelopmentPhoneLogin ? (
+            <View style={styles.phoneChipsRow}>
+              {linkedPhones.map((phone) => (
+                <PhoneChip key={phone} phone={phone} colors={colors} onRemove={() => confirmUnlinkPhone(phone)} />
               ))}
-              {translation.language !== 'default' ? (
-                <View style={styles.languagePack}>
-                  <Text style={styles.retentionNote}>{languagePackCopy(translation.pack)}</Text>
-                  {translation.pack === 'wifi-required' || translation.pack === 'failed' ? (
-                    <Pressable
-                      onPress={() => void ensureLanguagePack()}
-                      style={styles.retryStatusButton}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="cloud-download-outline" size={15} color={colors.link} />
-                      <Text style={styles.retryStatusText}>Try again</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+              {!isDevelopmentPhoneLogin ? (
+                <Pressable
+                  onPress={() => router.push('/link-phone')}
+                  style={styles.addPhone}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add another phone number"
+                >
+                  <Ionicons name="add" size={16} color={colors.accent} />
+                  <Text style={styles.addPhoneText}>Add number</Text>
+                </Pressable>
               ) : null}
             </View>
-          </>
-        ) : null}
-
-        <Text style={styles.sectionLabel}>APPEARANCE</Text>
-        <View style={styles.appearanceCard}>
-          <Text style={styles.appearanceTitle}>Theme</Text>
-          <Text style={styles.appearanceSubtitle}>Choose Light, Dark, or match your device automatically.</Text>
-          <ThemeModeSelector value={mode} onChange={setMode} colors={colors} />
-
-          <Text style={[styles.appearanceTitle, styles.accentTitle]}>Accent color</Text>
-          <Text style={styles.appearanceSubtitle}>
-            Personalize buttons, links, and charts. Danger/warning/safe colors never change.
-          </Text>
-          <AccentSwatchPicker value={accent} onChange={setAccent} colors={colors} />
+          ) : null}
         </View>
 
-        <Text style={styles.sectionLabel}>HELP & PRIVACY</Text>
-        <View style={styles.card}>
-          <SettingRow
-            icon="book-outline"
-            title="User Guide"
-            subtitle="Learn how to use NotiCare safely"
-            onPress={() => router.push('/guide')}
+        <SettingsSection title="Protection" colors={colors}>
+          <SettingsItem
+            icon="shield-checkmark-outline"
+            title="Real-Time Scanning"
+            subtitle={current.message}
+            accessory={
+              <Switch
+                value={Boolean(status?.scanningEnabled)}
+                disabled={saving || !status}
+                onValueChange={(value) => void changeScanning(value)}
+                trackColor={{ false: '#AFBBCB', true: colors.accent }}
+                thumbColor={status?.scanningEnabled ? colors.accent : '#fff'}
+                accessibilityLabel="Turn real-time scanning on or off"
+              />
+            }
             colors={colors}
           />
-          <View style={styles.divider} />
-          <SettingRow
+          {statusError ? (
+            <SettingsAlert
+              message={statusError}
+              actionLabel="Retry"
+              onAction={() => void refreshStatus()}
+              tone="danger"
+              colors={colors}
+            />
+          ) : null}
+          {status && !status.appNotificationsGranted ? (
+            <SettingsAlert
+              message="Warning notifications are turned off, so NotiCare can't alert you."
+              actionLabel="Turn on notifications"
+              onAction={() => void openAppNotificationSettings()}
+              colors={colors}
+            />
+          ) : null}
+          {status?.historyStorageAvailable === false ? (
+            <SettingsAlert
+              message="Message history is unavailable right now. Full message content won't be saved until this is fixed."
+              tone="danger"
+              colors={colors}
+            />
+          ) : null}
+          {status?.batteryOptimizationExempt === false ? (
+            <SettingsAlert
+              message="Android's battery saver can pause NotiCare and delay or miss new messages. Set Battery to Unrestricted."
+              actionLabel="Open App info"
+              onAction={() => void requestIgnoreBatteryOptimizations().then(() => void refreshStatus())}
+              colors={colors}
+            />
+          ) : null}
+          <SettingsItem
+            icon="link-outline"
+            title="Safe Link Protection"
+            subtitle={linkProtection.subtitle}
+            value={linkProtection.value}
+            valueTone={linkProtection.tone}
+            onPress={defaultBrowserActive === false ? fixDefaultBrowser : undefined}
+            colors={colors}
+          />
+          {isNativeLinkHandlerAvailable() ? (
+            <SettingsItem
+              icon="globe-outline"
+              title="Open safe links in"
+              value={preferredBrowser ?? 'Choose'}
+              valueTone={preferredBrowser ? 'muted' : 'warning'}
+              onPress={() => setSheet('browser')}
+              colors={colors}
+            />
+          ) : null}
+          <SettingsItem
+            icon="notifications-outline"
+            title="Warning style"
+            value={status?.fullScreenWarnings ? 'Full-screen' : 'Banner'}
+            onPress={() => setSheet('alerts')}
+            disabled={!status}
+            colors={colors}
+          />
+          {status?.fullScreenWarnings && status.overlayPermitted === false ? (
+            <SettingsAlert
+              message="Full-screen warnings need “Display over other apps”. Until it's allowed, warnings show as a banner while you use your phone."
+              actionLabel="Allow"
+              onAction={() => void requestOverlayPermission().then(() => void refreshStatus())}
+              colors={colors}
+            />
+          ) : null}
+          {status?.fullScreenWarnings && status.fullScreenIntentPermitted === false ? (
+            <SettingsAlert
+              message="Android is blocking full-screen warnings, so dangerous messages only show as a banner."
+              actionLabel="Allow full-screen notifications"
+              onAction={() => void requestFullScreenIntentPermission().then(() => void refreshStatus())}
+              colors={colors}
+            />
+          ) : null}
+          {status?.dndBypassGranted === false ? (
+            <SettingsAlert
+              message="Danger alerts stay silent in Do Not Disturb. Allow access so NotiCare can still sound and vibrate."
+              actionLabel="Allow Do Not Disturb access"
+              onAction={() => void requestNotificationPolicyAccess().then(() => void refreshStatus())}
+              colors={colors}
+            />
+          ) : null}
+        </SettingsSection>
+
+        <SettingsSection title="Preferences" colors={colors}>
+          {translation.available ? (
+            <SettingsItem
+              icon="language-outline"
+              title="Message language"
+              subtitle={
+                translation.language !== 'default' && translation.pack !== 'ready'
+                  ? languagePackCopy(translation.pack)
+                  : undefined
+              }
+              value={languageLabel}
+              onPress={() => setSheet('language')}
+              colors={colors}
+            />
+          ) : null}
+          <SettingsItem
+            icon="color-palette-outline"
+            title="Appearance"
+            value={appearanceLabel}
+            onPress={() => setSheet('appearance')}
+            colors={colors}
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Help & privacy" colors={colors}>
+          <SettingsItem icon="book-outline" title="User Guide" onPress={() => router.push('/guide')} colors={colors} />
+          <SettingsItem
             icon="lock-closed-outline"
             title="Privacy information"
-            subtitle="What stays on your device"
             onPress={() => router.push('/privacy')}
             colors={colors}
           />
-          <View style={styles.divider} />
-          <SettingRow
+          <SettingsItem
             icon="information-circle-outline"
             title="About NotiCare"
-            subtitle="SMS protection for Android"
             onPress={() => router.push('/about')}
             colors={colors}
           />
-        </View>
+        </SettingsSection>
 
-        <Text style={styles.sectionLabel}>LOCAL DATA</Text>
-        {status?.historyRetentionLimit ? (
-          <Text style={styles.retentionNote}>
-            NotiCare keeps your most recent {status.historyRetentionLimit.toLocaleString()} messages in full detail on
-            this device. Older messages are automatically removed to keep the app fast. Your all-time &ldquo;Total
-            blocked&rdquo; count on the Dashboard is not affected.
-          </Text>
-        ) : null}
-        <View style={styles.card}>
-          <SettingRow
+        <SettingsSection
+          title="Data & account"
+          footnote={
+            status?.historyRetentionLimit
+              ? `NotiCare keeps your most recent ${status.historyRetentionLimit.toLocaleString()} messages on this device; older ones are removed automatically. The Dashboard's total blocked count isn't affected.`
+              : undefined
+          }
+          colors={colors}
+        >
+          <SettingsItem
             icon="trash-outline"
             title="Clear message history"
-            subtitle="Delete all captured messages"
             onPress={confirmClearHistory}
             destructive
             colors={colors}
           />
-        </View>
-        <View style={styles.card}>
-          <SettingRow
+          <SettingsItem
             icon="log-out-outline"
             title="Sign out"
-            subtitle="Turn off scanning for this profile"
+            subtitle="Turns off scanning for this profile"
             onPress={confirmSignOut}
             destructive
             colors={colors}
           />
-        </View>
-        {session && !isDevelopmentPhoneLogin && isSupabaseConfigured ? (
-          <View style={styles.card}>
-            <SettingRow
+          {session && !isDevelopmentPhoneLogin && isSupabaseConfigured ? (
+            <SettingsItem
               icon="person-remove-outline"
               title={deleting ? 'Deleting account…' : 'Delete account'}
               subtitle="Permanently delete your account and its data"
-              onPress={deleting ? () => undefined : confirmDeleteAccount}
+              onPress={confirmDeleteAccount}
+              disabled={deleting}
               destructive
               colors={colors}
             />
+          ) : null}
+        </SettingsSection>
+      </ScrollView>
+
+      <OptionSheet
+        visible={sheet === 'browser'}
+        title="Open safe links in"
+        description="After NotiCare checks a link and finds it safe, it opens in this browser."
+        onClose={() => setSheet(null)}
+        colors={colors}
+      >
+        {browsersError ? (
+          <Text style={styles.sheetNote}>{browsersError}</Text>
+        ) : browsers.length === 0 ? (
+          <Text style={styles.sheetNote}>
+            No other browser is installed on this device. Install one, such as Chrome, to open safe links.
+          </Text>
+        ) : (
+          browsers.map((browser) => (
+            <SheetOption
+              key={browser.packageName}
+              label={browser.label}
+              selected={browser.isPreferred}
+              onPress={() => void choosePreferredBrowser(browser.packageName)}
+              colors={colors}
+            />
+          ))
+        )}
+      </OptionSheet>
+
+      <OptionSheet
+        visible={sheet === 'alerts'}
+        title="Warning style"
+        description={`How phishing warnings appear.${subscriptionTier !== 'pro' ? ' Full-screen warnings require NotiCare Pro.' : ''}`}
+        onClose={() => setSheet(null)}
+        colors={colors}
+      >
+        <WarningAppearanceSelector
+          value={status?.fullScreenWarnings ? 'full-screen' : 'banner'}
+          disabled={saving || !status}
+          onChange={(nextMode) => void changeWarningStyle(nextMode === 'full-screen')}
+        />
+      </OptionSheet>
+
+      <OptionSheet
+        visible={sheet === 'language'}
+        title="Message language"
+        description="Applies to captured messages, warnings, and scan results. Messages are translated on this phone; links stay as received, and scanning always uses the original."
+        onClose={() => setSheet(null)}
+        colors={colors}
+      >
+        {MESSAGE_LANGUAGE_OPTIONS.map((option) => (
+          <SheetOption
+            key={option.value}
+            label={option.label}
+            description={option.description}
+            selected={translation.language === option.value}
+            onPress={() => void setMessageLanguage(option.value)}
+            colors={colors}
+          />
+        ))}
+        {translation.language !== 'default' ? (
+          <View style={styles.sheetStatus}>
+            <Text style={styles.sheetNote}>{languagePackCopy(translation.pack)}</Text>
+            {translation.pack === 'wifi-required' || translation.pack === 'failed' ? (
+              <Pressable
+                onPress={() => void ensureLanguagePack()}
+                style={styles.retryButton}
+                accessibilityRole="button"
+              >
+                <Ionicons name="cloud-download-outline" size={15} color={colors.link} />
+                <Text style={styles.retryText}>Try again</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
-      </ScrollView>
+      </OptionSheet>
+
+      <OptionSheet visible={sheet === 'appearance'} title="Appearance" onClose={() => setSheet(null)} colors={colors}>
+        <Text style={styles.sheetLabel}>Theme</Text>
+        <ThemeModeSelector value={mode} onChange={setMode} colors={colors} />
+        <Text style={[styles.sheetLabel, styles.sheetLabelSpaced]}>Accent color</Text>
+        <Text style={styles.sheetNote}>Danger, warning, and safe colors never change.</Text>
+        <AccentSwatchPicker value={accent} onChange={setAccent} colors={colors} />
+      </OptionSheet>
     </SafeAreaView>
   );
 }
@@ -940,173 +846,78 @@ function createStyles(colors: ThemeColors) {
     headerTitle: { color: '#fff', fontWeight: '800', fontSize: 18 },
     headerSpacer: { width: 25 },
     content: { padding: 16, paddingBottom: 36 },
-    profile: {
-      gap: 12,
-      backgroundColor: colors.accentSoft,
-      borderRadius: 14,
-      padding: 16,
-    },
-    profileHeaderRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-    profileIcon: {
-      height: 48,
-      width: 48,
-      borderRadius: 24,
+    flex: { flex: 1 },
+    account: {
       backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 14,
+      gap: 12,
+    },
+    accountRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    profileTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
-    profilePhone: { color: colors.textSecondary, marginTop: 3 },
-    phoneChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    accountTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
+    accountPhone: { color: colors.textSecondary, fontSize: 13, marginTop: 2 },
+    planBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.accent,
+    },
+    planBadgePro: { backgroundColor: colors.accent },
+    planBadgeText: { color: colors.accent, fontSize: 12, fontWeight: '800' },
+    planBadgeTextPro: { color: colors.accentContrast },
+    phoneChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 56 },
     phoneChip: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceAlt,
       borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
     },
-    phoneChipPrimary: { borderColor: colors.accent },
+    phoneChipPrimary: { borderWidth: 1, borderColor: colors.accent },
     phoneChipNumber: { color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
     phoneChipMeta: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
-    addPhoneChip: {
-      width: 38,
-      height: 38,
+    addPhone: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
       borderRadius: 10,
       borderWidth: 1,
+      borderStyle: 'dashed',
       borderColor: colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
-    sectionLabel: {
-      color: colors.textMuted,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.7,
-      marginTop: 23,
-      marginBottom: 8,
-    },
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: 13,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    scanRow: { padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    scanLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-    statusDot: { width: 11, height: 11, borderRadius: 6 },
-    cardTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 15 },
-    cardSubtitle: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
-    statusCopy: { color: colors.textSecondary, lineHeight: 19, paddingHorizontal: 16, paddingBottom: 14 },
-    retryStatusButton: {
+    addPhoneText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+    sheetLabel: { color: colors.textPrimary, fontSize: 15, fontWeight: '800' },
+    sheetLabelSpaced: { marginTop: 14 },
+    sheetNote: { color: colors.textSecondary, fontSize: 13, lineHeight: 19 },
+    sheetStatus: { marginTop: 6, gap: 8 },
+    retryButton: {
       alignSelf: 'flex-start',
-      marginHorizontal: 16,
-      marginBottom: 14,
-      paddingHorizontal: 11,
-      paddingVertical: 9,
-      borderRadius: 8,
-      backgroundColor: colors.surfaceAlt,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-    },
-    retryStatusText: { color: colors.link, fontWeight: '800', fontSize: 12 },
-    messagesApp: {
-      marginHorizontal: 16,
-      marginBottom: 16,
-      backgroundColor: colors.surfaceAlt,
-      borderRadius: 9,
-      padding: 12,
-      flexDirection: 'row',
-      gap: 9,
-    },
-    flex: { flex: 1 },
-    languageIntro: { padding: 16, paddingBottom: 12 },
-    languagePack: { paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
-    messagesTitle: { color: colors.textSecondary, fontSize: 11, fontWeight: '800' },
-    messagesValue: { color: colors.textPrimary, fontSize: 12, marginTop: 3 },
-    permissionButton: {
-      marginHorizontal: 16,
-      marginBottom: 16,
-      alignItems: 'center',
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: colors.surfaceAlt,
-    },
-    permissionText: { color: colors.link, fontWeight: '800', fontSize: 12 },
-    browserRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 13,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    browserLabel: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
-    retentionNote: {
-      color: colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
-      marginBottom: 8,
-    },
-    storageWarning: {
-      color: colors.warning,
-      backgroundColor: colors.warningSoft,
-      margin: 16,
-      marginTop: 0,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 12,
-      lineHeight: 17,
-    },
-    batteryWarning: {
-      margin: 16,
-      marginTop: 0,
-      borderRadius: 8,
-      padding: 10,
-      backgroundColor: colors.warningSoft,
-    },
-    batteryWarningText: { color: colors.warning, fontSize: 12, lineHeight: 17 },
-    batteryWarningButton: {
-      alignSelf: 'flex-start',
-      marginTop: 9,
-      paddingHorizontal: 11,
+      paddingHorizontal: 12,
       paddingVertical: 8,
-      borderRadius: 7,
-      backgroundColor: colors.surface,
-    },
-    batteryWarningButtonText: { color: colors.warning, fontWeight: '800', fontSize: 12 },
-    settingRow: { minHeight: 68, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 11 },
-    settingIcon: {
-      height: 37,
-      width: 37,
-      borderRadius: 10,
+      borderRadius: 8,
       backgroundColor: colors.surfaceAlt,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
-    settingIconDanger: { backgroundColor: colors.dangerSoft },
-    settingCopy: { flex: 1 },
-    settingTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 14 },
-    dangerText: { color: colors.danger },
-    settingSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-    divider: { height: 1, backgroundColor: colors.border, marginLeft: 64 },
-    appearanceCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 18,
-      borderCurve: 'continuous',
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 16,
-      gap: 5,
-    },
-    appearanceTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 17 },
-    accentTitle: { marginTop: 20 },
-    appearanceSubtitle: { color: colors.textSecondary, fontSize: 13, paddingBottom: 12 },
+    retryText: { color: colors.link, fontWeight: '800', fontSize: 12 },
   });
 }
