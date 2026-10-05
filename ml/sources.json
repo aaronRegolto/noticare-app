@@ -1,0 +1,38 @@
+{
+  "sources": [
+    {
+      "name": "UCI_SMS_Spam",
+      "file": "datasets/UCI_SMS_Spam.csv",
+      "text_column": "text",
+      "label_column": "label",
+      "enabled": true,
+      "note": "UCI SMS Spam Collection (University of California, Irvine). Labels: ham = legitimate, spam = scam."
+    },
+    {
+      "name": "NCSU_SMS_Phishing",
+      "file": "datasets/NCSU_SMS_Phishing.csv",
+      "text_column": "message",
+      "fixed_label": "scam",
+      "max_rows": 4135,
+      "enabled": true,
+      "note": "NC State SMS phishing collection. The file has no label column; every row is a reported phishing message. Capped so scam messages do not swamp the legitimate ones."
+    },
+    {
+      "name": "noticare_philippines",
+      "file": "datasets/noticare_philippines.csv",
+      "text_column": "text",
+      "label_column": "label",
+      "enabled": false,
+      "note": "100 project-written Tagalog/Taglish seeds (unverified). Off by default: they were used to tune the rules, so keep them for testing unless you replace them with real, reviewed messages."
+    },
+    {
+      "name": "reported_messages",
+      "file": "datasets/reported_messages.csv",
+      "text_column": "message_text",
+      "fixed_label": "scam",
+      "from_dashboard_export": true,
+      "enabled": false,
+      "note": "Admin dashboard export of Reported phishing messages. Review and anonymize every row before enabling."
+    }
+  ]
+}

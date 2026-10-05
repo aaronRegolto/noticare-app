@@ -1,0 +1,3 @@
+# Training runs: models and reports are copied into assets/models/ deliberately, never committed from here.
+output/
+__pycache__/
