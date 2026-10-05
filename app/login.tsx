@@ -5,6 +5,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, Tex
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/src/components/brand-logo';
+import { AUTH_SERVER_FAILURE_MESSAGE, isAuthServerFailure } from '@/src/features/auth/errors';
 import {
   countryFromPhone,
   formatPhoneNumber,
@@ -16,6 +17,7 @@ import {
 import { useAuth } from '@/src/providers/AuthProvider';
 
 function friendlyError(error: unknown) {
+  if (isAuthServerFailure(error)) return AUTH_SERVER_FAILURE_MESSAGE;
   const message = error instanceof Error ? error.message : 'Unable to continue. Check your connection and try again.';
   if (/unsupported phone provider|phone provider/i.test(message)) {
     return 'Phone sign-in is not configured yet. Contact your administrator, then try again.';

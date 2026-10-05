@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AUTH_SERVER_FAILURE_MESSAGE, isAuthServerFailure } from '@/src/features/auth/errors';
 import {
   formatPhoneNumber,
   isValidPhoneNumber,
@@ -15,6 +16,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 import { confirmPhoneChange, recordLinkedPhone, requestPhoneChange } from '@/src/services/supabase';
 
 function friendlyError(error: unknown) {
+  if (isAuthServerFailure(error)) return AUTH_SERVER_FAILURE_MESSAGE;
   const message = error instanceof Error ? error.message : 'Unable to continue. Check your connection and try again.';
   if (/already registered|already exists|duplicate/i.test(message)) {
     return 'That number is already registered to an account. Use a different number.';
