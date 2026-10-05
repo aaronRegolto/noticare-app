@@ -14,6 +14,9 @@ const RANGES: { key: CommunityRange; label: string; period: string }[] = [
   { key: 'last_6_months', label: '6 months', period: 'in the last 6 months' },
 ];
 
+/** The ranges this card can show, in order. */
+export const BLOCKED_TREND_RANGES = RANGES.map((item) => item.key);
+
 const CHART_HEIGHT = 168;
 const MARGIN = { top: 10, right: 4, bottom: 26, left: 28 };
 

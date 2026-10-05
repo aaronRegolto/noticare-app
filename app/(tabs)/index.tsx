@@ -6,7 +6,7 @@ import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { CommunityRange } from '@/backend/supabase/types/database.types';
-import { BlockedTrendCard } from '@/src/components/blocked-trend-card';
+import { BLOCKED_TREND_RANGES, BlockedTrendCard } from '@/src/components/blocked-trend-card';
 import { BrandLogo } from '@/src/components/brand-logo';
 import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
@@ -213,6 +213,11 @@ export default function DashboardScreen() {
   const [savingSwitch, setSavingSwitch] = useState(false);
   const [history, setHistory] = useState<HistorySummary[]>([]);
   const [range, setRange] = useState<CommunityRange>('last_24_hours');
+  // The range in a ref too, so refreshing the whole Dashboard doesn't depend on (and re-run for) it.
+  const rangeRef = useRef<CommunityRange>('last_24_hours');
+  // Each range's latest data, so switching ranges shows it at once instead of a reload.
+  const communityCache = useRef(new Map<CommunityRange, Pick<CommunityState, 'points' | 'source'>>());
+  const communityRequest = useRef(0);
   const [community, setCommunity] = useState<CommunityState>({ points: [], source: null, loading: true, error: null });
   const [viral, setViral] = useState<ViralState>({ entries: [], source: null, loading: true, error: null });
   const [viralSource, setViralSource] = useState<ReportSource>('manual');
@@ -254,17 +259,39 @@ export default function DashboardScreen() {
     setHistory(records.filter((record) => record.blocked ?? true));
   }, []);
 
+  /**
+   * Loads one range's community data. A range already loaded stays on screen while it refreshes,
+   * and a slower response for a range the user has since switched away from is ignored. After a
+   * successful load, the other ranges load quietly in the background so switching is instant.
+   */
   const refreshCommunity = useCallback(async (selectedRange: CommunityRange) => {
-    setCommunity((current) => ({ ...current, loading: true, error: null }));
+    const request = ++communityRequest.current;
+    const cached = communityCache.current.get(selectedRange);
+    setCommunity(
+      cached ? { ...cached, loading: true, error: null } : { points: [], source: null, loading: true, error: null },
+    );
     try {
       const result = await getCommunityStats(selectedRange);
+      communityCache.current.set(selectedRange, { points: result.points, source: result.source });
+      if (request !== communityRequest.current) return;
       setCommunity({ points: result.points, source: result.source, loading: false, error: null });
+      if (result.source === 'network') {
+        const others = BLOCKED_TREND_RANGES.filter((other) => other !== selectedRange);
+        void Promise.allSettled(
+          others.map((other) =>
+            getCommunityStats(other).then((stats) =>
+              communityCache.current.set(other, { points: stats.points, source: stats.source }),
+            ),
+          ),
+        );
+      }
     } catch (error) {
       logError('community-stats-load-failed', error);
+      if (request !== communityRequest.current) return;
       setCommunity((current) => ({
         ...current,
         loading: false,
-        error: 'Community data is unavailable. Check your connection and try again.',
+        error: current.points.length ? null : 'Community data is unavailable. Check your connection and try again.',
       }));
     }
   }, []);
@@ -306,11 +333,11 @@ export default function DashboardScreen() {
 
   const refreshDashboard = useCallback(() => {
     void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
-    void refreshCommunity(range);
+    void refreshCommunity(rangeRef.current);
     void flushQueuedThreatEvents();
     void flushNativeTelemetry();
     void syncReportsAndRanking();
-  }, [range, refreshCommunity, refreshMonitoringAndHistory, syncReportsAndRanking]);
+  }, [refreshCommunity, refreshMonitoringAndHistory, syncReportsAndRanking]);
 
   useFocusEffect(
     useCallback(() => {
@@ -521,7 +548,7 @@ export default function DashboardScreen() {
               </Pressable>
             </View>
             <View style={styles.matrixBody}>
-              {community.loading ? (
+              {community.loading && !community.source ? (
                 <Text style={styles.muted}>Loading anonymous community data…</Text>
               ) : community.error ? (
                 <View>
@@ -570,10 +597,13 @@ export default function DashboardScreen() {
             points={community.points}
             range={range}
             onRangeChange={(next) => {
+              if (next === rangeRef.current) return;
+              rangeRef.current = next;
               setRange(next);
               void refreshCommunity(next);
             }}
-            loading={community.loading}
+            // Only a range with nothing to show yet gets a spinner; loaded data stays while it refreshes.
+            loading={community.loading && !community.source}
             error={community.error}
             fromCache={community.source === 'cache'}
             colors={colors}
