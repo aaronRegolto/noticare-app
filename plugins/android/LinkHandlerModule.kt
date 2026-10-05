@@ -1,6 +1,9 @@
 package __NOTICARE_PACKAGE__
 
+import android.app.Activity
+import android.content.Intent
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -9,16 +12,29 @@ import com.facebook.react.bridge.WritableArray
 import __NOTICARE_PACKAGE__.bridge.BrowserPreferences
 import __NOTICARE_PACKAGE__.bridge.BrowserResolver
 import __NOTICARE_PACKAGE__.bridge.DefaultBrowserStatus
-import __NOTICARE_PACKAGE__.bridge.LinkForwarder
 
 /**
- * Lets the Settings screen list installed browsers and choose which one gets
- * SAFE links, and lets the warning screen's "Open anyway" button forward a
- * SUSPICIOUS/DANGEROUS link the person chose to open despite the warning.
+ * Lets the Settings screen list installed browsers, choose which one gets
+ * SAFE links, and make NotiCare the default browser so tapped links are checked.
  */
 class LinkHandlerModule(
     private val appContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(appContext) {
+    private var pendingRoleRequest: Promise? = null
+
+    private val roleResultListener = object : BaseActivityEventListener() {
+        override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+            if (requestCode != ROLE_REQUEST_CODE) return
+            val promise = pendingRoleRequest ?: return
+            pendingRoleRequest = null
+            promise.resolve(if (DefaultBrowserStatus.isDefaultBrowser(appContext)) "granted" else "declined")
+        }
+    }
+
+    init {
+        appContext.addActivityEventListener(roleResultListener)
+    }
+
     override fun getName(): String = NAME
 
     @ReactMethod
@@ -57,18 +73,6 @@ class LinkHandlerModule(
         }
     }
 
-    /** Forwards a link the user explicitly chose to open despite NotiCare's warning. */
-    @ReactMethod
-    fun openInRealBrowser(url: String, promise: Promise) {
-        when (val result = LinkForwarder.openInRealBrowser(appContext, url)) {
-            is LinkForwarder.ForwardResult.Opened -> promise.resolve(true)
-            is LinkForwarder.ForwardResult.NoBrowserInstalled ->
-                promise.reject("no_browser_installed", "No other browser is installed on this device.")
-            is LinkForwarder.ForwardResult.Failed ->
-                promise.reject("open_failed", "Could not open this link in ${result.browserLabel}.")
-        }
-    }
-
     /** Whether NotiCare is currently the device's default browser. */
     @ReactMethod
     fun isDefaultBrowser(promise: Promise) {
@@ -79,18 +83,48 @@ class LinkHandlerModule(
         }
     }
 
-    /** Opens Android's role-request dialog (10+) or default-apps settings screen (older). */
+    /**
+     * Asks Android to make NotiCare the default browser. Resolves "granted" or "declined" from
+     * Android 10+'s dialog, or "settings" when it opened the Default apps screen instead (Android 9
+     * and older, or when the dialog can't be shown).
+     */
     @ReactMethod
     fun requestDefaultBrowser(promise: Promise) {
         try {
-            DefaultBrowserStatus.requestDefaultBrowser(appContext)
+            if (DefaultBrowserStatus.isDefaultBrowser(appContext)) {
+                promise.resolve("granted")
+                return
+            }
+            val activity = appContext.currentActivity
+            val roleIntent = DefaultBrowserStatus.roleRequestIntent(appContext)
+            if (activity == null || roleIntent == null) {
+                DefaultBrowserStatus.openDefaultAppsSettings(appContext)
+                promise.resolve("settings")
+                return
+            }
+            // A second tap before the first dialog answers settles the earlier request.
+            pendingRoleRequest?.resolve("declined")
+            pendingRoleRequest = promise
+            activity.startActivityForResult(roleIntent, ROLE_REQUEST_CODE)
+        } catch (error: Exception) {
+            pendingRoleRequest = null
+            promise.reject("default_browser_request_failed", "Unable to open default browser settings.", error)
+        }
+    }
+
+    /** Opens Android's Default apps screen, to change or pick the default browser by hand. */
+    @ReactMethod
+    fun openDefaultAppsSettings(promise: Promise) {
+        try {
+            DefaultBrowserStatus.openDefaultAppsSettings(appContext)
             promise.resolve(true)
         } catch (error: Exception) {
-            promise.reject("default_browser_request_failed", "Unable to open default browser settings.", error)
+            promise.reject("default_apps_settings_failed", "Unable to open default apps settings.", error)
         }
     }
 
     companion object {
         const val NAME = "LinkHandlerModule"
+        private const val ROLE_REQUEST_CODE = 41_207
     }
 }

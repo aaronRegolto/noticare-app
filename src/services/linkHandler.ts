@@ -7,12 +7,19 @@ export type InstalledBrowser = {
   isPreferred: boolean;
 };
 
+/**
+ * granted: NotiCare is now the default browser. declined: the user said no in Android's dialog
+ * (after declining, Android may stop showing it). settings: Android's Default apps screen opened
+ * instead, so the result is known only once the user returns.
+ */
+export type DefaultBrowserRequestResult = 'granted' | 'declined' | 'settings';
+
 type LinkHandlerNativeModule = {
   getInstalledBrowsers(): Promise<InstalledBrowser[]>;
   setPreferredBrowser(packageName: string): Promise<boolean>;
-  openInRealBrowser(url: string): Promise<boolean>;
   isDefaultBrowser(): Promise<boolean>;
-  requestDefaultBrowser(): Promise<boolean>;
+  requestDefaultBrowser(): Promise<DefaultBrowserRequestResult>;
+  openDefaultAppsSettings(): Promise<boolean>;
 };
 
 const nativeModule = NativeModules.LinkHandlerModule as LinkHandlerNativeModule | undefined;
@@ -44,17 +51,17 @@ export function setPreferredBrowser(packageName: string): Promise<boolean> {
   return requireAndroidNativeModule().setPreferredBrowser(packageName);
 }
 
-/** Forwards a link the user explicitly chose to open despite a warning. Rejects if that fails. */
-export function openInRealBrowser(url: string): Promise<boolean> {
-  return requireAndroidNativeModule().openInRealBrowser(url);
-}
-
 /** Whether NotiCare is currently set as the device's default browser. */
 export function isDefaultBrowser(): Promise<boolean> {
   return requireAndroidNativeModule().isDefaultBrowser();
 }
 
-/** Opens Android's "set as default browser" role request (10+) or default-apps settings (older). */
-export function requestDefaultBrowser(): Promise<boolean> {
+/** Shows Android's "Set NotiCare as your default browser app?" dialog (10+) or Default apps settings (older). */
+export function requestDefaultBrowser(): Promise<DefaultBrowserRequestResult> {
   return requireAndroidNativeModule().requestDefaultBrowser();
+}
+
+/** Opens Android's Default apps screen, to pick or change the default browser by hand. */
+export function openDefaultAppsSettings(): Promise<boolean> {
+  return requireAndroidNativeModule().openDefaultAppsSettings();
 }

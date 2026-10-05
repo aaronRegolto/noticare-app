@@ -41,11 +41,11 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Safe Link Protection',
-    body: 'When NotiCare is your default browser, it checks every link you tap in any app (Messages, Messenger, email, and others) before it opens. Safe links open straight away in your normal browser. Risky links stop at a warning screen first: Dangerous for domains on NotiCare\'s known-scam list, Suspicious for shortened links, links to a numeric address, uncommon domain endings often used by scams, look-alikes of brands like GCash, Maya, or BDO, and links that use an "@" to hide where they really go. The check happens on your phone; NotiCare never opens or loads the link to check it.',
+    body: 'When NotiCare is your default browser, it checks every link you tap in apps that open links in your browser (Messages, email, and others) before it opens. Safe links open straight away in your normal browser. Risky links show a warning screen at once: Dangerous for domains on NotiCare\'s known-scam list, Suspicious for shortened links, links to a numeric address, uncommon domain endings often used by scams, look-alikes of brands like GCash, Maya, or BDO, and links that use an "@" to hide where they really go. The check happens on your phone; NotiCare never opens or loads the link to check it. Apps such as Facebook and Messenger open links in their own built-in browser, so NotiCare can\'t check those; in Facebook, turning on Settings → Media → "Links open externally" sends them to NotiCare.',
   },
   {
     title: 'Turn on Safe Link Protection',
-    body: 'Open Settings & Privacy and tap the Safe Link Protection card, then choose NotiCare as your default browser in Android\'s settings. Under "Open safe links in", pick the browser you normally use (for example Chrome); safe links will keep opening there. On a warning screen, tap Go back to stay safe, or Open anyway if you are sure the link is legitimate. To turn protection off, set a different default browser in Android settings.',
+    body: 'Open Settings & Privacy and tap Set as default browser under Safe Link Protection, then choose NotiCare when Android asks. Under "Open safe links in", pick the browser you normally use (for example Chrome); safe links will keep opening there. On a warning screen, tap Go back to stay safe, or Open anyway if you are sure the link is legitimate. To turn protection off, set a different default browser in Android settings.',
   },
   {
     title: 'Most Reported Phishing Messages',

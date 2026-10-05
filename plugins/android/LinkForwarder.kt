@@ -8,9 +8,9 @@ import android.util.Log
 
 /**
  * Opens a URL in the user's real browser, never back in NotiCare. Shared by
- * [LinkHandlerActivity] (the instant SAFE-link fast path) and the React
- * Native "Open anyway" button on the warning screen, so both use the exact
- * same browser-choice logic.
+ * [LinkHandlerActivity] (the instant SAFE-link fast path) and the "Open anyway"
+ * button on [LinkWarningActivity], so both use the exact same browser-choice logic.
+ * Links are never written to the log.
  */
 object LinkForwarder {
     sealed class ForwardResult {
@@ -25,7 +25,7 @@ object LinkForwarder {
         val preferred = BrowserPreferences.preferredBrowserPackage(context)
         val target = BrowserResolver.resolveTarget(context, preferred)
             ?: run {
-                Log.w(TAG, "No other browser is installed; cannot forward $url.")
+                Log.w(TAG, "No other browser is installed; cannot forward a link.")
                 return ForwardResult.NoBrowserInstalled
             }
 
@@ -37,7 +37,7 @@ object LinkForwarder {
             context.startActivity(forwardIntent)
             ForwardResult.Opened(target.label)
         } catch (error: ActivityNotFoundException) {
-            Log.w(TAG, "Chosen browser ${target.packageName} could not open $url.", error)
+            Log.w(TAG, "Chosen browser ${target.packageName} could not open a link.", error)
             ForwardResult.Failed(target.label)
         }
     }

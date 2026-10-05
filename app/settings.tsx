@@ -27,6 +27,7 @@ import {
   getInstalledBrowsers,
   isDefaultBrowser,
   isNativeLinkHandlerAvailable,
+  openDefaultAppsSettings,
   requestDefaultBrowser,
   setPreferredBrowser,
   type InstalledBrowser,
@@ -253,23 +254,52 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  const fixDefaultBrowser = useCallback(() => {
-    Alert.alert(
-      'Set NotiCare as your default browser?',
-      'To protect you when you tap links, set NotiCare as your default browser. Safe links will still open in your normal browser — NotiCare only steps in to warn you about risky ones first.',
-      [
-        { text: 'Not now', style: 'cancel' },
-        {
-          text: 'Open settings',
-          onPress: () => {
-            void requestDefaultBrowser().catch(() =>
-              Alert.alert('Settings unavailable', 'Android default browser settings could not be opened.'),
-            );
-          },
-        },
-      ],
+  const openDefaultApps = useCallback(() => {
+    void openDefaultAppsSettings().catch(() =>
+      Alert.alert('Settings unavailable', 'Android default browser settings could not be opened.'),
     );
   }, []);
+
+  /** Shows Android's own "Set NotiCare as your default browser app?" dialog. */
+  const enableLinkProtection = useCallback(async () => {
+    try {
+      const result = await requestDefaultBrowser();
+      if (result === 'granted') {
+        setDefaultBrowserActive(true);
+        Alert.alert(
+          'Safe Link Protection is on',
+          'Links you tap in any app are now checked first. Risky links show a warning; safe links open in your usual browser.',
+        );
+      } else if (result === 'declined') {
+        Alert.alert(
+          "NotiCare isn't your default browser yet",
+          'Android may not ask again after you decline. Open Default apps, tap Browser app, and choose NotiCare.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open Default apps', onPress: openDefaultApps },
+          ],
+        );
+      }
+      // 'settings': Android's Default apps screen opened; the status refreshes when the user returns.
+    } catch {
+      Alert.alert('Settings unavailable', 'Android default browser settings could not be opened.');
+    }
+  }, [openDefaultApps]);
+
+  const manageLinkProtection = useCallback(() => {
+    if (defaultBrowserActive === false) {
+      void enableLinkProtection();
+      return;
+    }
+    Alert.alert(
+      'Safe Link Protection is on',
+      'NotiCare is your default browser, so it checks links before they open. To turn this off, choose a different browser in Default apps.',
+      [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Open Default apps', onPress: openDefaultApps },
+      ],
+    );
+  }, [defaultBrowserActive, enableLinkProtection, openDefaultApps]);
 
   useFocusEffect(
     useCallback(() => {
@@ -508,7 +538,7 @@ export default function SettingsScreen() {
       ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links before they open' }
       : defaultBrowserActive
         ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links before they open' }
-        : { value: 'Off', tone: 'warning' as const, subtitle: 'Tap to set NotiCare as your default browser' };
+        : { value: 'Off', tone: 'warning' as const, subtitle: "Links aren't checked yet" };
   const primaryCarrier = session?.user.phone ? detectPhilippineCarrier(session.user.phone) : null;
   const preferredBrowser = browsers.find((browser) => browser.isPreferred)?.label;
   const languageLabel = MESSAGE_LANGUAGE_OPTIONS.find((option) => option.value === translation.language)?.label;
@@ -633,9 +663,17 @@ export default function SettingsScreen() {
             subtitle={linkProtection.subtitle}
             value={linkProtection.value}
             valueTone={linkProtection.tone}
-            onPress={defaultBrowserActive === false ? fixDefaultBrowser : undefined}
+            onPress={defaultBrowserActive === null ? undefined : manageLinkProtection}
             colors={colors}
           />
+          {defaultBrowserActive === false ? (
+            <SettingsAlert
+              message="Make NotiCare your default browser so a risky link shows a warning the moment you tap it, in Messages, email, and other apps that open links in your browser. Safe links still open in your usual browser."
+              actionLabel="Set as default browser"
+              onAction={() => void enableLinkProtection()}
+              colors={colors}
+            />
+          ) : null}
           {isNativeLinkHandlerAvailable() ? (
             <SettingsItem
               icon="globe-outline"

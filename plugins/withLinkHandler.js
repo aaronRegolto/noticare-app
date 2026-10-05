@@ -5,6 +5,7 @@ const { AndroidConfig, withAndroidManifest, withDangerousMod, withMainApplicatio
 const DEFAULT_ANDROID_PACKAGE = 'com.noticare.noticareapp';
 const TEMPLATE_ROOT = path.join(__dirname, 'android');
 const ACTIVITY_NAME = '.bridge.LinkHandlerActivity';
+const WARNING_ACTIVITY_NAME = '.bridge.LinkWarningActivity';
 
 function asArray(owner, key) {
   const value = owner[key];
@@ -21,7 +22,7 @@ function updateManifest(manifest) {
   if (!application) return manifest;
 
   const activities = asArray(application, 'activity').filter(
-    (entry) => entry?.$?.['android:name'] !== ACTIVITY_NAME,
+    (entry) => ![ACTIVITY_NAME, WARNING_ACTIVITY_NAME].includes(entry?.$?.['android:name']),
   );
 
   activities.push({
@@ -29,6 +30,10 @@ function updateManifest(manifest) {
       'android:name': ACTIVITY_NAME,
       'android:exported': 'true',
       'android:excludeFromRecents': 'true',
+      // Its own task, so checking a link never brings NotiCare's other screens to the front:
+      // after a safe link opens, or after "Go back" on a warning, the user is back where they tapped.
+      'android:taskAffinity': '',
+      'android:noHistory': 'true',
       'android:launchMode': 'singleTask',
       'android:theme': '@android:style/Theme.Translucent.NoTitleBar',
     },
@@ -42,6 +47,19 @@ function updateManifest(manifest) {
         data: [{ $: { 'android:scheme': 'http' } }, { $: { 'android:scheme': 'https' } }],
       },
     ],
+  });
+
+  // The risky-link warning. Not exported: only LinkHandlerActivity opens it. Its own empty task
+  // affinity keeps it out of NotiCare's task, so closing it returns to the app the link came from.
+  activities.push({
+    $: {
+      'android:name': WARNING_ACTIVITY_NAME,
+      'android:exported': 'false',
+      'android:excludeFromRecents': 'true',
+      'android:taskAffinity': '',
+      'android:launchMode': 'singleTask',
+      'android:theme': '@style/AppTheme',
+    },
   });
 
   application.activity = activities;
@@ -109,6 +127,8 @@ function patchMainApplication(contents, language, packageName) {
 
 const BRIDGE_SOURCE_FILES = [
   'LinkHandlerActivity.kt',
+  'LinkWarningActivity.kt',
+  'LinkWarningCopy.kt',
   'UrlChecker.kt',
   'UrlNormalizer.kt',
   'RuleBasedUrlChecker.kt',
@@ -118,6 +138,7 @@ const BRIDGE_SOURCE_FILES = [
   'DefaultBrowserStatus.kt',
 ];
 const ROOT_SOURCE_FILES = ['LinkHandlerModule.kt', 'LinkHandlerPackage.kt'];
+const TEST_SOURCE_FILES = ['RuleBasedUrlCheckerTest.kt'];
 
 function writeGeneratedSources(androidRoot, packageName) {
   const packageRoot = path.join(androidRoot, 'app', 'src', 'main', 'java', ...packageName.split('.'));
@@ -133,8 +154,12 @@ function writeGeneratedSources(androidRoot, packageName) {
     fs.writeFileSync(path.join(destinationDir, fileName), source, 'utf8');
   };
 
+  const testRoot = path.join(androidRoot, 'app', 'src', 'test', 'java', ...packageName.split('.'), 'bridge');
+  fs.mkdirSync(testRoot, { recursive: true });
+
   BRIDGE_SOURCE_FILES.forEach((fileName) => copy(fileName, bridgeRoot));
   ROOT_SOURCE_FILES.forEach((fileName) => copy(fileName, packageRoot));
+  TEST_SOURCE_FILES.forEach((fileName) => copy(fileName, testRoot));
 }
 
 const withLinkHandler = (config) => {

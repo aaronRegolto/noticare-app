@@ -7,8 +7,23 @@ enum class UrlVerdict {
     DANGEROUS,
 }
 
-/** The result of checking one URL: a verdict plus a human-readable reason. */
-data class UrlCheckResult(val verdict: UrlVerdict, val reason: String)
+/** Why a URL got its verdict. The wording shown to users lives in [LinkWarningCopy], per language. */
+enum class UrlReason {
+    NONE,
+    UNREADABLE,
+    KNOWN_DANGEROUS,
+    HIDDEN_DESTINATION,
+    SHORTENER,
+    RAW_IP,
+    UNUSUAL_TLD,
+    LOOKALIKE_BRAND,
+}
+
+/**
+ * The result of checking one URL: a verdict, the reason, and the detail that reason refers to
+ * (the shortener host, IP address, domain ending, or imitated brand), if any.
+ */
+data class UrlCheckResult(val verdict: UrlVerdict, val reason: UrlReason, val detail: String? = null)
 
 /**
  * Something that can look at a URL and decide how risky it is.

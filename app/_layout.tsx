@@ -38,10 +38,6 @@ function RootNavigator() {
         <Stack.Screen name="guide" options={{ presentation: 'card' }} />
       </Stack.Protected>
       <Stack.Screen name="privacy" options={{ presentation: 'card' }} />
-      {/* Reachable via deep link from LinkHandlerActivity at any time, so it stays
-          outside the session/onboarding guards above — a risky link can be tapped
-          before either of those checks would otherwise let it render. */}
-      <Stack.Screen name="link-warning" />
     </Stack>
   );
 }

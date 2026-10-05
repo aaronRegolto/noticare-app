@@ -27,29 +27,23 @@ object DefaultBrowserStatus {
         return resolved?.activityInfo?.packageName == context.packageName
     }
 
-    /** Whether [requestDefaultBrowser] has anything meaningful to launch on this OS version. */
-    fun canRequestDefaultBrowser(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
-            return roleManager?.isRoleAvailable(RoleManager.ROLE_BROWSER) == true
-        }
-        // ACTION_MANAGE_DEFAULT_APPS_SETTINGS exists from API 24, this app's minimum.
-        return true
+    /**
+     * Android 10+'s "Set NotiCare as your default browser app?" dialog, or null where there is no
+     * browser role. It must be started with startActivityForResult from an Activity: started any
+     * other way, Android can't tell which app is asking and closes it without showing anything.
+     */
+    fun roleRequestIntent(context: Context): Intent? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager ?: return null
+        if (!roleManager.isRoleAvailable(RoleManager.ROLE_BROWSER)) return null
+        return roleManager.createRequestRoleIntent(RoleManager.ROLE_BROWSER)
     }
 
     /**
-     * Opens the right system UI for the user to make NotiCare their default
-     * browser: Android 10+'s direct role request dialog, or the general
-     * default-apps settings screen on older versions.
+     * Android's Default apps screen, where the user can pick the browser themselves. Used on
+     * Android 9 and older, and after the user has declined the dialog (Android then stops showing it).
      */
-    fun requestDefaultBrowser(context: Context) {
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
-            roleManager.createRequestRoleIntent(RoleManager.ROLE_BROWSER)
-        } else {
-            Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-        }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+    fun openDefaultAppsSettings(context: Context) {
+        context.startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }

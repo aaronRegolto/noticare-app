@@ -10,49 +10,17 @@ class RuleBasedUrlChecker : UrlChecker {
 
     override fun check(rawUrl: String): UrlCheckResult {
         val normalized = UrlNormalizer.normalize(rawUrl)
-        val host = normalized.host
-            ?: return UrlCheckResult(UrlVerdict.SUSPICIOUS, "This link could not be read as a valid web address.")
+        val host = normalized.host ?: return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.UNREADABLE)
 
-        if (host in DANGEROUS_HOSTS) {
-            return UrlCheckResult(UrlVerdict.DANGEROUS, "This domain is on NotiCare's known-dangerous list.")
-        }
-
-        if (normalized.hasAtInAuthority) {
-            return UrlCheckResult(
-                UrlVerdict.SUSPICIOUS,
-                "This link uses an \"@\" symbol to disguise its real destination.",
-            )
-        }
-
-        if (host in URL_SHORTENERS) {
-            return UrlCheckResult(
-                UrlVerdict.SUSPICIOUS,
-                "This is a shortened link ($host). Its real destination is hidden until you open it.",
-            )
-        }
-
-        if (isRawIpAddress(host)) {
-            return UrlCheckResult(
-                UrlVerdict.SUSPICIOUS,
-                "This link points directly to a numeric address ($host) instead of a named website.",
-            )
-        }
-
-        unusualTldSuffix(host)?.let { tld ->
-            return UrlCheckResult(
-                UrlVerdict.SUSPICIOUS,
-                "This link uses the \"$tld\" domain ending, which is uncommon for legitimate PH sites and is frequently used for scams.",
-            )
-        }
-
+        if (host in DANGEROUS_HOSTS) return UrlCheckResult(UrlVerdict.DANGEROUS, UrlReason.KNOWN_DANGEROUS)
+        if (normalized.hasAtInAuthority) return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.HIDDEN_DESTINATION)
+        if (host in URL_SHORTENERS) return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.SHORTENER, host)
+        if (isRawIpAddress(host)) return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.RAW_IP, host)
+        unusualTldSuffix(host)?.let { tld -> return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.UNUSUAL_TLD, tld) }
         lookalikeBrand(host)?.let { brand ->
-            return UrlCheckResult(
-                UrlVerdict.SUSPICIOUS,
-                "This link looks like it's imitating $brand but is not one of $brand's official domains.",
-            )
+            return UrlCheckResult(UrlVerdict.SUSPICIOUS, UrlReason.LOOKALIKE_BRAND, BRAND_NAMES[brand] ?: brand)
         }
-
-        return UrlCheckResult(UrlVerdict.SAFE, "No known risk indicators were found.")
+        return UrlCheckResult(UrlVerdict.SAFE, UrlReason.NONE)
     }
 
     private fun isRawIpAddress(host: String): Boolean {
@@ -114,6 +82,17 @@ class RuleBasedUrlChecker : UrlChecker {
         // Brand name to substring-match against a host, mapped to that brand's real
         // domains. A host that mentions the brand but doesn't match (or belong to a
         // subdomain of) one of these is flagged as a possible lookalike.
+        // How each brand is written in a warning ("GCash", not the matched "gcash").
+        private val BRAND_NAMES = mapOf(
+            "gcash" to "GCash",
+            "maya" to "Maya",
+            "bdo" to "BDO",
+            "bpi" to "BPI",
+            "lazada" to "Lazada",
+            "shopee" to "Shopee",
+            "lbc" to "LBC",
+        )
+
         private val PH_BRAND_OFFICIAL_DOMAINS = mapOf(
             "gcash" to setOf("gcash.com"),
             "maya" to setOf("maya.ph", "paymaya.com"),
