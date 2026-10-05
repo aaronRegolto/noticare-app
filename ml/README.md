@@ -2,13 +2,15 @@
 
 Everything needed to (re)train **NotiCare Smishing**, the byte-level CNN text classifier the app runs on-device with LiteRT.
 
-| File | What it does |
-| --- | --- |
-| `sources.json` | Which datasets to train on, which column holds the message, and how it is labelled |
-| `data.py` | Loads the CSVs, labels them (1 = scam, 0 = legitimate), removes duplicates, and splits train / validation / test |
-| `model.py` | The model architecture and the byte encoder (must match the app's `V3RiskEvaluator.kt`) |
-| `train.py` | Trains, picks thresholds, exports the `.tflite`, checks it, scores it, and writes `model_metadata.json` |
-| `requirements.txt` | Python packages |
+**New to this? Start with the step-by-step [TUTORIAL.md](TUTORIAL.md).** This README is the short reference.
+
+| File               | What it does                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `sources.json`     | Which datasets to train on, which column holds the message, and how it is labelled                               |
+| `data.py`          | Loads the CSVs, labels them (1 = scam, 0 = legitimate), removes duplicates, and splits train / validation / test |
+| `model.py`         | The model architecture and the byte encoder (must match the app's `V3RiskEvaluator.kt`)                          |
+| `train.py`         | Trains, picks thresholds, exports the `.tflite`, checks it, scores it, and writes `model_metadata.json`          |
+| `requirements.txt` | Python packages                                                                                                  |
 
 ## Setup (once)
 
@@ -67,6 +69,7 @@ This trains again and copies the `.tflite` and `model_metadata.json` into `asset
    - Labels can be `scam`, `spam`, `phishing`, `smishing`, `fraud`, `1` (scam) or `legit`, `legitimate`, `ham`, `safe`, `0` (legitimate). Other labels are skipped and counted.
    - If every row is the same kind, use `"fixed_label": "scam"` (or `"legitimate"`) instead of `label_column`.
    - `"max_rows": 4000` caps a large source so it doesn't drown out the others.
+
 3. Run `py -3.12 ml/data.py` to check the counts, then `py -3.12 ml/train.py`.
 
 Training always starts from scratch on all enabled sources together. The model is small (20,641 parameters), so this takes about a minute, and the model never "forgets" older data the way fine-tuning on only new data can.
@@ -82,7 +85,7 @@ The `reported_messages` entry in `sources.json` is ready for an export saved as 
 
 ## How the data is split
 
-Each message is assigned to train (70%), validation (15%), or test (15%) by a hash of its *template*: the text lowercased, with links and numbers masked. So:
+Each message is assigned to train (70%), validation (15%), or test (15%) by a hash of its _template_: the text lowercased, with links and numbers masked. So:
 
 - The same scam campaign with a different link or amount can't appear in both training and test, which would inflate the score.
 - The **test set is frozen**. Adding data never moves existing messages between splits, so every new model is compared with the old one on the same test messages.
