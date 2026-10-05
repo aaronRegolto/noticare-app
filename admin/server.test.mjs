@@ -75,6 +75,7 @@ test('rejects anonymous access to every live data endpoint', async () => {
     '/api/phishing-links',
     '/api/records?table=threat_events&discoveries=true',
     '/api/stream/discoveries',
+    '/api/releases',
   ]) {
     const response = await fetch(base + path);
     assert.ok([401, 503].includes(response.status));
@@ -98,6 +99,18 @@ test('dataset imports require authentication and reject cross-origin requests', 
     body: '{}',
   });
   assert.equal(crossOrigin.status, 403);
+});
+test('publishing or withdrawing a release requires an admin and the dashboard origin', async () => {
+  for (const path of ['/api/releases', '/api/releases/withdraw']) {
+    const anonymous = await fetch(base + path, { method: 'POST', body: '{}' });
+    assert.ok([401, 503].includes(anonymous.status), path);
+    const crossOrigin = await fetch(base + path, {
+      method: 'POST',
+      headers: { Origin: 'https://untrusted.example', Authorization: 'Bearer forged' },
+      body: '{}',
+    });
+    assert.equal(crossOrigin.status, 403, path);
+  }
 });
 test('configuration endpoint exposes no credentials', async () => {
   const response = await fetch(base + '/api/config');

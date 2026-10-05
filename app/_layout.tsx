@@ -5,6 +5,8 @@ import 'react-native-reanimated';
 
 import { AppSplash } from '@/src/components/AppSplash';
 import { AppErrorBoundary } from '@/src/components/AppErrorBoundary';
+import { UpdatePrompt } from '@/src/components/update-prompt';
+import { AppUpdateProvider } from '@/src/providers/AppUpdateProvider';
 import { AuthProvider, useAuth } from '@/src/providers/AuthProvider';
 import { EventSync } from '@/src/providers/EventSync';
 import { OnboardingProvider, useOnboarding } from '@/src/providers/OnboardingProvider';
@@ -49,6 +51,7 @@ function ThemedNavigation() {
   return (
     <NavigationThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
       <RootNavigator />
+      <UpdatePrompt />
       {/* App headers use a fixed dark surface in both modes, so status-bar content stays light. */}
       <StatusBar style="light" />
     </NavigationThemeProvider>
@@ -63,7 +66,9 @@ export default function RootLayout() {
           <SubscriptionProvider>
             <EventSync />
             <OnboardingProvider>
-              <ThemedNavigation />
+              <AppUpdateProvider>
+                <ThemedNavigation />
+              </AppUpdateProvider>
             </OnboardingProvider>
           </SubscriptionProvider>
         </AuthProvider>

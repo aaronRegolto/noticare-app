@@ -33,6 +33,42 @@ export type Database = {
         }
         Relationships: []
       }
+      app_releases: {
+        Row: {
+          apk_url: string
+          changes: string[]
+          id: string
+          published: boolean
+          published_at: string
+          required: boolean
+          title: string
+          version_code: number
+          version_name: string
+        }
+        Insert: {
+          apk_url: string
+          changes: string[]
+          id?: string
+          published?: boolean
+          published_at?: string
+          required?: boolean
+          title: string
+          version_code: number
+          version_name: string
+        }
+        Update: {
+          apk_url?: string
+          changes?: string[]
+          id?: string
+          published?: boolean
+          published_at?: string
+          required?: boolean
+          title?: string
+          version_code?: number
+          version_name?: string
+        }
+        Relationships: []
+      }
       community_daily_stats: {
         Row: {
           bucket_date: string
@@ -509,6 +545,28 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      publish_app_release: {
+        Args: {
+          p_apk_url: string
+          p_changes: string[]
+          p_required?: boolean
+          p_title: string
+          p_version_code: number
+          p_version_name: string
+        }
+        Returns: {
+          apk_url: string
+          changes: string[]
+          id: string
+          published: boolean
+          published_at: string
+          required: boolean
+          title: string
+          version_code: number
+          version_name: string
+        }
+      }
+      withdraw_app_release: { Args: { p_id: string }; Returns: undefined }
       list_linked_phones: {
         Args: never
         Returns: {

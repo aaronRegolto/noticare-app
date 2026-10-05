@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { PAGE_SIZE, datasetCatalog, datasetRows, importDataset } from './datasets.mjs';
+import { listReleases, publishRelease, withdrawRelease } from './releases.mjs';
 import { TREND_RANGES, loadTrend } from './trend.mjs';
 
 try {
@@ -198,7 +199,12 @@ export const server = createServer(async (req, res) => {
       throw fail('Session expired or admin access unavailable. Sign in again.', 403);
     if (path.pathname === '/api/datasets/import' && req.method === 'POST')
       return send(await importDataset(await body(req, 20 * 1024 * 1024)), 201);
+    if (path.pathname === '/api/releases' && req.method === 'POST')
+      return send(await publishRelease(db, await body(req, 16 * 1024)), 201);
+    if (path.pathname === '/api/releases/withdraw' && req.method === 'POST')
+      return send(await withdrawRelease(db, await body(req)));
     if (req.method !== 'GET') throw fail('Read-only endpoint', 405);
+    if (path.pathname === '/api/releases') return send(await listReleases(db));
     if (path.pathname === '/api/datasets') return send(await datasetCatalog());
     if (path.pathname === '/api/dataset-rows') return send(await datasetRows(path.searchParams));
     if (path.pathname === '/api/reported-messages') {

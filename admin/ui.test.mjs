@@ -141,3 +141,53 @@ test('dataset library opens opted-in phishing messages as untrusted text', async
     dom.window.close();
   }
 });
+
+test('app updates page shows releases as text and publishes the form as one request', async () => {
+  const dom = browser();
+  try {
+    const requests = [];
+    const release = {
+      id: '3f1c2a9e-5b7d-4c1e-9a2f-0b6d8e4c7a1b',
+      version_code: 5,
+      version_name: '1.0.1',
+      title: 'Fixes <img src=x onerror=alert(1)>',
+      changes: ['Faster scans', '<script>alert(1)</script>'],
+      apk_url: 'https://example.com/noticare.apk',
+      required: true,
+      published: true,
+      published_at: '2026-10-05T10:00:00Z',
+    };
+    dom.window.fetch = async (url, options = {}) => {
+      requests.push({ url: String(url), method: options.method ?? 'GET', body: options.body });
+      const published = { ...release, version_code: 6, version_name: '1.1.0' };
+      return { ok: true, json: async () => (options.method === 'POST' ? published : [release]) };
+    };
+    dom.window.eval("token = 'test-token'; section = 'releases'; renderReleases(" + JSON.stringify([release]) + ');');
+    const { document } = dom.window;
+    assert.equal(document.querySelector('.release-card img'), null);
+    assert.equal(document.querySelector('.release-card script'), null);
+    assert.match(document.querySelector('.release-card').textContent, /Fixes <img/);
+    assert.match(document.querySelector('.release-card').textContent, /Required/);
+
+    const fields = document.querySelector('#release-form').elements;
+    fields.version_code.value = '6';
+    fields.version_name.value = '1.1.0';
+    fields.title.value = 'Better detection of GCash scams';
+    fields.changes.value = 'Detects fake GCash links\nFaster camera scan';
+    fields.apk_url.value = 'https://example.com/noticare-1.1.0.apk';
+    document.querySelector('#release-form').dispatchEvent(new dom.window.Event('submit', { cancelable: true }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    const post = requests.find((request) => request.method === 'POST');
+    assert.equal(post.url, '/api/releases');
+    assert.deepEqual(JSON.parse(post.body), {
+      version_code: '6',
+      version_name: '1.1.0',
+      title: 'Better detection of GCash scams',
+      changes: 'Detects fake GCash links\nFaster camera scan',
+      apk_url: 'https://example.com/noticare-1.1.0.apk',
+      required: false,
+    });
+  } finally {
+    dom.window.close();
+  }
+});

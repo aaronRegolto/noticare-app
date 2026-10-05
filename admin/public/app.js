@@ -9,6 +9,7 @@ const sections = {
   rule_sets: 'Rule sets',
   model: 'Machine Learning',
   datasets: 'Dataset library',
+  releases: 'App updates',
   connection: 'Connection status',
 };
 const navGroups = {
@@ -260,6 +261,12 @@ async function navigate(next) {
       );
       $('#browse-datasets').onclick = () => navigate('datasets');
       $('#browse-discoveries').onclick = () => navigate('discoveries');
+    } else if (section === 'releases') {
+      $('#subtitle').textContent =
+        'Tell users about a new APK. They see it as "Update available" the next time they open NotiCare.';
+      const releases = await api('/api/releases');
+      if (current !== generation) return;
+      renderReleases(releases);
     } else if (section === 'overview') {
       await Dashboard.render(() => current === generation);
     } else {
@@ -456,6 +463,68 @@ function openDataset(file) {
   $('#export').onclick = exportRows;
   loadRecords();
   $('#dataset-browser').scrollIntoView({ block: 'start' });
+}
+function releaseCard(release) {
+  const status = release.published
+    ? '<span class="badge safe">Published</span>'
+    : '<span class="badge">Withdrawn</span>';
+  const required = release.required ? '<span class="badge dangerous">Required</span> ' : '';
+  return `<section class="release-card${release.published ? '' : ' withdrawn'}"><div class="release-head"><div><strong>NotiCare ${escape(release.version_name)}</strong> <span class="muted">version code ${escape(release.version_code)}</span></div><div>${required}${status}</div></div><p class="release-title">${escape(release.title)}</p><ul>${release.changes.map((change) => `<li>${escape(change)}</li>`).join('')}</ul><p class="muted release-meta">${escape(new Date(release.published_at).toLocaleString())} · <span class="release-link">${escape(release.apk_url)}</span></p>${release.published ? `<button data-withdraw="${escape(release.id)}" data-name="${escape(release.version_name)}">Withdraw</button>` : ''}</section>`;
+}
+/** App updates: publish a new APK's notes and link, and withdraw one that turned out broken. */
+function renderReleases(list) {
+  const latest = list.find((release) => release.published);
+  $('#content').innerHTML =
+    `<div class="release-layout"><article class="panel"><h2>Publish an update</h2><p class="muted">Build the APK with EAS first, then copy its version code and download link here. Nothing reaches phones until you publish.</p><form id="release-form" class="release-form"><div class="release-row"><label>Version code<input name="version_code" type="number" min="1" step="1" required placeholder="${latest ? `Higher than ${escape(latest.version_code)}` : 'From the EAS build page'}"></label><label>Version name<input name="version_name" maxlength="32" required placeholder="e.g. 1.1.0"></label></div><label>What this update is for<input name="title" maxlength="80" required placeholder="e.g. Better detection of GCash scams"></label><label>What's new <span>(one change per line, up to 12)</span><textarea name="changes" rows="6" required placeholder="Detects fake GCash and Maya login links&#10;Camera scan reads blurry screenshots better&#10;Fixed: warnings sometimes showed in English"></textarea></label><label>APK download link<input name="apk_url" type="url" required placeholder="https://"></label><label class="check"><input type="checkbox" name="required"> Required update: users can't dismiss it. Use only for security fixes.</label><div><button type="submit" class="primary">Publish update</button></div></form></article><article class="panel"><h2>Releases</h2>${list.length ? `<div class="release-list">${list.map(releaseCard).join('')}</div>` : '<p class="muted">No releases yet. Phones show no update notice until you publish one.</p>'}</article></div>`;
+  $('#release-form').onsubmit = async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = form.elements;
+    if (
+      fields.required.checked &&
+      !confirm("Users won't be able to close this notice until they update. Publish as required?")
+    )
+      return;
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      const release = await api('/api/releases', {
+        method: 'POST',
+        body: JSON.stringify({
+          version_code: fields.version_code.value,
+          version_name: fields.version_name.value,
+          title: fields.title.value,
+          changes: fields.changes.value,
+          apk_url: fields.apk_url.value,
+          required: fields.required.checked,
+        }),
+      });
+      await navigate('releases');
+      notice(`Published NotiCare ${release.version_name}. Phones will show it the next time NotiCare opens.`);
+    } catch (error) {
+      notice(error.message);
+      submit.disabled = false;
+    }
+  };
+  $('#content')
+    .querySelectorAll('[data-withdraw]')
+    .forEach((button) => {
+      button.onclick = async () => {
+        if (!confirm(`Withdraw NotiCare ${button.dataset.name}? Phones will stop offering it.`)) return;
+        button.disabled = true;
+        try {
+          await api('/api/releases/withdraw', {
+            method: 'POST',
+            body: JSON.stringify({ id: button.dataset.withdraw }),
+          });
+          await navigate('releases');
+          notice(`Withdrew NotiCare ${button.dataset.name}. Publish a fixed build with a higher version code.`);
+        } catch (error) {
+          notice(error.message);
+          button.disabled = false;
+        }
+      };
+    });
 }
 async function loadRecords() {
   closeRecord();

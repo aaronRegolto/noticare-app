@@ -5,12 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppUpdate } from '@/src/providers/AppUpdateProvider';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { useOnboarding } from '@/src/providers/OnboardingProvider';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
 import { OptionSheet, SettingsAlert, SettingsItem, SettingsSection, SheetOption } from '@/src/components/settings-ui';
 import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
+import { formatVersion } from '@/src/features/app-update/release';
 import { detectPhilippineCarrier } from '@/src/features/auth/phone';
 import type { MessageLanguage } from '@/src/features/translation';
 import { logError } from '@/src/services/logger';
@@ -145,6 +147,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { session, signOut, isDevelopmentPhoneLogin } = useAuth();
   const { tier: subscriptionTier } = useSubscription();
+  const appUpdate = useAppUpdate();
   const { colors, mode, accent, setMode, setAccent } = useAppTheme();
   const styles = useThemedStyles(colors);
   const [status, setStatus] = useState<MonitoringStatus | null>(null);
@@ -410,6 +413,18 @@ export default function SettingsScreen() {
         }),
     [signOut, restartOnboarding],
   );
+
+  const checkForUpdates = async () => {
+    if (appUpdate.update) return appUpdate.showPrompt();
+    if (appUpdate.installed.code === null) {
+      Alert.alert('Update check unavailable', "This build can't read its version number.");
+      return;
+    }
+    const result = await appUpdate.checkNow();
+    if (result === 'available') appUpdate.showPrompt();
+    else if (result === 'failed') Alert.alert("Couldn't check for updates", 'Check your connection and try again.');
+    else Alert.alert("You're up to date", `NotiCare ${formatVersion(appUpdate.installed)} is the latest version.`);
+  };
 
   const confirmSignOut = useCallback(() => {
     Alert.alert(
@@ -701,6 +716,22 @@ export default function SettingsScreen() {
             icon="information-circle-outline"
             title="About NotiCare"
             onPress={() => router.push('/about')}
+            colors={colors}
+          />
+          <SettingsItem
+            icon={appUpdate.update ? 'cloud-download-outline' : 'refresh-outline'}
+            title={appUpdate.update ? 'Update available' : 'App version'}
+            subtitle={
+              appUpdate.update
+                ? `NotiCare ${appUpdate.update.versionName}: ${appUpdate.update.title}`
+                : appUpdate.checking
+                  ? 'Checking for updates…'
+                  : 'Tap to check for updates'
+            }
+            value={formatVersion(appUpdate.installed)}
+            valueTone={appUpdate.update ? 'positive' : 'muted'}
+            onPress={checkForUpdates}
+            disabled={appUpdate.checking}
             colors={colors}
           />
         </SettingsSection>

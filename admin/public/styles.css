@@ -2091,3 +2091,99 @@ dialog::backdrop {
     animation: none;
   }
 }
+
+/* App updates */
+.release-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.release-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+.release-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.release-form label span {
+  font-weight: 400;
+}
+.release-form .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+.release-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.release-form textarea {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 10px 13px;
+  background: var(--surface);
+  color: inherit;
+  resize: vertical;
+}
+.release-form textarea:focus-visible {
+  outline: 2px solid #4c7468;
+  outline-offset: 3px;
+}
+.release-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+.release-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+.release-card.withdrawn {
+  opacity: 0.6;
+}
+.release-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.release-title {
+  margin: 10px 0 6px;
+  font-weight: 600;
+}
+.release-card ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.release-meta {
+  margin: 0 0 10px;
+  font-size: 11px;
+}
+.release-link {
+  word-break: break-all;
+}
+@media (max-width: 1100px) {
+  .release-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .release-row {
+    grid-template-columns: 1fr;
+  }
+}
