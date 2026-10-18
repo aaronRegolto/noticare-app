@@ -1,14 +1,15 @@
 # NotiCare release website
 
-This is a static Android app landing page with privacy-safe screenshots captured from the connected Android device. Its download buttons link directly to the tested NotiCare 1.0.0 APK attached to the public GitHub Release, so the release page itself does not open.
+This is a static Android app landing page with privacy-safe screenshots captured from the connected Android device. Its download buttons link directly to the tested NotiCare 1.0.0 APK attached to the public GitHub Release, so the release page itself does not open. The page includes an interactive screenshot preview, keyboard-accessible screenshot tabs, expandable answers, and scroll controls.
 
 ## Preview
 
 Open `index.html` in a browser. The page has no build step or runtime dependencies.
+The Privacy section and footer link to the full policy at `https://admin.noticare.site/privacy`.
 
 ## Publish
 
-Upload `index.html`, `styles.css`, and `assets/` to the static hosting provider. The APK is intentionally excluded from Git and hosted separately as a GitHub Release asset, so it does not need to be copied to the website host.
+Upload `index.html`, `styles.css`, `script.js`, and `assets/` to the static hosting provider. The APK is intentionally excluded from Git and hosted separately as a GitHub Release asset, so it does not need to be copied to the website host.
 
 The linked APK is about 241 MiB. Its direct download URL is `https://github.com/aaronRegolto/noticare-app/releases/download/v1.0.0/application-612fb38b-7f1e-400c-b445-2c887c3d3040.apk`.
 
