@@ -1,6 +1,6 @@
 # NotiCare release website
 
-This is a static Android app landing page with privacy-safe screenshots captured from the connected Android device. Its download buttons link directly to the tested NotiCare 1.0.0 APK attached to the public GitHub Release, so the release page itself does not open. The page includes an interactive screenshot preview, keyboard-accessible screenshot tabs, expandable answers, and scroll controls.
+This is a static Android app landing page with privacy-safe screenshots captured from the connected Android device. Its download buttons link directly to the NotiCare 1.0.0 APK attached to the public GitHub Release, so the release page itself does not open. The page includes an interactive screenshot preview, keyboard-accessible screenshot tabs, expandable answers, and scroll controls.
 
 ## Preview
 
@@ -9,9 +9,9 @@ The Privacy section and footer link to the full policy at `https://admin.noticar
 
 ## Publish
 
-Upload `index.html`, `styles.css`, `script.js`, and `assets/` to the static hosting provider. The APK is intentionally excluded from Git and hosted separately as a GitHub Release asset, so it does not need to be copied to the website host.
+Upload `index.html`, `styles.css`, `script.js`, and `assets/` to the static hosting provider. The APK is hosted separately as a GitHub Release asset, so it does not need to be copied to the website host.
 
-The linked APK is about 241 MiB. Its direct download URL is `https://github.com/aaronRegolto/noticare-app/releases/download/v1.0.0/application-612fb38b-7f1e-400c-b445-2c887c3d3040.apk`.
+The linked APK is about 229 MiB. Its direct download URL is `https://github.com/aaronRegolto/noticare-app/releases/download/v1.0.0/application-9c292ec2-cdb4-47f2-9fa4-5a36fa1cc3b6.apk`.
 
 ## Replace the APK for a later release
 
@@ -24,5 +24,5 @@ The linked APK is about 241 MiB. Its direct download URL is `https://github.com/
 The APK's current SHA-256 checksum is:
 
 ```text
-E882BFAEB6EF64FE7D674C76F9499C19B80C820DD29792D24524FB0EF0A414E7
+C44939FCFD1C15A6DE253A2B9045B15694D10EBB3D0932B818E3BA0EC3449BE0
 ```
