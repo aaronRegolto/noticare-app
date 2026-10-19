@@ -43,26 +43,28 @@ object EncryptedTelemetryQueue {
 
   @Synchronized
   fun enqueue(context: Context, result: ThreatResult, blocked: Boolean, occurredAt: Long) {
-    runCatching {
-      val events = read(context).toMutableList()
-      events += Event(
-        id = UUID.randomUUID().toString(),
-        source = "realtime",
-        level = result.level.wireValue,
-        scoreBucket = normalizeTelemetryScoreBucket(result.level.wireValue, scoreBucket(result.score)),
-        blocked = blocked,
-        indicatorCodes = result.reasons.map(ThreatReason::code).distinct().sorted(),
-        urlCount = result.urls.size,
-        ruleVersion = result.ruleVersion,
-        occurredAt = occurredAt,
-        attemptCount = 0,
-        nextAttemptAt = 0L,
-      )
-      if (events.size > maxEvents) {
-        events.sortBy { it.occurredAt }
-        while (events.size > maxEvents) events.removeAt(0)
+    ProcessSafeFileLock.withLock(context, "noticare_telemetry") {
+      runCatching {
+        val events = read(context).toMutableList()
+        events += Event(
+          id = UUID.randomUUID().toString(),
+          source = "realtime",
+          level = result.level.wireValue,
+          scoreBucket = normalizeTelemetryScoreBucket(result.level.wireValue, scoreBucket(result.score)),
+          blocked = blocked,
+          indicatorCodes = result.reasons.map(ThreatReason::code).distinct().sorted(),
+          urlCount = result.urls.size,
+          ruleVersion = result.ruleVersion,
+          occurredAt = occurredAt,
+          attemptCount = 0,
+          nextAttemptAt = 0L,
+        )
+        if (events.size > maxEvents) {
+          events.sortBy { it.occurredAt }
+          while (events.size > maxEvents) events.removeAt(0)
+        }
+        write(context, events)
       }
-      write(context, events)
     }
   }
 
@@ -71,34 +73,36 @@ object EncryptedTelemetryQueue {
    * JS process dies mid-upload, the same client UUID can safely be retried.
    */
   @Synchronized
-  fun claimPending(context: Context, now: Long = System.currentTimeMillis()): List<Event> {
-    val events = read(context).toMutableList()
-    val due = events.filter { it.nextAttemptAt <= now }
-      .sortedBy { it.occurredAt }
-      .take(maxClaimBatch)
-    if (due.isEmpty()) return emptyList()
+  fun claimPending(context: Context, now: Long = System.currentTimeMillis()): List<Event> =
+    ProcessSafeFileLock.withLock(context, "noticare_telemetry") {
+      val events = read(context).toMutableList()
+      val due = events.filter { it.nextAttemptAt <= now }
+        .sortedBy { it.occurredAt }
+        .take(maxClaimBatch)
+      if (due.isEmpty()) return@withLock emptyList()
 
-    val dueIds = due.map(Event::id).toSet()
-    val updated = events.map { event ->
-      if (event.id !in dueIds) event
-      else event.copy(
-        attemptCount = event.attemptCount + 1,
-        nextAttemptAt = now + backoffForAttempt(event.attemptCount + 1),
-      )
+      val dueIds = due.map(Event::id).toSet()
+      val updated = events.map { event ->
+        if (event.id !in dueIds) event
+        else event.copy(
+          attemptCount = event.attemptCount + 1,
+          nextAttemptAt = now + backoffForAttempt(event.attemptCount + 1),
+        )
+      }
+      write(context, updated)
+      due
     }
-    write(context, updated)
-    return due
-  }
 
   @Synchronized
-  fun acknowledge(context: Context, ids: Set<String>): Int {
-    if (ids.isEmpty()) return 0
-    val events = read(context).toMutableList()
-    val before = events.size
-    events.removeAll { it.id in ids }
-    if (events.size != before) write(context, events)
-    return before - events.size
-  }
+  fun acknowledge(context: Context, ids: Set<String>): Int =
+    ProcessSafeFileLock.withLock(context, "noticare_telemetry") {
+      if (ids.isEmpty()) return@withLock 0
+      val events = read(context).toMutableList()
+      val before = events.size
+      events.removeAll { it.id in ids }
+      if (events.size != before) write(context, events)
+      before - events.size
+    }
 
   /** 0 through 10; suitable for the Supabase smallint score-bucket field. */
   private fun scoreBucket(score: Int): Int = score.coerceIn(0, 100) / 10

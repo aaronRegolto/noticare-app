@@ -65,29 +65,12 @@ class SmsNotificationListener : NotificationListenerService() {
     super.onCreate()
     NotiCareNotifications.ensureChannels(this)
     ThreatDecisionCoordinator.attach(this)
-    // Android does not reliably re-invoke onListenerConnected() after this process is
-    // killed and restarted (for example under memory pressure) even though the system
-    // still considers the listener bound. Without a fresh bind, ScanRuntime's connected
-    // flag would stay false forever in the new process, showing "Service disconnected"
-    // even though notifications are actually still flowing. requestRebind() forces
-    // Android to tear down and recreate the binding, which reliably re-fires
-    // onListenerConnected() for this process.
+    // Re-request the system binding whenever Android recreates this lightweight process.
     requestRebind(ComponentName(this, SmsNotificationListener::class.java))
-  }
-
-  override fun onListenerConnected() {
-    super.onListenerConnected()
-    ScanRuntime.onListenerConnected()
-  }
-
-  override fun onListenerDisconnected() {
-    ScanRuntime.onListenerDisconnected()
-    super.onListenerDisconnected()
   }
 
   override fun onDestroy() {
     ThreatDecisionCoordinator.detach(this)
-    ScanRuntime.onListenerDisconnected()
     scanScope.cancel()
     super.onDestroy()
   }
@@ -135,7 +118,7 @@ class SmsNotificationListener : NotificationListenerService() {
     val text = runCatching { NotificationTextExtractor.extractText(notification) }.getOrNull()
     if (text.isNullOrBlank()) {
       Log.d(logTag, "drop: no readable text extras (hidden/redacted preview?)")
-      ScanRuntime.markContentUnavailable()
+      RealtimeScanPreferences.setLastContentStatus(applicationContext, "content_unavailable")
       return
     }
 
@@ -160,7 +143,7 @@ class SmsNotificationListener : NotificationListenerService() {
         cancelNotification(sbn.key)
         true
       }.getOrDefault(false)
-      ScanRuntime.markProcessed()
+      RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")
       val review = PendingThreat(
         token = UUID.randomUUID().toString(),
         notificationKey = sbn.key,
@@ -223,7 +206,7 @@ class SmsNotificationListener : NotificationListenerService() {
       retentionLimit = EncryptedHistoryStore.retentionLimitPerAccount(tier),
     )
     val recordId = (saved as? EncryptedHistoryStore.SaveResult.Saved)?.id
-    ScanRuntime.markProcessed()
+    RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")
     Log.d(logTag, "saved=${saved::class.simpleName} recordId=${recordId != null}")
 
     when (result.level) {
@@ -293,7 +276,7 @@ class SmsNotificationListener : NotificationListenerService() {
       BlockedMessageStore.remember(applicationContext, pending.ownerScope, BlockedMessageStore.hash(pending.message))
       val historySaved = pending.recordId?.let { id ->
         runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
-          .getOrElse { ScanRuntime.markStorageUnavailable(); false }
+          .getOrDefault(false)
       } ?: false
       // "Block & Report" always saves locally first (works fully offline) and is
       // uploaded later by the JS bridge once the app is online — see

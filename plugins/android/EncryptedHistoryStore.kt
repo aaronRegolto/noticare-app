@@ -58,10 +58,10 @@ object EncryptedHistoryStore {
     ruleVersion: String,
     level: ThreatLevel,
     retentionLimit: Int = maxRetainedRecordsPerScope,
-  ): SaveResult {
-    if (message.isBlank()) return SaveResult.Unavailable("content_unavailable")
+  ): SaveResult = ProcessSafeFileLock.withLock(context, "noticare_history") {
+    if (message.isBlank()) return@withLock SaveResult.Unavailable("content_unavailable")
 
-    return runCatching {
+    runCatching {
       // Safe is always stored as 0, whatever score/weights the caller passes.
       val record = normalizeHistoryRecord(BlockedHistoryRecord(
         id = UUID.randomUUID().toString(),
@@ -83,68 +83,76 @@ object EncryptedHistoryStore {
       incrementLifetimeBlocked(context, ownerScope)
       SaveResult.Saved(record.id)
     }.getOrElse { error ->
-      ScanRuntime.markStorageUnavailable()
       // Do not persist a fallback plaintext copy when Keystore or storage fails.
       SaveResult.Unavailable(error.javaClass.simpleName)
     }
   }
 
   @Synchronized
-  fun list(context: Context, ownerScope: String): List<BlockedHistoryRecord> = readRecords(context)
-    .filter { it.ownerScope == ownerScope }
-    .sortedByDescending { it.receivedAt }
+  fun list(context: Context, ownerScope: String): List<BlockedHistoryRecord> =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      readRecords(context)
+        .filter { it.ownerScope == ownerScope }
+        .sortedByDescending { it.receivedAt }
+    }
 
   @Synchronized
-  fun find(context: Context, id: String, ownerScope: String): BlockedHistoryRecord? = readRecords(context)
-    .firstOrNull { it.id == id && it.ownerScope == ownerScope }
+  fun find(context: Context, id: String, ownerScope: String): BlockedHistoryRecord? =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      readRecords(context).firstOrNull { it.id == id && it.ownerScope == ownerScope }
+    }
 
   /** Updates the captured item rather than creating a second copy after Block. */
   @Synchronized
-  fun markBlocked(context: Context, id: String, ownerScope: String): Boolean {
-    val records = readRecords(context)
-    if (records.none { it.id == id && it.ownerScope == ownerScope }) return false
-    writeRecords(context, records.map {
-      if (it.id == id && it.ownerScope == ownerScope) it.copy(blocked = true) else it
-    })
-    return true
-  }
-
-  @Synchronized
-  fun markRead(context: Context, id: String, ownerScope: String): Boolean {
-    val records = readRecords(context)
-    val record = records.firstOrNull { it.id == id && it.ownerScope == ownerScope } ?: return false
-    if (!record.isRead) writeRecords(context, records.map {
-      if (it.id == id && it.ownerScope == ownerScope) it.copy(isRead = true) else it
-    })
-    return true
-  }
-
-  @Synchronized
-  fun delete(context: Context, id: String, ownerScope: String): Boolean {
-    val records = readRecords(context).toMutableList()
-    val deleted = records.removeAll { it.id == id && it.ownerScope == ownerScope }
-    if (deleted) writeRecords(context, records)
-    return deleted
-  }
-
-  @Synchronized
-  fun clear(context: Context, ownerScope: String): Int {
-    val records = readRecords(context)
-    val retained = records.filterNot { it.ownerScope == ownerScope }
-    val removed = records.size - retained.size
-    if (removed == 0) return 0
-    if (retained.isEmpty()) {
-      val target = storageFile(context)
-      if (target.exists() && !target.delete()) {
-        // An encrypted file that cannot be removed is safer than replacing it
-        // with plaintext or partially writing an empty record set.
-        throw IllegalStateException("Unable to clear encrypted NotiCare history")
-      }
-    } else {
-      writeRecords(context, retained)
+  fun markBlocked(context: Context, id: String, ownerScope: String): Boolean =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      val records = readRecords(context)
+      if (records.none { it.id == id && it.ownerScope == ownerScope }) return@withLock false
+      writeRecords(context, records.map {
+        if (it.id == id && it.ownerScope == ownerScope) it.copy(blocked = true) else it
+      })
+      true
     }
-    return removed
-  }
+
+  @Synchronized
+  fun markRead(context: Context, id: String, ownerScope: String): Boolean =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      val records = readRecords(context)
+      val record = records.firstOrNull { it.id == id && it.ownerScope == ownerScope } ?: return@withLock false
+      if (!record.isRead) writeRecords(context, records.map {
+        if (it.id == id && it.ownerScope == ownerScope) it.copy(isRead = true) else it
+      })
+      true
+    }
+
+  @Synchronized
+  fun delete(context: Context, id: String, ownerScope: String): Boolean =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      val records = readRecords(context).toMutableList()
+      val deleted = records.removeAll { it.id == id && it.ownerScope == ownerScope }
+      if (deleted) writeRecords(context, records)
+      deleted
+    }
+
+  @Synchronized
+  fun clear(context: Context, ownerScope: String): Int =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      val records = readRecords(context)
+      val retained = records.filterNot { it.ownerScope == ownerScope }
+      val removed = records.size - retained.size
+      if (removed == 0) return@withLock 0
+      if (retained.isEmpty()) {
+        val target = storageFile(context)
+        if (target.exists() && !target.delete()) {
+          // An encrypted file that cannot be removed is safer than replacing it
+          // with plaintext or partially writing an empty record set.
+          throw IllegalStateException("Unable to clear encrypted NotiCare history")
+        }
+      } else {
+        writeRecords(context, retained)
+      }
+      removed
+    }
 
   /** How many detail records an account keeps before the oldest are pruned. Shown in Settings so pruning is never a silent surprise. */
   fun retentionLimitPerAccount(tier: String): Int =
@@ -157,7 +165,10 @@ object EncryptedHistoryStore {
    */
   @Synchronized
   fun lifetimeBlockedCount(context: Context, ownerScope: String): Int =
-    readLifetimeCounts(context)[ownerScope] ?: list(context, ownerScope).size
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      readLifetimeCounts(context)[ownerScope]
+        ?: readRecords(context).count { it.ownerScope == ownerScope }
+    }
 
   @Synchronized
   private fun incrementLifetimeBlocked(context: Context, ownerScope: String) {
@@ -206,13 +217,15 @@ object EncryptedHistoryStore {
   }
 
   @Synchronized
-  fun storageAvailable(context: Context): Boolean = runCatching {
-    secretKey()
-    storageFile(context)
-    true
-  }.getOrElse {
-    ScanRuntime.markStorageUnavailable()
-    false
+  fun storageAvailable(context: Context): Boolean =
+    ProcessSafeFileLock.withLock(context, "noticare_history") {
+      runCatching {
+        secretKey()
+        storageFile(context)
+        true
+      }.getOrElse {
+        false
+      }
   }
 
   private fun storageFile(context: Context) = File(context.filesDir, fileName)

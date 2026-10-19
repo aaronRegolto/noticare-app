@@ -5,6 +5,7 @@ const {
   withAndroidManifest,
   withAppBuildGradle,
   withDangerousMod,
+  withGradleProperties,
   withMainApplication,
 } = require('@expo/config-plugins');
 
@@ -155,6 +156,7 @@ function updateManifest(manifest) {
         'android:exported': 'true',
         'android:label': '@string/app_name',
         'android:permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
+        'android:process': ':notification_listener',
       },
       'intent-filter': [
         {
@@ -168,12 +170,14 @@ function updateManifest(manifest) {
       'android:exported': 'true',
       'android:label': '@string/app_name',
       'android:permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
+      'android:process': ':notification_listener',
     };
   }
 
   application.service = uniqueByAndroidName(services);
   const warningActivityName = '.bridge.ThreatWarningActivity';
-  if (!activities.some((entry) => entry?.$?.['android:name'] === warningActivityName)) {
+  const warningActivity = activities.find((entry) => entry?.$?.['android:name'] === warningActivityName);
+  if (!warningActivity) {
     activities.push({
       $: {
         'android:name': warningActivityName,
@@ -183,13 +187,25 @@ function updateManifest(manifest) {
         'android:showWhenLocked': 'true',
         'android:turnScreenOn': 'true',
         'android:theme': '@style/AppTheme',
+        'android:process': ':notification_listener',
       },
     });
+  } else {
+    warningActivity.$ = { ...warningActivity.$, 'android:process': ':notification_listener' };
   }
   const receiverName = '.bridge.ThreatDecisionReceiver';
   const receivers = asArray(application, 'receiver');
   if (!receivers.some((entry) => entry?.$?.['android:name'] === receiverName)) {
-    receivers.push({ $: { 'android:name': receiverName, 'android:exported': 'false' } });
+    receivers.push({
+      $: {
+        'android:name': receiverName,
+        'android:exported': 'false',
+        'android:process': ':notification_listener',
+      },
+    });
+  } else {
+    const receiver = receivers.find((entry) => entry?.$?.['android:name'] === receiverName);
+    receiver.$ = { ...receiver.$, 'android:process': ':notification_listener' };
   }
   application.activity = uniqueByAndroidName(activities);
   application.receiver = uniqueByAndroidName(receivers);
@@ -222,6 +238,24 @@ function addDataStoreDependency(contents) {
   return contents.replace(dependenciesBlock, (match) => `${match}\n${missingLines.join('\n')}`);
 }
 
+function enableReleaseShrinking(properties) {
+  const releaseProperties = [
+    'android.enableMinifyInReleaseBuilds',
+    'android.enableShrinkResourcesInReleaseBuilds',
+  ];
+
+  for (const key of releaseProperties) {
+    const existing = properties.find((property) => property.type === 'property' && property.key === key);
+    if (existing) {
+      existing.value = 'true';
+    } else {
+      properties.push({ type: 'property', key, value: 'true' });
+    }
+  }
+
+  return properties;
+}
+
 function patchMainApplication(contents, language, packageName) {
   const importLine = `import ${packageName}.NotificationListenerPackage`;
   let updated = contents;
@@ -240,21 +274,66 @@ function patchMainApplication(contents, language, packageName) {
     }
   }
 
-  if (updated.includes('add(NotificationListenerPackage())')) return updated;
-
-  if (language === 'kt') {
+  if (!updated.includes('add(NotificationListenerPackage())') && language === 'kt') {
     const marker = 'PackageList(this).packages.apply {';
     if (!updated.includes(marker)) {
       throw new Error('Unable to register NotificationListenerPackage: Kotlin package list was not found.');
     }
-    return updated.replace(marker, `${marker}\n              add(NotificationListenerPackage())`);
+    updated = updated.replace(marker, `${marker}\n              add(NotificationListenerPackage())`);
+  } else if (!updated.includes('add(NotificationListenerPackage())')) {
+    const marker = 'List<ReactPackage> packages = new PackageList(this).getPackages();';
+    if (!updated.includes(marker)) {
+      throw new Error('Unable to register NotificationListenerPackage: Java package list was not found.');
+    }
+    updated = updated.replace(marker, `${marker}\n    packages.add(new NotificationListenerPackage());`);
   }
 
-  const marker = 'List<ReactPackage> packages = new PackageList(this).getPackages();';
-  if (!updated.includes(marker)) {
-    throw new Error('Unable to register NotificationListenerPackage: Java package list was not found.');
+  if (language !== 'kt') {
+    throw new Error('Unable to isolate the notification listener process: MainApplication must use Kotlin.');
   }
-  return updated.replace(marker, `${marker}\n    packages.add(new NotificationListenerPackage());`);
+  if (!updated.includes('isNotificationListenerProcess()')) {
+    const lifecycleMarker = '    loadReactNative(this)\n    ApplicationLifecycleDispatcher.onApplicationCreate(this)';
+    if (!updated.includes(lifecycleMarker)) {
+      throw new Error('Unable to isolate the notification listener process: Kotlin application lifecycle was not found.');
+    }
+    updated = updated.replace(
+      lifecycleMarker,
+      `    if (!isNotificationListenerProcess()) {\n      loadReactNative(this)\n      ApplicationLifecycleDispatcher.onApplicationCreate(this)\n    }`,
+    );
+    const configurationMarker = '    ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)';
+    if (!updated.includes(configurationMarker)) {
+      throw new Error('Unable to isolate the notification listener process: Kotlin configuration lifecycle was not found.');
+    }
+    updated = updated.replace(
+      configurationMarker,
+      `    if (!isNotificationListenerProcess()) {\n      ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)\n    }`,
+    );
+  }
+
+  const processHelper = `  private fun isNotificationListenerProcess(): Boolean {
+    val processName = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+      android.app.Application.getProcessName()
+    } else {
+      val activityManager = getSystemService(android.app.ActivityManager::class.java) ?: return false
+      val processId = android.os.Process.myPid()
+      activityManager.runningAppProcesses
+        ?.firstOrNull { process -> process.pid == processId }
+        ?.processName
+        ?: return false
+    }
+    return processName.endsWith(":notification_listener")
+  }`;
+  const processHelperPattern = /  private fun isNotificationListenerProcess\(\): Boolean \{[\s\S]*?\n  \}/;
+  if (processHelperPattern.test(updated)) {
+    updated = updated.replace(processHelperPattern, processHelper);
+  } else {
+    const classEnd = updated.lastIndexOf('\n}');
+    if (classEnd < 0) {
+      throw new Error('Unable to isolate the notification listener process: Kotlin application class was not found.');
+    }
+    updated = `${updated.slice(0, classEnd)}\n\n${processHelper}${updated.slice(classEnd)}`;
+  }
+  return updated;
 }
 
 function escapeRegExp(value) {
@@ -320,6 +399,7 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['EncryptedCommunityReportQueue.kt', path.join(sourceRoot, 'bridge', 'EncryptedCommunityReportQueue.kt')],
     ['NotiCareNotifications.kt', path.join(sourceRoot, 'bridge', 'NotiCareNotifications.kt')],
     ['RealtimeScanPreferences.kt', path.join(sourceRoot, 'bridge', 'RealtimeScanPreferences.kt')],
+    ['ProcessSafeFileLock.kt', path.join(sourceRoot, 'bridge', 'ProcessSafeFileLock.kt')],
     ['ScanRuntime.kt', path.join(sourceRoot, 'bridge', 'ScanRuntime.kt')],
     ['SmishingEvaluator.kt', path.join(sourceRoot, 'bridge', 'SmishingEvaluator.kt')],
     ['V3RiskEvaluator.kt', path.join(sourceRoot, 'bridge', 'V3RiskEvaluator.kt')],
@@ -338,6 +418,7 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['NotificationInputTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationInputTest.kt')],
     ['ModelEvaluationTest.kt', path.join(testSourceRoot, 'bridge', 'ModelEvaluationTest.kt')],
     ['BlockedMessageStoreTest.kt', path.join(testSourceRoot, 'bridge', 'BlockedMessageStoreTest.kt')],
+    ['ProcessSafeFileLockTest.kt', path.join(testSourceRoot, 'bridge', 'ProcessSafeFileLockTest.kt')],
     ['WarningCopyTest.kt', path.join(testSourceRoot, 'bridge', 'WarningCopyTest.kt')],
   ];
 
@@ -383,6 +464,11 @@ const withNotificationListener = (config) => {
 
   config = withAppBuildGradle(config, (modConfig) => {
     modConfig.modResults.contents = addDataStoreDependency(modConfig.modResults.contents);
+    return modConfig;
+  });
+
+  config = withGradleProperties(config, (modConfig) => {
+    modConfig.modResults = enableReleaseShrinking(modConfig.modResults);
     return modConfig;
   });
 

@@ -354,7 +354,6 @@ class NotificationListenerModule(
         }
       }.onSuccess(promise::resolve)
         .onFailure { error ->
-          ScanRuntime.markStorageUnavailable()
           promise.reject("history_unavailable", "Protected local History is unavailable on this device.", error)
         }
     }
@@ -369,7 +368,6 @@ class NotificationListenerModule(
           ?.let(::historyDetailMap)
       }.onSuccess(promise::resolve)
         .onFailure { error ->
-          ScanRuntime.markStorageUnavailable()
           promise.reject("history_record_unavailable", "Unable to open this protected History record.", error)
         }
     }
@@ -501,7 +499,7 @@ class NotificationListenerModule(
   private suspend fun monitoringStatusMap(): WritableMap {
     val enabled = RealtimeScanPreferences.isScanningEnabled(appContext)
     val accessGranted = ScanRuntime.hasNotificationAccess(appContext)
-    val serviceConnected = ScanRuntime.isListenerConnected()
+    val serviceConnected = ScanRuntime.isListenerProcessRunning(appContext, SmsNotificationListener::class.java)
     if (enabled && accessGranted && !serviceConnected) {
       ScanRuntime.requestListenerRebindIfStale(appContext, SmsNotificationListener::class.java)
     }
@@ -516,6 +514,7 @@ class NotificationListenerModule(
 
     val historyOwnerScope = RealtimeScanPreferences.historyOwnerScope(appContext)
     val subscriptionTier = RealtimeScanPreferences.subscriptionTier(appContext)
+    val historyStorageAvailable = EncryptedHistoryStore.storageAvailable(appContext)
 
     return Arguments.createMap().apply {
       putString("status", status)
@@ -527,9 +526,9 @@ class NotificationListenerModule(
       putNullableString("defaultSmsPackage", defaultSmsPackage)
       putNullableString("defaultSmsAppName", ScanRuntime.defaultSmsAppLabel(appContext, defaultSmsPackage))
       putBoolean("historyOwnerConfigured", historyOwnerScope != null)
-      putBoolean("historyStorageAvailable", EncryptedHistoryStore.storageAvailable(appContext))
-      putString("historyStorageStatus", ScanRuntime.storageStatus())
-      putString("lastContentStatus", ScanRuntime.lastContentStatus())
+      putBoolean("historyStorageAvailable", historyStorageAvailable)
+      putString("historyStorageStatus", if (historyStorageAvailable) "available" else "unavailable")
+      putString("lastContentStatus", RealtimeScanPreferences.lastContentStatus(appContext))
       putBoolean("batteryOptimizationExempt", ScanRuntime.isIgnoringBatteryOptimizations(appContext))
       putBoolean("fullScreenIntentPermitted", ScanRuntime.canUseFullScreenIntent(appContext))
       putBoolean("overlayPermitted", ThreatWarningOverlay.canDrawOverlays(appContext))

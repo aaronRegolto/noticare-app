@@ -1,5 +1,6 @@
 package __NOTICARE_PACKAGE__.bridge
 
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
@@ -13,53 +14,25 @@ import android.service.notification.NotificationListenerService
 
 /** Process-local diagnostics only. Nothing here contains SMS text or sender data. */
 object ScanRuntime {
-  @Volatile private var listenerConnected = false
-  @Volatile private var lastContentStatus = "idle"
-  @Volatile private var storageStatus = "available"
   @Volatile private var lastRebindAttemptAt = 0L
   private const val REBIND_COOLDOWN_MS = 15_000L
 
-  fun onListenerConnected() {
-    listenerConnected = true
+  fun isListenerProcessRunning(context: Context, listenerClass: Class<*>): Boolean {
+    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+    val listenerComponent = ComponentName(context, listenerClass)
+    return activityManager.getRunningServices(Int.MAX_VALUE).any { service ->
+      service.service == listenerComponent && service.pid > 0
+    }
   }
 
-  fun onListenerDisconnected() {
-    listenerConnected = false
-  }
-
-  fun isListenerConnected(): Boolean = listenerConnected
-
-  /**
-   * Self-heals a stuck "Service disconnected" status. Android does not always
-   * re-invoke onListenerConnected() after this process is killed and restarted,
-   * even though the system still considers the listener bound — so without
-   * forcing a fresh bind here, the app could keep reporting disconnected
-   * indefinitely despite notifications actually still being deliverable.
-   * Throttled so a UI polling this status repeatedly cannot spam system_server.
-   */
+  /** Repairs a listener process that Android has not restarted yet; UI polling is throttled. */
   fun requestListenerRebindIfStale(context: Context, listenerClass: Class<*>) {
-    if (listenerConnected) return
+    if (isListenerProcessRunning(context, listenerClass)) return
     val now = System.currentTimeMillis()
     if (now - lastRebindAttemptAt < REBIND_COOLDOWN_MS) return
     lastRebindAttemptAt = now
     runCatching { NotificationListenerService.requestRebind(ComponentName(context, listenerClass)) }
   }
-
-  fun markContentUnavailable() {
-    lastContentStatus = "content_unavailable"
-  }
-
-  fun markProcessed() {
-    lastContentStatus = "processed"
-  }
-
-  fun lastContentStatus(): String = lastContentStatus
-
-  fun markStorageUnavailable() {
-    storageStatus = "unavailable"
-  }
-
-  fun storageStatus(): String = storageStatus
 
   /**
    * OEM battery managers (notably ColorOS/Realme, and similar on other brands)

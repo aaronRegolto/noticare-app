@@ -53,56 +53,60 @@ object EncryptedCommunityReportQueue {
     ruleVersion: String,
     riskScore: Int,
   ) {
-    runCatching {
-      val reports = read(context).toMutableList()
-      reports += Report(
-        id = UUID.randomUUID().toString(),
-        messageText = messageText.take(4000),
-        sampleSender = sampleSender?.take(120),
-        indicatorCodes = indicatorCodes.distinct().take(32),
-        ruleVersion = ruleVersion,
-        riskScore = riskScore.coerceIn(0, 100),
-        createdAt = System.currentTimeMillis(),
-        attemptCount = 0,
-        nextAttemptAt = 0L,
-      )
-      if (reports.size > maxReports) {
-        reports.sortBy { it.createdAt }
-        while (reports.size > maxReports) reports.removeAt(0)
+    ProcessSafeFileLock.withLock(context, "noticare_community_reports") {
+      runCatching {
+        val reports = read(context).toMutableList()
+        reports += Report(
+          id = UUID.randomUUID().toString(),
+          messageText = messageText.take(4000),
+          sampleSender = sampleSender?.take(120),
+          indicatorCodes = indicatorCodes.distinct().take(32),
+          ruleVersion = ruleVersion,
+          riskScore = riskScore.coerceIn(0, 100),
+          createdAt = System.currentTimeMillis(),
+          attemptCount = 0,
+          nextAttemptAt = 0L,
+        )
+        if (reports.size > maxReports) {
+          reports.sortBy { it.createdAt }
+          while (reports.size > maxReports) reports.removeAt(0)
+        }
+        write(context, reports)
       }
-      write(context, reports)
     }
   }
 
   @Synchronized
-  fun claimPending(context: Context, now: Long = System.currentTimeMillis()): List<Report> {
-    val reports = read(context).toMutableList()
-    val due = reports.filter { it.nextAttemptAt <= now }
-      .sortedBy { it.createdAt }
-      .take(maxClaimBatch)
-    if (due.isEmpty()) return emptyList()
+  fun claimPending(context: Context, now: Long = System.currentTimeMillis()): List<Report> =
+    ProcessSafeFileLock.withLock(context, "noticare_community_reports") {
+      val reports = read(context).toMutableList()
+      val due = reports.filter { it.nextAttemptAt <= now }
+        .sortedBy { it.createdAt }
+        .take(maxClaimBatch)
+      if (due.isEmpty()) return@withLock emptyList()
 
-    val dueIds = due.map(Report::id).toSet()
-    val updated = reports.map { report ->
-      if (report.id !in dueIds) report
-      else report.copy(
-        attemptCount = report.attemptCount + 1,
-        nextAttemptAt = now + backoffForAttempt(report.attemptCount + 1),
-      )
+      val dueIds = due.map(Report::id).toSet()
+      val updated = reports.map { report ->
+        if (report.id !in dueIds) report
+        else report.copy(
+          attemptCount = report.attemptCount + 1,
+          nextAttemptAt = now + backoffForAttempt(report.attemptCount + 1),
+        )
+      }
+      write(context, updated)
+      due
     }
-    write(context, updated)
-    return due
-  }
 
   @Synchronized
-  fun acknowledge(context: Context, ids: Set<String>): Int {
-    if (ids.isEmpty()) return 0
-    val reports = read(context).toMutableList()
-    val before = reports.size
-    reports.removeAll { it.id in ids }
-    if (reports.size != before) write(context, reports)
-    return before - reports.size
-  }
+  fun acknowledge(context: Context, ids: Set<String>): Int =
+    ProcessSafeFileLock.withLock(context, "noticare_community_reports") {
+      if (ids.isEmpty()) return@withLock 0
+      val reports = read(context).toMutableList()
+      val before = reports.size
+      reports.removeAll { it.id in ids }
+      if (reports.size != before) write(context, reports)
+      before - reports.size
+    }
 
   private fun backoffForAttempt(attempt: Int): Long {
     val multiplier = 1L shl (attempt - 1).coerceAtMost(10)
