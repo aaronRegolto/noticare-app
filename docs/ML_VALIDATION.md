@@ -1,6 +1,6 @@
 # Validate intercepted-message classification
 
-Manual scans (`NotificationListenerModule.scanText`) and live notifications from selected apps (`SmsNotificationListener`) call the same production `V3RiskEvaluator.evaluate`. The model can raise a result to Suspicious at a high-specificity validation threshold; it cannot mark a message Dangerous by itself. The deterministic rules remain responsible for Dangerous decisions.
+Manual scans (`NotificationListenerModule.scanText`) and live notifications from selected apps (`SmsNotificationListener`) call the same production `V3RiskEvaluator.evaluate`. At runtime, the model can only reinforce a specific deterministic warning sign; it cannot create a warning or mark a message Dangerous by itself. The model-only threshold below is retained only as a historical validation diagnostic and is not used to classify users' messages.
 
 ## Retrain with the attached categorized SMS data
 
@@ -20,7 +20,7 @@ Training proceeds in these steps:
 2. **Load and deduplicate.** The trainer combines that source with UCI SMS Spam and the existing NCSU phishing collection. Exact duplicates and conflicting labels are handled by `ml/data.py`; the NCSU source is capped. No unlabeled dataset is silently labeled.
 3. **Split by message template.** The stable hash split groups variants of the same text/campaign together, preventing simple train/test leakage and keeping the frozen test partition stable when data is added.
 4. **Train.** A byte-level CNN is fit with class weights and early stopping on validation PR-AUC. The raw message bodies are not written into the candidate report.
-5. **Calibrate thresholds on validation only.** The spam threshold targets 99.5% validation scam recall; the dangerous threshold limits validation legitimate false alarms to 2%; the model-only Suspicious threshold limits validation legitimate hits to 0.5%. These are goals on this validation data, not guarantees on new messages.
+5. **Calibrate thresholds on validation only.** The spam threshold targets 99.5% validation scam recall; the dangerous threshold limits validation legitimate false alarms to 2%. The model-only Suspicious threshold was an offline evaluation metric, not a runtime threshold; neither metric is a guarantee on new messages.
 6. **Export and check.** The candidate is exported to TensorFlow Lite and checked against the Keras model on the test split; the reported maximum output difference must remain below `1e-4`.
 7. **Review before installation.** Inspect the new run's `training_report.md` and `model_metadata.json` under `ml\output\<run>\`. Only after review, retrain with `--install` to back up the current assets and install the candidate, or restore the previous files from the run's `previous` directory.
 
@@ -60,7 +60,7 @@ The Python script writes actual model probabilities to an ignored local director
 - UCI labels are **ham/spam**, not legitimate/phishing. Report ham false alarms and spam warning rates separately; do not call spam detection smishing accuracy.
 - The supplied NCSU CSV has no classification column. Exclude it from accuracy denominators.
 - The candidate training report uses template-separated frozen splits, but dataset provenance and repeated campaign variants can still limit independence. Do not treat these results as user-level or field accuracy.
-- The current broader diagnostic raised 32 of 50 synthetic Philippine messages labeled safe to Suspicious using the model-only path. This is a serious local false-alarm signal, even though those examples are synthetic and not a representative benchmark. Do not ship or describe the model-only threshold as validated for Filipino users until a reviewed, independent Philippine legitimate-message holdout is collected and the threshold is recalibrated without using the final test set.
+- The historical broader diagnostic raised 32 of 50 synthetic Philippine messages labeled safe to Suspicious using the model-only path. This is a serious local false-alarm signal, even though those examples are synthetic and not a representative benchmark. The model-only path is disabled at runtime; do not describe its threshold as validated for Filipino users until a reviewed, independent Philippine legitimate-message holdout is collected and the threshold is recalibrated without using the final test set.
 - Preserve both false-positive and false-negative counts. An all-Safe classifier avoids false alarms but is ineffective.
 - Before claiming production accuracy, use independently reviewed, deduplicated, held-out Philippine English/Tagalog/Taglish messages, separated by campaign and time from training/tuning data. Measure warning precision/recall, false alarms, missed phishing, and long/hidden/truncated message behavior.
 

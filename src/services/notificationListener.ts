@@ -53,8 +53,6 @@ export type MonitoringStatus = {
   historyOwnerConfigured: boolean;
   historyStorageAvailable: boolean;
   historyStorageStatus: 'available' | 'unavailable';
-  contactsPermissionGranted: boolean;
-  senderContactLookupEnabled: boolean;
   lastContentStatus: 'idle' | 'processed' | 'content_unavailable';
   appNotificationsGranted: boolean;
   /** False means Android's battery manager can kill NotiCare in the background and miss messages. */
@@ -94,8 +92,6 @@ export type HistorySummary = {
   warningSignCount: number;
   sourcePackage: string;
   ruleVersion: string;
-  /** Local-only address-book match; null when contact identification was not enabled. */
-  senderIsKnownContact?: boolean | null;
   categories?: MessageCategory[];
 };
 
@@ -151,7 +147,6 @@ type NotificationListenerNativeModule = {
   getMonitoringStatus(): Promise<MonitoringStatus>;
   setScanningEnabled(enabled: boolean): Promise<MonitoringStatus>;
   setMonitoredAppEnabled?(sourceId: MonitoredAppId, enabled: boolean): Promise<MonitoringStatus>;
-  setSenderContactLookupEnabled?(enabled: boolean): Promise<MonitoringStatus>;
   setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatus>;
   setHistoryOwner(ownerId: string | null): Promise<MonitoringStatus>;
   setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringStatus>;
@@ -264,14 +259,6 @@ export function setMonitoredAppEnabled(sourceId: MonitoredAppId, enabled: boolea
     return Promise.reject(new Error('Per-app notification scanning requires a newer Android build.'));
   }
   return module.setMonitoredAppEnabled(sourceId, enabled);
-}
-
-export function setSenderContactLookupEnabled(enabled: boolean): Promise<MonitoringStatus> {
-  const module = requireAndroidNativeModule();
-  if (!module.setSenderContactLookupEnabled) {
-    return Promise.reject(new Error('Sender identification requires a newer Android build.'));
-  }
-  return module.setSenderContactLookupEnabled(enabled);
 }
 
 /** Chooses an immersive warning when possible; Android may still use a banner as a platform fallback. */

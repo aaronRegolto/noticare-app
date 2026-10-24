@@ -170,35 +170,6 @@ export type Database = {
           },
         ]
       }
-      linked_phone_numbers: {
-        Row: {
-          created_at: string
-          id: string
-          phone_e164: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          phone_e164: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          phone_e164?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "linked_phone_numbers_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
       pro_payment_grants: {
         Row: {
           granted_at: string
@@ -567,20 +538,9 @@ export type Database = {
         }
       }
       withdraw_app_release: { Args: { p_id: string }; Returns: undefined }
-      list_linked_phones: {
-        Args: never
-        Returns: {
-          created_at: string
-          phone_e164: string
-        }[]
-      }
       normalize_phishing_message_text: {
         Args: { p_text: string }
         Returns: string
-      }
-      record_linked_phone: {
-        Args: { p_previous_phone: string }
-        Returns: undefined
       }
       record_phishing_report: {
         Args: {
@@ -638,7 +598,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      resolve_primary_phone: { Args: { p_phone: string }; Returns: string }
       submit_scan_feedback: {
         Args: {
           p_event_id: string | null
@@ -648,7 +607,6 @@ export type Database = {
         }
         Returns: string
       }
-      unlink_phone: { Args: { p_phone: string }; Returns: boolean }
     }
     Enums: {
       threat_level: "safe" | "suspicious" | "dangerous"

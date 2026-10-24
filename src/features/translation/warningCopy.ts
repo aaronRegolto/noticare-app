@@ -179,7 +179,7 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
     ],
     'account-warning': [
       'Babala tungkol sa account',
-      'Sinasabi ng mensahe na naka-suspend, naka-lock, o kailangang i-verify ang isang account.',
+      'Sinasabi ng mensahe na naka-suspend, naka-lock, pansamantalang naka-hold, o kailangang i-verify ang isang account.',
     ],
     'urgency-pressure': ['Pagmamadali', 'Pinagmamadali ka ng mensahe na kumilos agad o sa loob ng maikling oras.'],
     'link-or-reply-pressure': [
@@ -300,7 +300,7 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
     ],
     'v3-model-risk': [
       'AI check',
-      'Sang-ayon ang built-in na AI ng NotiCare na mukhang scam ang mga babala sa itaas. Nagdadagdag lang ito ng puntos kapag may totoong babala.',
+      'Nakakita ang on-device classifier ng mga salitang karaniwang kaugnay ng phishing o scam, pero hindi nito natukoy ang isang tiyak na palatandaan. Pattern match ito ng AI, hindi kumpirmasyon.',
     ],
   },
 };

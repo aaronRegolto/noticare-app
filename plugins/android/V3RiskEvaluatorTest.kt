@@ -15,11 +15,17 @@ class V3RiskEvaluatorTest {
       "GCash: You received PHP 50000.00 from Ana. No action is needed.",
       "Your OTP is 482913. Do not share it with anyone.",
       "Here is the meeting agenda: https://example.com/agenda",
+      "Reacted ❤️ to your message: iloveyouuuu alwayss bebebee",
     )
     for (message in ordinaryMessages) {
       val rules = SmishingEvaluator.evaluate(message)
       assertEquals(message, ThreatLevel.SAFE, rules.level)
-      assertEquals(message, rules, V3RiskEvaluator.combine(rules, 1f, 0.003735364f))
+      val result = V3RiskEvaluator.combine(rules, 1f, 0.003735364f)
+      assertEquals(message, rules, result)
+      assertTrue(message, result.reasons.none { it.code == "v3-model-risk" })
+      val finalized = finalizeThreatResult(result)
+      assertEquals(message, ThreatLevel.SAFE, finalized.level)
+      assertEquals(message, 0, finalized.score)
     }
     assertEquals(0, V3RiskEvaluator.combine(SmishingEvaluator.evaluate("hello love"), 1f, 0.003735364f).score)
   }
@@ -34,20 +40,15 @@ class V3RiskEvaluatorTest {
   }
 
   @Test
-  fun highSpecificityModelOnlySignalRaisesSafeToSuspiciousButNeverDangerous() {
-    val rules = SmishingEvaluator.evaluate("An ordinary message with no recognized rule.")
-    val below = V3RiskEvaluator.combine(rules, 0.79f, 0.003735364f, 0.8f)
-    assertEquals(ThreatLevel.SAFE, below.level)
-    assertEquals(rules, below)
-
-    val above = V3RiskEvaluator.combine(rules, 0.8f, 0.003735364f, 0.8f)
-    assertEquals(ThreatLevel.SUSPICIOUS, above.level)
-    assertEquals(30, above.score)
-    assertEquals(listOf("v3-model-risk"), above.reasons.map { it.code })
-    assertEquals(above.score, above.reasons.sumOf { it.weight })
-
-    val highest = V3RiskEvaluator.combine(rules, 1f, 0.003735364f, 0.8f)
-    assertEquals(ThreatLevel.SUSPICIOUS, highest.level)
+  fun modelAloneCannotFlagAnOrdinaryMessageOrReaction() {
+    for (message in listOf(
+      "An ordinary message with no recognized rule.",
+      "Reacted ❤️ to your message: iloveyouuuu alwayss bebebee",
+    )) {
+      val rules = SmishingEvaluator.evaluate(message)
+      assertEquals(message, ThreatLevel.SAFE, rules.level)
+      assertEquals(message, rules, V3RiskEvaluator.combine(rules, 1f, 0.003735364f))
+    }
   }
 
   @Test
@@ -63,6 +64,17 @@ class V3RiskEvaluatorTest {
     for (invalid in listOf(Float.NaN, Float.POSITIVE_INFINITY, -1f, 2f)) {
       assertEquals(rules, V3RiskEvaluator.combine(rules, invalid, 0.003735364f))
     }
+  }
+
+  @Test
+  fun explicitAccountAndLinkIndicatorsAreNotReplacedByGenericModelSignal() {
+    val message =
+      "BANCO DE ORO: PLEASE BE ADVISED THAT YOUR ACCOUNT IS TEMPORARILY ON HOLD, DUE TO SECURITY PURPOSES. Kindly Visit: shortenis/MyBDO"
+    val rules = SmishingEvaluator.evaluate(message)
+    assertEquals(ThreatLevel.SUSPICIOUS, rules.level)
+    assertEquals(35, rules.score)
+    assertEquals(listOf("account-warning", "link-or-reply-pressure"), rules.reasons.map { it.code })
+    assertEquals(rules, V3RiskEvaluator.combine(rules, 1f, 0.003735364f))
   }
 
   @Test

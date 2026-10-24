@@ -209,19 +209,6 @@ class SmsNotificationListener : NotificationListenerService() {
       Log.d(logTag, "safe message checked in memory and discarded")
       return
     }
-    val senderIsKnownContact = if (
-      RealtimeScanPreferences.isSenderContactLookupEnabled(applicationContext) &&
-      !sender.isNullOrBlank()
-    ) {
-      try {
-        SenderContactLookup.isKnownContact(applicationContext, sender)
-      } catch (error: SecurityException) {
-        Log.w(logTag, "Contacts permission was revoked during sender lookup", error)
-        null
-      }
-    } else {
-      null
-    }
     val saved = EncryptedHistoryStore.saveScanned(
       context = applicationContext,
       ownerScope = ownerScope,
@@ -235,7 +222,6 @@ class SmsNotificationListener : NotificationListenerService() {
       ruleVersion = result.ruleVersion,
       level = result.level,
       retentionLimit = EncryptedHistoryStore.retentionLimitPerAccount(tier),
-      senderIsKnownContact = senderIsKnownContact,
     )
     val recordId = (saved as? EncryptedHistoryStore.SaveResult.Saved)?.id
     RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")

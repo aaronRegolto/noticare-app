@@ -43,6 +43,7 @@ class SmishingEvaluatorParityTest {
       Case("normal-work-request", "Please send the project report by today so I can review it before the meeting.", ThreatLevel.SAFE),
       Case("prize-with-urgency-no-url", "You are a lucky winner. Claim now to receive your reward.", ThreatLevel.SUSPICIOUS),
       Case("account-warning-reply", "Your account is suspended. Reply YES now to restore access.", ThreatLevel.SUSPICIOUS),
+      Case("bdo-account-hold-path-link", "BANCO DE ORO: PLEASE BE ADVISED THAT YOUR ACCOUNT IS TEMPORARILY ON HOLD, DUE TO SECURITY PURPOSES. Kindly Visit: shortenis/MyBDO", ThreatLevel.SUSPICIOUS),
       Case("shortener-alone", "More details: https://tinyurl.com/example", ThreatLevel.SUSPICIOUS),
       Case("ip-link-alone", "More details: http://192.0.2.44/info", ThreatLevel.SUSPICIOUS),
       Case("punycode-link-alone", "Details: https://xn--e1afmkfd.xn--p1ai/info", ThreatLevel.SUSPICIOUS),
@@ -121,7 +122,7 @@ class SmishingEvaluatorParityTest {
 
     assertEquals(
       "Kotlin evaluator output differs from the TypeScript rule-bundle corpus.",
-      "ecfa92fc0fcc2c013c22c9fa591aac787b2b754c40b670cff53406fbee9e37fb",
+      "fda115325e5e9207128ec925d57795a0f2419725c8dc5294b138f29aa486c299",
       actualDigest,
     )
   }

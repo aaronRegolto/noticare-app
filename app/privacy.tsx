@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const sections = [
   [
     'What stays on your device',
-    'Safe notifications are checked in memory and discarded. Only messages classified Suspicious or Dangerous are saved in your encrypted local Messages inbox. If you enable Identify saved senders, NotiCare compares an alert sender with Contacts on this device and stores only the match/no-match result; it never copies or uploads contact details.',
+    'Safe notifications are checked in memory and discarded. Only messages classified Suspicious or Dangerous are saved in your encrypted local Messages inbox.',
   ],
   [
     'What can be shared anonymously',

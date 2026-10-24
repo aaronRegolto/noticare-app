@@ -58,7 +58,6 @@ object EncryptedHistoryStore {
     ruleVersion: String,
     level: ThreatLevel,
     retentionLimit: Int = maxRetainedRecordsPerScope,
-    senderIsKnownContact: Boolean? = null,
   ): SaveResult = ProcessSafeFileLock.withLock(context, "noticare_history") {
     if (message.isBlank()) return@withLock SaveResult.Unavailable("content_unavailable")
     if (!level.shouldRetainInHistory()) return@withLock SaveResult.Unavailable("safe_messages_are_not_saved")
@@ -79,7 +78,6 @@ object EncryptedHistoryStore {
         ruleVersion = ruleVersion,
         level = level,
         blocked = false,
-        senderIsKnownContact = senderIsKnownContact,
       ))
       val merged = withoutSafeRecords(context).toMutableList().apply { add(record) }
       writeRecords(context, pruneOldestBeyondCap(merged, ownerScope, retentionLimit))
@@ -334,7 +332,6 @@ object EncryptedHistoryStore {
     put("level", record.level.wireValue)
     put("blocked", record.blocked)
     put("isRead", record.isRead)
-    put("senderIsKnownContact", record.senderIsKnownContact)
     put("message", record.message)
     put("redactedPreview", record.redactedPreview)
     put("sourcePackage", record.sourcePackage)
@@ -377,8 +374,6 @@ object EncryptedHistoryStore {
       level = ThreatLevel.entries.firstOrNull { it.wireValue == json.optString("level") } ?: ThreatLevel.DANGEROUS,
       blocked = json.optBoolean("blocked", true),
       isRead = json.optBoolean("isRead", false),
-      senderIsKnownContact = if (json.isNull("senderIsKnownContact")) null
-        else json.optBoolean("senderIsKnownContact"),
       message = message,
       redactedPreview = json.optString("redactedPreview").takeIf { it.isNotBlank() } ?: redactedPreview(),
       reasons = reasonsFromJson(json.optJSONArray("reasons")),

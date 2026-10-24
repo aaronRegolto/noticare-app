@@ -2,18 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  AppState,
-  Linking,
-  PermissionsAndroid,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppUpdate } from '@/src/providers/AppUpdateProvider';
@@ -33,7 +22,7 @@ import {
   useMessageTranslationSettings,
   type LanguagePackStatus,
 } from '@/src/services/messageTranslation';
-import { deleteAccount, isSupabaseConfigured, listLinkedPhones, unlinkPhone } from '@/src/services/supabase';
+import { deleteAccount, isSupabaseConfigured } from '@/src/services/supabase';
 import {
   getInstalledBrowsers,
   isDefaultBrowser,
@@ -55,7 +44,6 @@ import {
   requestNotificationPolicyAccess,
   setScanningEnabled,
   setMonitoredAppEnabled,
-  setSenderContactLookupEnabled,
   setFullScreenWarnings,
   type MonitoringStatus,
   type MonitoredAppId,
@@ -104,37 +92,6 @@ function humanStatus(status: MonitoringStatus | null, colors: ThemeColors) {
   }
 }
 
-function PhoneChip({
-  phone,
-  primary = false,
-  colors,
-  onRemove,
-}: {
-  phone: string;
-  primary?: boolean;
-  colors: ThemeColors;
-  onRemove?: () => void;
-}) {
-  const styles = useThemedStyles(colors);
-  const carrier = detectPhilippineCarrier(phone);
-  return (
-    <View style={[styles.phoneChip, primary && styles.phoneChipPrimary]}>
-      <View>
-        <Text style={styles.phoneChipNumber}>{maskPhone(phone)}</Text>
-        <Text style={styles.phoneChipMeta}>
-          {primary ? 'Primary' : 'Linked'}
-          {carrier ? ` · ${carrier}` : ''}
-        </Text>
-      </View>
-      {onRemove ? (
-        <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Remove ${phone}`}>
-          <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 const MESSAGE_LANGUAGE_OPTIONS: { value: MessageLanguage; label: string; description: string }[] = [
   { value: 'default', label: 'Default', description: 'Messages exactly as received; warnings in English' },
   { value: 'tl', label: 'Tagalog', description: 'Messages translated to Tagalog; warnings in Tagalog' },
@@ -168,7 +125,6 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState<MonitoringStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [linkedPhones, setLinkedPhones] = useState<string[]>([]);
   const [browsers, setBrowsers] = useState<InstalledBrowser[]>([]);
   const [browsersError, setBrowsersError] = useState<string | null>(null);
   const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
@@ -179,37 +135,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (translation.available && translation.language !== 'default') void ensureLanguagePack();
   }, [translation.available, translation.language]);
-
-  const refreshLinkedPhones = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
-    try {
-      const rows = await listLinkedPhones();
-      setLinkedPhones(rows.map((row) => row.phone_e164));
-    } catch (error) {
-      logError('linked-phones-load-failed', error);
-    }
-  }, []);
-
-  const confirmUnlinkPhone = useCallback(
-    (phone: string) => {
-      Alert.alert('Remove this number?', `${phone} will no longer be able to sign in to this account.`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            void unlinkPhone(phone)
-              .then(() => refreshLinkedPhones())
-              .catch((error) => {
-                logError('unlink-phone-failed', error);
-                Alert.alert('Unable to remove number', 'Please try again.');
-              });
-          },
-        },
-      ]);
-    },
-    [refreshLinkedPhones],
-  );
 
   const refreshStatus = useCallback(async () => {
     if (!isNativeMonitoringAvailable()) {
@@ -318,10 +243,9 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshStatus();
-      void refreshLinkedPhones();
       void refreshBrowsers();
       void refreshDefaultBrowserStatus();
-    }, [refreshStatus, refreshLinkedPhones, refreshBrowsers, refreshDefaultBrowserStatus]),
+    }, [refreshStatus, refreshBrowsers, refreshDefaultBrowserStatus]),
   );
 
   // useFocusEffect alone only re-checks when this screen regains navigation focus. Returning
@@ -413,50 +337,6 @@ export default function SettingsScreen() {
         setStatus(await setMonitoredAppEnabled(sourceId, enabled));
       } catch {
         Alert.alert('Unable to update app selection', 'Please rebuild NotiCare and try again.');
-      } finally {
-        setSaving(false);
-      }
-    },
-    [saving, status],
-  );
-
-  const changeSenderContactLookup = useCallback(
-    async (enabled: boolean) => {
-      if (saving || !status) return;
-      if (!isNativeMonitoringAvailable()) {
-        Alert.alert('Android app required', 'Sender identification is available in the installed Android app.');
-        return;
-      }
-      setSaving(true);
-      try {
-        if (enabled) {
-          const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CONTACTS, {
-            title: 'Identify saved senders?',
-            message:
-              'NotiCare checks whether a sender name or phone number matches your contacts. This lookup stays on your phone. Contact details are not copied, saved, or uploaded.',
-            buttonPositive: 'Allow',
-            buttonNegative: 'Not now',
-          });
-          if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-            const permanentlyDenied = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
-            Alert.alert(
-              permanentlyDenied ? 'Contacts permission is off' : 'Contacts permission not granted',
-              permanentlyDenied
-                ? 'Allow Contacts for NotiCare in Android app settings to identify saved senders. No contact details are copied or uploaded.'
-                : 'NotiCare will keep scanning for threats, but cannot label senders as saved or unknown without Contacts permission.',
-              permanentlyDenied
-                ? [
-                    { text: 'Not now', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => void Linking.openSettings() },
-                  ]
-                : [{ text: 'OK' }],
-            );
-            return;
-          }
-        }
-        setStatus(await setSenderContactLookupEnabled(enabled));
-      } catch {
-        Alert.alert('Unable to update sender identification', 'Check the Android permission and try again.');
       } finally {
         setSaving(false);
       }
@@ -606,7 +486,7 @@ export default function SettingsScreen() {
   const confirmDeleteAccount = useCallback(() => {
     Alert.alert(
       'Delete your account?',
-      'This permanently deletes your NotiCare account, your linked phone numbers, your plan, and your saved message history on this phone. Scam messages you already reported stay in the community list without your account attached. This cannot be undone.',
+      'This permanently deletes your NotiCare account, your plan, and your saved message history on this phone. Scam messages you already reported stay in the community list without your account attached. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -682,24 +562,6 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           </View>
-          {linkedPhones.length || !isDevelopmentPhoneLogin ? (
-            <View style={styles.phoneChipsRow}>
-              {linkedPhones.map((phone) => (
-                <PhoneChip key={phone} phone={phone} colors={colors} onRemove={() => confirmUnlinkPhone(phone)} />
-              ))}
-              {!isDevelopmentPhoneLogin ? (
-                <Pressable
-                  onPress={() => router.push('/link-phone')}
-                  style={styles.addPhone}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add another phone number"
-                >
-                  <Ionicons name="add" size={16} color={colors.accent} />
-                  <Text style={styles.addPhoneText}>Add number</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
         </View>
 
         <SettingsSection title="Protection" colors={colors}>
@@ -744,28 +606,6 @@ export default function SettingsScreen() {
               colors={colors}
             />
           ))}
-          <SettingsItem
-            icon="person-circle-outline"
-            title="Identify saved senders"
-            subtitle={
-              status?.contactsPermissionGranted
-                ? 'Compare alert senders with Contacts on this device only'
-                : 'Optional: identify whether a flagged sender is saved in Contacts'
-            }
-            accessory={
-              <Switch
-                value={Boolean(status?.senderContactLookupEnabled && status.contactsPermissionGranted)}
-                disabled={saving || !status}
-                onValueChange={(value) => void changeSenderContactLookup(value)}
-                trackColor={{ false: '#AFBBCB', true: colors.accent }}
-                thumbColor={
-                  status?.senderContactLookupEnabled && status.contactsPermissionGranted ? colors.accent : '#fff'
-                }
-                accessibilityLabel="Identify flagged senders that are or are not saved in Contacts"
-              />
-            }
-            colors={colors}
-          />
           {status?.scanningEnabled ? null : (
             <Text style={styles.sourceHelp}>
               Choose the apps to monitor. Turn on Real-Time Scanning above to start checking their notifications.
@@ -1094,31 +934,6 @@ function createStyles(colors: ThemeColors) {
     planBadgePro: { backgroundColor: colors.accent },
     planBadgeText: { color: colors.accent, fontSize: 12, fontWeight: '800' },
     planBadgeTextPro: { color: colors.accentContrast },
-    phoneChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 56 },
-    phoneChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      backgroundColor: colors.surfaceAlt,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-    },
-    phoneChipPrimary: { borderWidth: 1, borderColor: colors.accent },
-    phoneChipNumber: { color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
-    phoneChipMeta: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
-    addPhone: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderStyle: 'dashed',
-      borderColor: colors.accent,
-    },
-    addPhoneText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
     sheetLabel: { color: colors.textPrimary, fontSize: 15, fontWeight: '800' },
     sheetLabelSpaced: { marginTop: 14 },
     sheetNote: { color: colors.textSecondary, fontSize: 13, lineHeight: 19 },

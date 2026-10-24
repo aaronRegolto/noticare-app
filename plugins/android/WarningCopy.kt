@@ -175,7 +175,7 @@ object WarningCopy {
       "credential-request" to ("Hinihingi ang lihim na code o impormasyon ng account" to
         "Hinihingi ng mensahe ang iyong OTP, password, PIN, o detalye ng account."),
       "account-warning" to ("Babala tungkol sa account" to
-        "Sinasabi ng mensahe na naka-suspend, naka-lock, o kailangang i-verify ang isang account."),
+        "Sinasabi ng mensahe na naka-suspend, naka-lock, pansamantalang naka-hold, o kailangang i-verify ang isang account."),
       "urgency-pressure" to ("Pagmamadali" to
         "Pinagmamadali ka ng mensahe na kumilos agad o sa loob ng maikling oras."),
       "link-or-reply-pressure" to ("Pinapapindot ng link o pinapa-reply" to
@@ -243,7 +243,7 @@ object WarningCopy {
       "account-urgency-combination" to ("Madaliang babala sa account" to
         "May babala tungkol sa account na may kasamang madaliang deadline."),
       "v3-model-risk" to ("AI check" to
-        "Sang-ayon ang built-in na AI ng NotiCare na mukhang scam ang mga babala sa itaas. Nagdadagdag lang ito ng puntos kapag may totoong babala."),
+        "Nakakita ang on-device classifier ng mga salitang karaniwang kaugnay ng phishing o scam, pero hindi nito natukoy ang isang tiyak na palatandaan. Pattern match ito ng AI, hindi kumpirmasyon."),
     )
   }
 }

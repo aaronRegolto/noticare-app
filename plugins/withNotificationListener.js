@@ -35,11 +35,12 @@ const LEGACY_SERVICES = new Set([
 
 const LEGACY_ACTIVITIES = new Set(['.WarningOverlayActivity', '.ui.AlertActivity', '.ui.ThreatDetailsActivity']);
 
-// These APIs would grant broad SMS access or support an accessibility-based
-// implementation. Keep the removal defensive so a dependency or a stale
-// generated manifest cannot accidentally expand the scanner's scope.
+// These permissions are not needed by NotiCare's notification-based scanning.
+// Keep removal defensive so stale generated manifests or dependencies cannot
+// reintroduce sensitive permissions.
 const DISALLOWED_PERMISSIONS = [
   'android.permission.FOREGROUND_SERVICE',
+  'android.permission.READ_CONTACTS',
   'android.permission.READ_SMS',
   'android.permission.RECEIVE_SMS',
   'android.permission.SEND_SMS',
@@ -96,9 +97,6 @@ function updateManifest(manifest) {
 
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
     permissions.push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
-  }
-  if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.READ_CONTACTS')) {
-    permissions.push({ $: { 'android:name': 'android.permission.READ_CONTACTS' } });
   }
   // Lets the danger-warning notification launch ThreatWarningActivity directly (full-screen when
   // the phone is locked or the screen is off, a heads-up banner otherwise) instead of a plain
@@ -424,7 +422,6 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
     ['MessageCategories.kt', path.join(sourceRoot, 'bridge', 'MessageCategories.kt')],
     ['NotificationSource.kt', path.join(sourceRoot, 'bridge', 'NotificationSource.kt')],
-    ['SenderContactLookup.kt', path.join(sourceRoot, 'bridge', 'SenderContactLookup.kt')],
     ['RepeatSenderScorer.kt', path.join(sourceRoot, 'bridge', 'RepeatSenderScorer.kt')],
     ['MessageTranslator.kt', path.join(sourceRoot, 'bridge', 'MessageTranslator.kt')],
     ['WarningCopy.kt', path.join(sourceRoot, 'bridge', 'WarningCopy.kt')],
@@ -438,7 +435,6 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['MessageCategoriesTest.kt', path.join(testSourceRoot, 'bridge', 'MessageCategoriesTest.kt')],
     ['NotificationSourceTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationSourceTest.kt')],
     ['RepeatSenderScorerTest.kt', path.join(testSourceRoot, 'bridge', 'RepeatSenderScorerTest.kt')],
-    ['SenderContactLookupTest.kt', path.join(testSourceRoot, 'bridge', 'SenderContactLookupTest.kt')],
     ['ThreatModelsTest.kt', path.join(testSourceRoot, 'bridge', 'ThreatModelsTest.kt')],
   ];
 

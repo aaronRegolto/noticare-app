@@ -66,5 +66,4 @@ data class BlockedHistoryRecord(
   val level: ThreatLevel = ThreatLevel.DANGEROUS,
   val blocked: Boolean = true,
   val isRead: Boolean = false,
-  val senderIsKnownContact: Boolean? = null,
 )

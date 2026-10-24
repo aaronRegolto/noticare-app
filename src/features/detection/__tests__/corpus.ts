@@ -159,6 +159,15 @@ export const DETECTION_CORPUS: readonly DetectionCorpusCase[] = [
     expectedReasonCodes: ['account-warning', 'link-or-reply-pressure'],
   },
   {
+    id: 'bdo-account-hold-path-link',
+    family: 'social-engineering',
+    message:
+      'BANCO DE ORO: PLEASE BE ADVISED THAT YOUR ACCOUNT IS TEMPORARILY ON HOLD, DUE TO SECURITY PURPOSES. Kindly Visit: shortenis/MyBDO',
+    expectedLevel: 'suspicious',
+    expectedReasonCodes: ['account-warning', 'link-or-reply-pressure'],
+    expectedUrlCount: 0,
+  },
+  {
     id: 'shortener-alone',
     family: 'url-indicator',
     message: 'More details: https://tinyurl.com/example',

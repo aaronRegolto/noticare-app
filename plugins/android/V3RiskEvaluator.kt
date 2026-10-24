@@ -9,9 +9,8 @@ import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
 
 /**
- * Runs the V3 byte-level model entirely on-device. A high-specificity model
- * result may add a Suspicious warning, but model output alone never marks text
- * Dangerous.
+ * Runs the V3 byte-level model entirely on-device. Model output can reinforce
+ * explicit rule evidence but cannot create a warning by itself.
  */
 object V3RiskEvaluator {
   private const val MODEL_ASSET = "noticare_smishing_v3.tflite"
@@ -24,7 +23,6 @@ object V3RiskEvaluator {
   private data class Runtime(
     val interpreter: Interpreter,
     val safeThreshold: Float,
-    val modelOnlyThreshold: Float?,
   )
 
   @Volatile private var runtime: Runtime? = null
@@ -43,7 +41,7 @@ object V3RiskEvaluator {
       Log.e("NotiCareModel", "On-device classification failed; using deterministic rule result.", error)
       return rules
     }
-    return combine(rules, probability, current.safeThreshold, current.modelOnlyThreshold)
+    return combine(rules, probability, current.safeThreshold)
   }
 
   private fun hasSupportingEvidence(rules: ThreatResult): Boolean =
@@ -54,23 +52,9 @@ object V3RiskEvaluator {
     rules: ThreatResult,
     probability: Float,
     safeThreshold: Float,
-    modelOnlyThreshold: Float? = null,
   ): ThreatResult {
     if (!probability.isFinite() || probability !in 0f..1f) return rules
-    val hasEvidence = hasSupportingEvidence(rules)
-    if (!hasEvidence) {
-      if (modelOnlyThreshold == null || !modelOnlyThreshold.isFinite() || probability < modelOnlyThreshold) return rules
-      return rules.copy(
-        level = ThreatLevel.SUSPICIOUS,
-        score = 30,
-        reasons = rules.reasons + ThreatReason(
-          code = "v3-model-risk",
-          label = "AI spam signal",
-          description = "NotiCare's on-device classifier found a high-confidence spam pattern. Verify the sender independently before acting.",
-          weight = 30,
-        ),
-      )
-    }
+    if (!hasSupportingEvidence(rules)) return rules
     if (!safeThreshold.isFinite() || safeThreshold <= 0f || safeThreshold >= 1f || probability < safeThreshold) return rules
 
     val reason = ThreatReason(
@@ -111,9 +95,6 @@ object V3RiskEvaluator {
     return Runtime(
       interpreter = Interpreter(modelBuffer),
       safeThreshold = thresholds.getDouble("safe").toFloat(),
-      modelOnlyThreshold = thresholds.optDouble("model_only", Double.NaN)
-        .takeIf { it.isFinite() && it > 0.0 }
-        ?.toFloat(),
     ).also { created -> runtime = created }
   }
 

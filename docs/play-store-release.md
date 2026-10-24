@@ -4,8 +4,8 @@ What to enter in the Play Console for NotiCare, and the steps that happen outsid
 
 ## 1. Before the first build
 
-- [ ] Apply the account-deletion migration to the live database:
-      `npx supabase db push --workdir backend` (adds `delete_my_account`). Until then, **Delete account** in the app shows "Unable to delete account".
+- [ ] Apply pending Supabase migrations to the live database:
+      `npx supabase db push --workdir backend`. This includes `delete_my_account` and removes the retired linked-phone feature and its stored aliases.
 - [ ] Push `master` so Render redeploys the admin site, then check that these open without signing in:
   - https://admin.noticare.site/privacy
   - https://admin.noticare.site/delete-account

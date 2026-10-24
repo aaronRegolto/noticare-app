@@ -157,18 +157,6 @@ const RecordCard = memo(function RecordCard({
           <Text style={[styles.dangerBadgeText, { color: tone.color }]}>{tone.label}</Text>
         </View>
       </View>
-      {record.senderIsKnownContact !== null && record.senderIsKnownContact !== undefined ? (
-        <View style={styles.senderIdentity}>
-          <Ionicons
-            name={record.senderIsKnownContact ? 'person-circle-outline' : 'person-remove-outline'}
-            size={14}
-            color={record.senderIsKnownContact ? '#087653' : '#8A5C06'}
-          />
-          <Text style={styles.senderIdentityText}>
-            {record.senderIsKnownContact ? 'Saved contact' : 'Not found in Contacts'}
-          </Text>
-        </View>
-      ) : null}
       <Text style={styles.redactedPreview} numberOfLines={2}>
         {translated ? translation.text : (record.preview ?? record.redactedPreview)}
       </Text>
@@ -264,13 +252,6 @@ function DetailModal({
           <Text selectable style={styles.detailValue}>
             {messageSender(record)}
           </Text>
-          {record.senderIsKnownContact !== null && record.senderIsKnownContact !== undefined ? (
-            <Text style={styles.senderIdentityDetail}>
-              {record.senderIsKnownContact
-                ? 'This sender matched a contact saved on your phone.'
-                : 'This sender did not match a contact saved on your phone.'}
-            </Text>
-          ) : null}
           <Text style={styles.detailLabel}>MESSAGE STORED ON THIS DEVICE</Text>
           {translated ? (
             <View style={styles.translationBar}>
@@ -907,20 +888,6 @@ function createStyles(colors: ThemeColors) {
       justifyContent: 'center',
     },
     sender: { color: colors.textPrimary, fontWeight: '800', fontSize: 14 },
-    senderIdentity: {
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      marginTop: 10,
-      marginLeft: 51,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: colors.surfaceAlt,
-      borderRadius: 9,
-    },
-    senderIdentityText: { color: colors.textSecondary, fontSize: 10, fontWeight: '700' },
-    senderIdentityDetail: { color: colors.textMuted, fontSize: 12, marginTop: 5 },
     date: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
     dangerBadge: {
       alignSelf: 'flex-start',

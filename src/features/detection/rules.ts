@@ -44,11 +44,12 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
     {
       code: 'account-warning',
       label: 'Account access warning',
-      description: 'The message claims that an account is suspended, locked, or needs verification.',
+      description:
+        'The message claims that an account is suspended, locked, temporarily on hold, or needs verification.',
       weight: 23,
       signals: ['account-warning'],
       patterns: [
-        String.raw`\b(?:your\s+)?account\s+(?:has\s+been\s+|is\s+|will be\s+)?(?:suspended|locked|restricted|disabled|limited|on hold|closed)\b`,
+        String.raw`\b(?:your\s+)?account\s+(?:has\s+been\s+|is\s+|will be\s+)?(?:suspended|locked|restricted|disabled|limited|(?:temporarily\s+)?on hold|closed)\b`,
         String.raw`\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\b`,
         String.raw`\b(?:i[-\s]?verify|iverify|beripikahin|i[-\s]?update|iupdate)\s+(?:ang\s+)?(?:iyong\s+|mong\s+)?account\b`,
         String.raw`\b(?:mawawala|mawawalan)\s+(?:(?:ka\s+ng|ang)\s+)?access\b`,
@@ -85,6 +86,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       signals: ['link-or-reply-pressure'],
       patterns: [
         String.raw`\b(?:click|tap|open|visit|follow)\s+(?:(?:the|this|our)\s+)?(?:link|here|below)\b`,
+        String.raw`\b(?:click|tap|open|visit|follow)\s*:?\s+[a-z0-9-]+\/[a-z0-9_-]+\b`,
         String.raw`\b(?:pindutin|i[-\s]?click|iclick|buksan|bisitahin|visit)\s+(?:ang\s+)?(?:link|link\s+na\s+ito|dito)\b`,
         String.raw`\b(?:reply|text)\s+(?:yes|now|immediately)\b`,
         String.raw`\b(?:mag[-\s]?reply|magreply|sumagot)\s+(?:ngayon|agad|kaagad)\b`,

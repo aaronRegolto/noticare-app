@@ -76,7 +76,7 @@ The same choice sets the language of NotiCare's scam warning pop-ups, notificati
 
 **Messages** shows only messages NotiCare classified as Suspicious or Dangerous from apps you enabled. Safe messages are evaluated in memory and immediately discarded; they are not added to History or telemetry. Flagged alerts are encrypted and scoped to the signed-in profile, up to the plan's retention cap. It does not import earlier messages, unrelated app notifications, or Manual Scan results. The app does not send or reply to messages.
 
-Search alert senders or message text, filter by Spam, Threats, or Phishing and by Suspicious/Dangerous risk level, unread or blocked status, and month. Tap an alert to read its full text and scan details. Optionally enable **Identify saved senders** in Settings and grant Contacts permission to label whether an alert sender matches a contact stored on this phone. That lookup is local and only the match flag is kept with the alert. Messages refreshes while open; pull down for an immediate refresh. Deleting a local copy or clearing the inbox does not delete the original message from its source app.
+Search alert senders or message text, filter by Spam, Threats, or Phishing and by Suspicious/Dangerous risk level, unread or blocked status, and month. Tap an alert to read its full text and scan details. Messages refreshes while open; pull down for an immediate refresh. Deleting a local copy or clearing the inbox does not delete the original message from its source app.
 
 After updating the native capture code, run `npm run android` to build and install it. A Metro reload alone only updates the interface. Previously captured blocked records remain available; new captures include all classifications.
 

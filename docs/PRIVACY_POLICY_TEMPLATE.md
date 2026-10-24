@@ -14,7 +14,7 @@ NotiCare does not use the Android `READ_SMS` permission, does not become your de
 
 ## 2. Information we process
 
-**On your device:** NotiCare may process the available text, sender/display information, and URLs included in an enabled app's notification preview in memory to scan it locally. Safe messages are discarded immediately. Only Suspicious or Dangerous alerts may be saved in encrypted local History, subject to the in-app retention limit. If you enable sender identification and grant Android Contacts permission, NotiCare checks whether the flagged sender matches a saved contact; the lookup stays on-device and only the match/no-match flag is saved with the alert. Contact details are not copied or uploaded. The encryption key is protected by Android Keystore and is not uploaded.
+**On your device:** NotiCare may process the available text, sender/display information, and URLs included in an enabled app's notification preview in memory to scan it locally. Safe messages are discarded immediately. Only Suspicious or Dangerous alerts may be saved in encrypted local History, subject to the in-app retention limit. The encryption key is protected by Android Keystore and is not uploaded.
 
 **For authentication:** We use your phone number through Supabase Phone OTP to send and verify a login code. Our application profile stores only the last four digits of the verified phone number.
 

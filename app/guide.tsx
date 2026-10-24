@@ -25,7 +25,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Turn Real-Time Scanning on or off',
-    body: 'Open Dashboard settings, use the Real-Time Scanning switch, and select which installed apps to monitor. Optional Identify saved senders checks whether a flagged sender matches a contact on your phone; contact details are never copied or uploaded. When turning scanning on, allow Notification Access in Android settings and return to NotiCare.',
+    body: 'Open Dashboard settings, use the Real-Time Scanning switch, and select which installed apps to monitor. When turning scanning on, allow Notification Access in Android settings and return to NotiCare.',
   },
   {
     title: 'Threat levels',

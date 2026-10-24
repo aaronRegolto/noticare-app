@@ -84,7 +84,7 @@ object SmishingEvaluator {
   private val accountWarning = Rule(
     "account-warning",
     "Account access warning",
-    "The message claims that an account is suspended, locked, or needs verification.",
+    "The message claims that an account is suspended, locked, temporarily on hold, or needs verification.",
     23,
   )
   private val urgencyPressure = Rule(
@@ -194,7 +194,7 @@ object SmishingEvaluator {
     TextRule(
       accountWarning,
       listOf(
-        insensitive("""\b(?:your\s+)?account\s+(?:has\s+been\s+|is\s+|will be\s+)?(?:suspended|locked|restricted|disabled|limited|on hold|closed)\b"""),
+        insensitive("""\b(?:your\s+)?account\s+(?:has\s+been\s+|is\s+|will be\s+)?(?:suspended|locked|restricted|disabled|limited|(?:temporarily\s+)?on hold|closed)\b"""),
         insensitive("""\b(?:verify|re[-\s]?verify|update)\s+(?:your\s+)?account\b"""),
         insensitive("""\b(?:i[-\s]?verify|iverify|beripikahin|i[-\s]?update|iupdate)\s+(?:ang\s+)?(?:iyong\s+|mong\s+)?account\b"""),
         insensitive("""\b(?:mawawala|mawawalan)\s+(?:(?:ka\s+ng|ang)\s+)?access\b"""),
@@ -224,6 +224,7 @@ object SmishingEvaluator {
       linkOrReplyPressure,
       listOf(
         insensitive("""\b(?:click|tap|open|visit|follow)\s+(?:(?:the|this|our)\s+)?(?:link|here|below)\b"""),
+        insensitive("""\b(?:click|tap|open|visit|follow)\s*:?\s+[a-z0-9-]+/[a-z0-9_-]+\b"""),
         insensitive("""\b(?:pindutin|i[-\s]?click|iclick|buksan|bisitahin|visit)\s+(?:ang\s+)?(?:link|link\s+na\s+ito|dito)\b"""),
         insensitive("""\b(?:reply|text)\s+(?:yes|now|immediately)\b"""),
         insensitive("""\b(?:mag[-\s]?reply|magreply|sumagot)\s+(?:ngayon|agad|kaagad)\b"""),

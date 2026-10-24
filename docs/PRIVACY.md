@@ -12,7 +12,6 @@ NotiCare analyzes available notification previews in memory on the device. Safe 
 | ------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Notification text from selected apps | Local scam/threat analysis and alert detail                       | Memory during analysis; only Suspicious/Dangerous alerts enter encrypted local History, up to the account's retention limit        |
 | Complete sender/display details      | Local display and sender masking                                  | Local only; never sent to Supabase                                                                                                 |
-| Contact lookup result (optional)     | Label an alert sender as saved or not found in Contacts           | Exact sender-number/name lookup on-device; only a match flag is kept with a non-Safe alert; no contact details are copied/uploaded |
 | Raw extracted URLs                   | Explain a local scan result without opening a link                | Local only; rendered as non-clickable text                                                                                         |
 | Scan preference and service status   | Keep the real-time switch correct after restart                   | Android DataStore                                                                                                                  |
 | History profile scope                | Keep one signed-in account from seeing another's History          | A one-way hash in Android DataStore; never uploaded                                                                                |
@@ -22,8 +21,6 @@ NotiCare analyzes available notification previews in memory on the device. Safe 
 | Translated message text              | Alert details when a message language is chosen                   | Translated on device by ML Kit (language pack downloaded once on Wi-Fi); in-memory display cache only; never uploaded              |
 
 If encrypted local History cannot be initialized, the app must not save raw messages. It should show a privacy-safe diagnostic state instead.
-
-The optional **Identify saved senders** setting requires Android Contacts permission. It is off until the user enables it and grants permission. The lookup runs only for messages already classified Suspicious or Dangerous. Revoking permission prevents further lookups.
 
 ## What can go to Supabase
 

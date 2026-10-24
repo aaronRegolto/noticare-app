@@ -217,26 +217,6 @@ class NotificationListenerModule(
   }
 
   @ReactMethod
-  fun setSenderContactLookupEnabled(enabled: Boolean, promise: Promise) {
-    bridgeScope.launch {
-      runCatching {
-        if (
-          enabled &&
-          appContext.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-          throw SecurityException("Contacts permission is required to identify saved senders.")
-        }
-        RealtimeScanPreferences.setSenderContactLookupEnabled(appContext, enabled)
-        monitoringStatusMap()
-      }.onSuccess(promise::resolve)
-        .onFailure { error ->
-          promise.reject("sender_contact_lookup_preference_failed", "Unable to update sender identification.", error)
-        }
-    }
-  }
-
-  @ReactMethod
   fun setFullScreenWarnings(enabled: Boolean, promise: Promise) {
     bridgeScope.launch {
       runCatching {
@@ -564,12 +544,6 @@ class NotificationListenerModule(
       putBoolean("historyOwnerConfigured", historyOwnerScope != null)
       putBoolean("historyStorageAvailable", historyStorageAvailable)
       putString("historyStorageStatus", if (historyStorageAvailable) "available" else "unavailable")
-      putBoolean(
-        "contactsPermissionGranted",
-        appContext.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) ==
-          android.content.pm.PackageManager.PERMISSION_GRANTED,
-      )
-      putBoolean("senderContactLookupEnabled", RealtimeScanPreferences.isSenderContactLookupEnabled(appContext))
       putString("lastContentStatus", RealtimeScanPreferences.lastContentStatus(appContext))
       putArray("monitoredApps", monitoredApps)
       putBoolean("batteryOptimizationExempt", ScanRuntime.isIgnoringBatteryOptimizations(appContext))
@@ -621,8 +595,6 @@ class NotificationListenerModule(
     putString("preview", record.message.replace(Regex("\\s+"), " ").take(160))
     putBoolean("blocked", record.blocked)
     putBoolean("isRead", record.isRead)
-    if (record.senderIsKnownContact == null) putNull("senderIsKnownContact")
-    else putBoolean("senderIsKnownContact", record.senderIsKnownContact)
     putDouble("receivedAt", record.receivedAt.toDouble())
     putString("level", record.level.wireValue)
     putInt("score", record.score)
