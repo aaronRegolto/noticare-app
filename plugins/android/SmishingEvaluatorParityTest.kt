@@ -165,7 +165,7 @@ class SmishingEvaluatorParityTest {
 
   @Test
   fun reportsTheSameVersionAsTheTypeScriptRuleBundle() {
-    assertEquals("2026.09.29", SmishingEvaluator.RULE_VERSION)
+    assertEquals("2026.10.24", SmishingEvaluator.RULE_VERSION)
   }
 
   /** Mirrors the rule set 2026.09.29 regressions in src/features/detection/__tests__/evaluator.test.ts. */
@@ -223,4 +223,22 @@ class SmishingEvaluatorParityTest {
     }
   }
 
+  @Test
+  fun abusiveLanguageAndThreatIndicators() {
+    listOf("You are a damn idiot.", "Putang ina, gago ka.").forEach { message ->
+      val result = SmishingEvaluator.evaluate(message)
+      assertEquals(message, ThreatLevel.SUSPICIOUS, result.level)
+      assertEquals(true, result.reasons.any { it.code == "abusive-language" })
+    }
+    listOf(
+      "I will hurt you if you come here." to "direct-threat",
+      "Papatayin kita." to "direct-threat",
+      "I will hack your account." to "cyber-threat",
+      "Magbayad ka or ipapakalat ko ang private photos mo." to "cyber-threat",
+    ).forEach { (message, code) ->
+      val result = SmishingEvaluator.evaluate(message)
+      assertEquals(message, ThreatLevel.DANGEROUS, result.level)
+      assertEquals(true, result.reasons.any { it.code == code })
+    }
+  }
 }

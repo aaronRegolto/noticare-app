@@ -15,10 +15,11 @@ object BlockedMessageStore {
   private const val prefsName = "noticare_blocked_messages"
   private const val maxEntries = 1000
 
-  fun hash(text: String): String {
+  fun hash(text: String, sourcePackage: String? = null): String {
     val normalized = text.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+    val scoped = sourcePackage?.let { "$it\n$normalized" } ?: normalized
     return MessageDigest.getInstance("SHA-256")
-      .digest(normalized.toByteArray(Charsets.UTF_8))
+      .digest(scoped.toByteArray(Charsets.UTF_8))
       .joinToString(separator = "") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
   }
 

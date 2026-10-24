@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const sections = [
   [
     'What stays on your device',
-    'Scanned SMS notifications, including Safe, Suspicious, and Dangerous messages, are saved in your encrypted local Messages inbox. Sender names and previews appear in the inbox; full text and raw links stay on this device.',
+    'Safe notifications are checked in memory and discarded. Only messages classified Suspicious or Dangerous are saved in your encrypted local Messages inbox. If you enable Identify saved senders, NotiCare compares an alert sender with Contacts on this device and stores only the match/no-match result; it never copies or uploads contact details.',
   ],
   [
     'What can be shared anonymously',
@@ -23,7 +23,7 @@ const sections = [
   ],
   [
     'Message language',
-    'If you choose Tagalog or English in Settings, captured messages are translated on this phone for display; message text is never sent for translation. NotiCare downloads Google’s language pack (about 60 MB) once over Wi-Fi. Links stay exactly as received, and scanning always uses the original message. ML Kit sends Google anonymous usage statistics for translation too, never the message text.',
+    'If you choose Tagalog or English in Settings, flagged messages are translated on this phone for display; message text is never sent for translation. NotiCare downloads Google’s language pack (about 60 MB) once over Wi-Fi. Links stay exactly as received, and scanning always uses the original message. ML Kit sends Google anonymous usage statistics for translation too, never the message text.',
   ],
   [
     'Reporting a message: the one exception',

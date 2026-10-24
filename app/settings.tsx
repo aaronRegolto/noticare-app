@@ -2,7 +2,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  Alert,
+  AppState,
+  Linking,
+  PermissionsAndroid,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppUpdate } from '@/src/providers/AppUpdateProvider';
@@ -43,8 +54,11 @@ import {
   requestNotificationListenerAccess,
   requestNotificationPolicyAccess,
   setScanningEnabled,
+  setMonitoredAppEnabled,
+  setSenderContactLookupEnabled,
   setFullScreenWarnings,
   type MonitoringStatus,
+  type MonitoredAppId,
 } from '@/src/services/notificationListener';
 import { useAppTheme } from '@/src/theme/ThemeProvider';
 import { ACCENTS, type ThemeColors, type ThemeMode } from '@/src/theme/palette';
@@ -337,7 +351,7 @@ export default function SettingsScreen() {
       if (enabled && !status?.notificationAccessGranted) {
         Alert.alert(
           'Allow Notification Access?',
-          'NotiCare needs Android Notification Access to check notifications from your Messages app.',
+          'NotiCare needs Android Notification Access to check notifications from the apps you select.',
           [
             { text: 'Not now', style: 'cancel' },
             {
@@ -368,6 +382,86 @@ export default function SettingsScreen() {
       }
     },
     [saving, status, colors],
+  );
+
+  const changeMonitoredApp = useCallback(
+    async (sourceId: MonitoredAppId, enabled: boolean) => {
+      if (saving || !status) return;
+      if (enabled && !status.notificationAccessGranted) {
+        Alert.alert(
+          'Allow Notification Access?',
+          'NotiCare needs Android Notification Access before it can scan notifications from selected apps.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            {
+              text: 'Open settings',
+              onPress: () => {
+                void setMonitoredAppEnabled(sourceId, true)
+                  .then(setStatus)
+                  .then(() => requestNotificationListenerAccess())
+                  .catch(() =>
+                    Alert.alert('Settings unavailable', 'Android Notification Access settings could not be opened.'),
+                  );
+              },
+            },
+          ],
+        );
+        return;
+      }
+      setSaving(true);
+      try {
+        setStatus(await setMonitoredAppEnabled(sourceId, enabled));
+      } catch {
+        Alert.alert('Unable to update app selection', 'Please rebuild NotiCare and try again.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [saving, status],
+  );
+
+  const changeSenderContactLookup = useCallback(
+    async (enabled: boolean) => {
+      if (saving || !status) return;
+      if (!isNativeMonitoringAvailable()) {
+        Alert.alert('Android app required', 'Sender identification is available in the installed Android app.');
+        return;
+      }
+      setSaving(true);
+      try {
+        if (enabled) {
+          const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CONTACTS, {
+            title: 'Identify saved senders?',
+            message:
+              'NotiCare checks whether a sender name or phone number matches your contacts. This lookup stays on your phone. Contact details are not copied, saved, or uploaded.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Not now',
+          });
+          if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+            const permanentlyDenied = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
+            Alert.alert(
+              permanentlyDenied ? 'Contacts permission is off' : 'Contacts permission not granted',
+              permanentlyDenied
+                ? 'Allow Contacts for NotiCare in Android app settings to identify saved senders. No contact details are copied or uploaded.'
+                : 'NotiCare will keep scanning for threats, but cannot label senders as saved or unknown without Contacts permission.',
+              permanentlyDenied
+                ? [
+                    { text: 'Not now', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+                  ]
+                : [{ text: 'OK' }],
+            );
+            return;
+          }
+        }
+        setStatus(await setSenderContactLookupEnabled(enabled));
+      } catch {
+        Alert.alert('Unable to update sender identification', 'Check the Android permission and try again.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [saving, status],
   );
 
   const changeWarningStyle = useCallback(
@@ -535,9 +629,9 @@ export default function SettingsScreen() {
   const linkProtection = !isNativeLinkHandlerAvailable()
     ? { value: 'Unavailable', tone: 'muted' as const, subtitle: 'Install the Android app to use this.' }
     : defaultBrowserActive === null
-      ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links before they open' }
+      ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links, then lets you choose a browser' }
       : defaultBrowserActive
-        ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links before they open' }
+        ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links, then lets you choose a browser' }
         : { value: 'Off', tone: 'warning' as const, subtitle: "Links aren't checked yet" };
   const primaryCarrier = session?.user.phone ? detectPhilippineCarrier(session.user.phone) : null;
   const preferredBrowser = browsers.find((browser) => browser.isPreferred)?.label;
@@ -625,6 +719,58 @@ export default function SettingsScreen() {
             }
             colors={colors}
           />
+          {status?.monitoredApps?.map((app) => (
+            <SettingsItem
+              key={app.id}
+              icon={app.id === 'sms' ? 'chatbubble-ellipses-outline' : 'chatbubble-outline'}
+              title={app.name}
+              subtitle={
+                !app.installed
+                  ? 'Not installed on this device'
+                  : app.id === 'sms'
+                    ? 'Default messages app'
+                    : 'Scan notification previews when available'
+              }
+              accessory={
+                <Switch
+                  value={app.enabled}
+                  disabled={saving || !app.installed}
+                  onValueChange={(value) => void changeMonitoredApp(app.id, value)}
+                  trackColor={{ false: '#AFBBCB', true: colors.accent }}
+                  thumbColor={app.enabled ? colors.accent : '#fff'}
+                  accessibilityLabel={`Scan ${app.name} notifications`}
+                />
+              }
+              colors={colors}
+            />
+          ))}
+          <SettingsItem
+            icon="person-circle-outline"
+            title="Identify saved senders"
+            subtitle={
+              status?.contactsPermissionGranted
+                ? 'Compare alert senders with Contacts on this device only'
+                : 'Optional: identify whether a flagged sender is saved in Contacts'
+            }
+            accessory={
+              <Switch
+                value={Boolean(status?.senderContactLookupEnabled && status.contactsPermissionGranted)}
+                disabled={saving || !status}
+                onValueChange={(value) => void changeSenderContactLookup(value)}
+                trackColor={{ false: '#AFBBCB', true: colors.accent }}
+                thumbColor={
+                  status?.senderContactLookupEnabled && status.contactsPermissionGranted ? colors.accent : '#fff'
+                }
+                accessibilityLabel="Identify flagged senders that are or are not saved in Contacts"
+              />
+            }
+            colors={colors}
+          />
+          {status?.scanningEnabled ? null : (
+            <Text style={styles.sourceHelp}>
+              Choose the apps to monitor. Turn on Real-Time Scanning above to start checking their notifications.
+            </Text>
+          )}
           {statusError ? (
             <SettingsAlert
               message={statusError}
@@ -668,7 +814,7 @@ export default function SettingsScreen() {
           />
           {defaultBrowserActive === false ? (
             <SettingsAlert
-              message="Make NotiCare your default browser so a risky link shows a warning the moment you tap it, in Messages, email, and other apps that open links in your browser. Safe links still open in your usual browser."
+              message="Make NotiCare your default browser to check links Android sends to a browser, then choose where to open safe links. Facebook or Messenger may keep taps inside their built-in browser unless you enable an external-links option there."
               actionLabel="Set as default browser"
               onAction={() => void enableLinkProtection()}
               colors={colors}
@@ -976,6 +1122,7 @@ function createStyles(colors: ThemeColors) {
     sheetLabel: { color: colors.textPrimary, fontSize: 15, fontWeight: '800' },
     sheetLabelSpaced: { marginTop: 14 },
     sheetNote: { color: colors.textSecondary, fontSize: 13, lineHeight: 19 },
+    sourceHelp: { color: colors.textMuted, fontSize: 12, lineHeight: 18, paddingHorizontal: 15, paddingBottom: 12 },
     sheetStatus: { marginTop: 6, gap: 8 },
     retryButton: {
       alignSelf: 'flex-start',

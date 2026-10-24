@@ -46,6 +46,11 @@ function updateManifest(manifest) {
         ],
         data: [{ $: { 'android:scheme': 'http' } }, { $: { 'android:scheme': 'https' } }],
       },
+      {
+        action: [{ $: { 'android:name': 'android.intent.action.SEND' } }],
+        category: [{ $: { 'android:name': 'android.intent.category.DEFAULT' } }],
+        data: [{ $: { 'android:mimeType': 'text/plain' } }],
+      },
     ],
   });
 
@@ -136,9 +141,10 @@ const BRIDGE_SOURCE_FILES = [
   'BrowserPreferences.kt',
   'LinkForwarder.kt',
   'DefaultBrowserStatus.kt',
+  'SharedLinkExtractor.kt',
 ];
 const ROOT_SOURCE_FILES = ['LinkHandlerModule.kt', 'LinkHandlerPackage.kt'];
-const TEST_SOURCE_FILES = ['RuleBasedUrlCheckerTest.kt'];
+const TEST_SOURCE_FILES = ['RuleBasedUrlCheckerTest.kt', 'SharedLinkExtractorTest.kt'];
 
 function writeGeneratedSources(androidRoot, packageName) {
   const packageRoot = path.join(androidRoot, 'app', 'src', 'main', 'java', ...packageName.split('.'));

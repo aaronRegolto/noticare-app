@@ -58,8 +58,10 @@ object EncryptedHistoryStore {
     ruleVersion: String,
     level: ThreatLevel,
     retentionLimit: Int = maxRetainedRecordsPerScope,
+    senderIsKnownContact: Boolean? = null,
   ): SaveResult = ProcessSafeFileLock.withLock(context, "noticare_history") {
     if (message.isBlank()) return@withLock SaveResult.Unavailable("content_unavailable")
+    if (!level.shouldRetainInHistory()) return@withLock SaveResult.Unavailable("safe_messages_are_not_saved")
 
     runCatching {
       // Safe is always stored as 0, whatever score/weights the caller passes.
@@ -77,8 +79,9 @@ object EncryptedHistoryStore {
         ruleVersion = ruleVersion,
         level = level,
         blocked = false,
+        senderIsKnownContact = senderIsKnownContact,
       ))
-      val merged = readRecords(context).toMutableList().apply { add(record) }
+      val merged = withoutSafeRecords(context).toMutableList().apply { add(record) }
       writeRecords(context, pruneOldestBeyondCap(merged, ownerScope, retentionLimit))
       incrementLifetimeBlocked(context, ownerScope)
       SaveResult.Saved(record.id)
@@ -91,7 +94,8 @@ object EncryptedHistoryStore {
   @Synchronized
   fun list(context: Context, ownerScope: String): List<BlockedHistoryRecord> =
     ProcessSafeFileLock.withLock(context, "noticare_history") {
-      readRecords(context)
+      val records = withoutSafeRecords(context)
+      records
         .filter { it.ownerScope == ownerScope }
         .sortedByDescending { it.receivedAt }
     }
@@ -99,8 +103,23 @@ object EncryptedHistoryStore {
   @Synchronized
   fun find(context: Context, id: String, ownerScope: String): BlockedHistoryRecord? =
     ProcessSafeFileLock.withLock(context, "noticare_history") {
-      readRecords(context).firstOrNull { it.id == id && it.ownerScope == ownerScope }
+      withoutSafeRecords(context).firstOrNull { it.id == id && it.ownerScope == ownerScope }
     }
+
+  private fun withoutSafeRecords(context: Context): List<BlockedHistoryRecord> {
+    val records = readRecords(context)
+    val safeRecords = records.filter { it.level == ThreatLevel.SAFE }
+    if (safeRecords.isEmpty()) return records
+
+    val retained = records.filterNot { it.level == ThreatLevel.SAFE }
+    writeRecords(context, retained)
+    val counts = readLifetimeCounts(context).toMutableMap()
+    safeRecords.mapNotNull { it.ownerScope }.groupingBy { it }.eachCount().forEach { (scope, removed) ->
+      if (scope in counts) counts[scope] = (counts.getValue(scope) - removed).coerceAtLeast(0)
+    }
+    writeLifetimeCounts(context, counts)
+    return retained
+  }
 
   /** Updates the captured item rather than creating a second copy after Block. */
   @Synchronized
@@ -166,8 +185,9 @@ object EncryptedHistoryStore {
   @Synchronized
   fun lifetimeBlockedCount(context: Context, ownerScope: String): Int =
     ProcessSafeFileLock.withLock(context, "noticare_history") {
+      withoutSafeRecords(context)
       readLifetimeCounts(context)[ownerScope]
-        ?: readRecords(context).count { it.ownerScope == ownerScope }
+        ?: readRecords(context).count { it.ownerScope == ownerScope && it.level.shouldRetainInHistory() }
     }
 
   @Synchronized
@@ -314,6 +334,7 @@ object EncryptedHistoryStore {
     put("level", record.level.wireValue)
     put("blocked", record.blocked)
     put("isRead", record.isRead)
+    put("senderIsKnownContact", record.senderIsKnownContact)
     put("message", record.message)
     put("redactedPreview", record.redactedPreview)
     put("sourcePackage", record.sourcePackage)
@@ -356,6 +377,8 @@ object EncryptedHistoryStore {
       level = ThreatLevel.entries.firstOrNull { it.wireValue == json.optString("level") } ?: ThreatLevel.DANGEROUS,
       blocked = json.optBoolean("blocked", true),
       isRead = json.optBoolean("isRead", false),
+      senderIsKnownContact = if (json.isNull("senderIsKnownContact")) null
+        else json.optBoolean("senderIsKnownContact"),
       message = message,
       redactedPreview = json.optString("redactedPreview").takeIf { it.isNotBlank() } ?: redactedPreview(),
       reasons = reasonsFromJson(json.optJSONArray("reasons")),

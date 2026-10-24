@@ -34,6 +34,14 @@ Turn on scanning in NotiCare, accept the explanation, and grant Notification Acc
 
 Set a default SMS application in Android Settings, then return to NotiCare. The native service resolves `Telephony.Sms.getDefaultSmsPackage(context)` for each eligible notification, so a default-app change is picked up without trusting a stale stored package.
 
+## Messenger does not appear as available
+
+The app checks whether Messenger (`com.facebook.orca`) is installed using Android package visibility. Install/update Messenger and reopen Settings to refresh detection. Turn on the Messenger switch as well as Real-Time Scanning. Android or Messenger may still hide notification previews; the listener cannot read message inboxes.
+
+## Sender identification says Contacts permission is not granted
+
+Install a build that includes the optional Contacts permission, then in Settings enable **Identify saved senders** and allow Contacts when Android asks. If permission was previously denied permanently, open Android **Settings > Apps > NotiCare > Permissions > Contacts** and allow it, then return to NotiCare. Without permission, message scanning still works; alerts simply are not labeled as saved or unknown. Contact contents are checked only on-device and are not copied or uploaded.
+
 ## A message says `content_unavailable`
 
 The Messages app or Android did not expose usable notification text, commonly because previews are hidden, the phone is locked, an app chose a generic notification summary, or the message is bundled. NotiCare does not guess. Unlock the device/show notification previews if appropriate, or use Manual Scan by copying and pasting the message yourself.

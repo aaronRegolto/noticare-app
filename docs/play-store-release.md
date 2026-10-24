@@ -63,17 +63,17 @@ upload a locally built release: the local Gradle config signs it with the debug 
 
 **Data safety:**
 
-| Question | Answer |
-|---|---|
-| Collects or shares user data? | Yes |
-| Encrypted in transit? | Yes |
-| Users can request deletion? | Yes, in the app and at https://admin.noticare.site/delete-account |
-| Personal info → Phone number | Collected. Purpose: Account management. Required. |
-| Messages → SMS or MMS | Collected **and shared** (other users see reported scam text). Purpose: App functionality, Fraud prevention and security. **Optional** (only when the user reports a message: Block & Report on a warning, or Report on a Manual Scan result). |
-| App activity → Other actions (scan results) | Collected. Purpose: Analytics, App functionality. Required when signed in. |
-| Device or other IDs | Collected (random installation ID). Purpose: App functionality. |
-| Financial info → Purchase history | Collected (plan status only). Payments go through PayMongo. |
-| App info and performance → Diagnostics | Collected by Google ML Kit when a photo is scanned in Manual Scan or messages are translated (device model, OS and app version, latency, input size; never the image or any message text). Purpose: Analytics. Confirm against Google's ML Kit data disclosure. |
+| Question                                     | Answer                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collects or shares user data?                | Yes                                                                                                                                                                                                                                                                                                                                                         |
+| Encrypted in transit?                        | Yes                                                                                                                                                                                                                                                                                                                                                         |
+| Users can request deletion?                  | Yes, in the app and at https://admin.noticare.site/delete-account                                                                                                                                                                                                                                                                                           |
+| Personal info → Phone number                 | Collected. Purpose: Account management. Required.                                                                                                                                                                                                                                                                                                           |
+| Messages → SMS/MMS and Other in-app messages | Collected **and shared only for a user-submitted scam report** (other users may see the reported text). Purpose: App functionality, Fraud prevention and security. **Optional**. Notification previews from enabled apps are otherwise processed and retained on-device only. Confirm the exact Play Console data types against the final build and policy. |
+| App activity → Other actions (scan results)  | Collected. Purpose: Analytics, App functionality. Required when signed in.                                                                                                                                                                                                                                                                                  |
+| Device or other IDs                          | Collected (random installation ID). Purpose: App functionality.                                                                                                                                                                                                                                                                                             |
+| Financial info → Purchase history            | Collected (plan status only). Payments go through PayMongo.                                                                                                                                                                                                                                                                                                 |
+| App info and performance → Diagnostics       | Collected by Google ML Kit when a photo is scanned in Manual Scan or messages are translated (device model, OS and app version, latency, input size; never the image or any message text). Purpose: Analytics. Confirm against Google's ML Kit data disclosure.                                                                                             |
 
 Photos are not declared: Manual Scan reads the image on the device and deletes it, and nothing from it
 is uploaded. The camera permission needs no Play Console form.
@@ -88,7 +88,7 @@ is uploaded. The camera permission needs no Play Console form.
 
 Google grants this by default only to calling and alarm apps. Declare it and explain:
 
-> NotiCare shows a full-screen warning on the lock screen when an incoming SMS is a likely phishing scam, so the user
+> NotiCare shows a warning when a selected messaging app posts a suspicious notification, so the user
 > sees it before they open the message and tap its link. It is only used for messages scored Dangerous.
 
 If Google declines, the app still works: Android turns the warning into a heads-up banner, and the "Display over

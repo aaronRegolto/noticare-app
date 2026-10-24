@@ -91,13 +91,14 @@ function updateManifest(manifest) {
     (entry) =>
       !DISALLOWED_PERMISSION_SET.has(entry?.$?.['android:name']) &&
       // Drop stale removal markers left by older prebuilds for permissions now in use.
-      !(
-        FORMERLY_DISALLOWED_PERMISSIONS.includes(entry?.$?.['android:name']) && entry?.$?.['tools:node'] === 'remove'
-      ),
+      !(FORMERLY_DISALLOWED_PERMISSIONS.includes(entry?.$?.['android:name']) && entry?.$?.['tools:node'] === 'remove'),
   );
 
   if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
     permissions.push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
+  }
+  if (!permissions.some((entry) => entry?.$?.['android:name'] === 'android.permission.READ_CONTACTS')) {
+    permissions.push({ $: { 'android:name': 'android.permission.READ_CONTACTS' } });
   }
   // Lets the danger-warning notification launch ThreatWarningActivity directly (full-screen when
   // the phone is locked or the screen is off, a heads-up banner otherwise) instead of a plain
@@ -124,6 +125,15 @@ function updateManifest(manifest) {
   // this array (as an earlier version of this plugin did) silently deletes whichever
   // plugin's manifest mod ran first, regardless of the order in app.config.js.
   const queriesRoot = asArray(manifest.manifest, 'queries')[0] ?? {};
+  const queriedPackages = asArray(queriesRoot, 'package').filter(
+    (entry) => entry?.$?.['android:name'] !== 'com.whatsapp',
+  );
+  for (const packageName of ['com.facebook.orca']) {
+    if (!queriedPackages.some((entry) => entry?.$?.['android:name'] === packageName)) {
+      queriedPackages.push({ $: { 'android:name': packageName } });
+    }
+  }
+  queriesRoot.package = queriedPackages;
   const smsIntents = asArray(queriesRoot, 'intent');
   const hasSmsDeliverQuery = smsIntents.some((entry) =>
     entry?.action?.some((action) => action?.$?.['android:name'] === 'android.provider.Telephony.SMS_DELIVER'),
@@ -239,10 +249,7 @@ function addDataStoreDependency(contents) {
 }
 
 function enableReleaseShrinking(properties) {
-  const releaseProperties = [
-    'android.enableMinifyInReleaseBuilds',
-    'android.enableShrinkResourcesInReleaseBuilds',
-  ];
+  const releaseProperties = ['android.enableMinifyInReleaseBuilds', 'android.enableShrinkResourcesInReleaseBuilds'];
 
   for (const key of releaseProperties) {
     const existing = properties.find((property) => property.type === 'property' && property.key === key);
@@ -294,7 +301,9 @@ function patchMainApplication(contents, language, packageName) {
   if (!updated.includes('isNotificationListenerProcess()')) {
     const lifecycleMarker = '    loadReactNative(this)\n    ApplicationLifecycleDispatcher.onApplicationCreate(this)';
     if (!updated.includes(lifecycleMarker)) {
-      throw new Error('Unable to isolate the notification listener process: Kotlin application lifecycle was not found.');
+      throw new Error(
+        'Unable to isolate the notification listener process: Kotlin application lifecycle was not found.',
+      );
     }
     updated = updated.replace(
       lifecycleMarker,
@@ -302,7 +311,9 @@ function patchMainApplication(contents, language, packageName) {
     );
     const configurationMarker = '    ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)';
     if (!updated.includes(configurationMarker)) {
-      throw new Error('Unable to isolate the notification listener process: Kotlin configuration lifecycle was not found.');
+      throw new Error(
+        'Unable to isolate the notification listener process: Kotlin configuration lifecycle was not found.',
+      );
     }
     updated = updated.replace(
       configurationMarker,
@@ -411,6 +422,10 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['ThreatWarningOverlay.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningOverlay.kt')],
     ['BlockedMessageStore.kt', path.join(sourceRoot, 'bridge', 'BlockedMessageStore.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
+    ['MessageCategories.kt', path.join(sourceRoot, 'bridge', 'MessageCategories.kt')],
+    ['NotificationSource.kt', path.join(sourceRoot, 'bridge', 'NotificationSource.kt')],
+    ['SenderContactLookup.kt', path.join(sourceRoot, 'bridge', 'SenderContactLookup.kt')],
+    ['RepeatSenderScorer.kt', path.join(sourceRoot, 'bridge', 'RepeatSenderScorer.kt')],
     ['MessageTranslator.kt', path.join(sourceRoot, 'bridge', 'MessageTranslator.kt')],
     ['WarningCopy.kt', path.join(sourceRoot, 'bridge', 'WarningCopy.kt')],
     ['SmishingEvaluatorParityTest.kt', path.join(testSourceRoot, 'bridge', 'SmishingEvaluatorParityTest.kt')],
@@ -420,6 +435,11 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['BlockedMessageStoreTest.kt', path.join(testSourceRoot, 'bridge', 'BlockedMessageStoreTest.kt')],
     ['ProcessSafeFileLockTest.kt', path.join(testSourceRoot, 'bridge', 'ProcessSafeFileLockTest.kt')],
     ['WarningCopyTest.kt', path.join(testSourceRoot, 'bridge', 'WarningCopyTest.kt')],
+    ['MessageCategoriesTest.kt', path.join(testSourceRoot, 'bridge', 'MessageCategoriesTest.kt')],
+    ['NotificationSourceTest.kt', path.join(testSourceRoot, 'bridge', 'NotificationSourceTest.kt')],
+    ['RepeatSenderScorerTest.kt', path.join(testSourceRoot, 'bridge', 'RepeatSenderScorerTest.kt')],
+    ['SenderContactLookupTest.kt', path.join(testSourceRoot, 'bridge', 'SenderContactLookupTest.kt')],
+    ['ThreatModelsTest.kt', path.join(testSourceRoot, 'bridge', 'ThreatModelsTest.kt')],
   ];
 
   for (const [templatePath, destinationPath] of mappings) {

@@ -18,7 +18,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/src/components/brand-logo';
-import { filterMessages, isMessageBlocked, messageSender, type MessageFilter } from '@/src/features/messages/inbox';
+import {
+  filterMessages,
+  isMessageBlocked,
+  messageSender,
+  type MessageCategoryFilter,
+  type MessageFilter,
+} from '@/src/features/messages/inbox';
 import { LANGUAGE_NAMES, localizeReason } from '@/src/features/translation';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { logError } from '@/src/services/logger';
@@ -48,7 +54,14 @@ const tones = {
   suspicious: { color: '#8A5C06', surface: '#FFF2D8', label: 'Suspicious' },
   dangerous: { color: '#B42332', surface: '#FDE9EC', label: 'Dangerous' },
 };
-const inboxFilters: MessageFilter[] = ['all', 'unread', 'safe', 'suspicious', 'dangerous', 'blocked'];
+const inboxFilters: MessageFilter[] = ['all', 'unread', 'suspicious', 'dangerous', 'blocked'];
+const categoryFilters: MessageCategoryFilter[] = ['all', 'spam', 'threats', 'phishing'];
+const categoryLabels = { spam: 'Spam', threats: 'Threats', phishing: 'Phishing' } as const;
+const categoryTones = {
+  spam: { color: '#9B4F00', surface: '#FFF2DE' },
+  threats: { color: '#9F2630', surface: '#FDE9EC' },
+  phishing: { color: '#5634A5', surface: '#F0EBFF' },
+} as const;
 
 function Header() {
   const router = useRouter();
@@ -144,9 +157,35 @@ const RecordCard = memo(function RecordCard({
           <Text style={[styles.dangerBadgeText, { color: tone.color }]}>{tone.label}</Text>
         </View>
       </View>
+      {record.senderIsKnownContact !== null && record.senderIsKnownContact !== undefined ? (
+        <View style={styles.senderIdentity}>
+          <Ionicons
+            name={record.senderIsKnownContact ? 'person-circle-outline' : 'person-remove-outline'}
+            size={14}
+            color={record.senderIsKnownContact ? '#087653' : '#8A5C06'}
+          />
+          <Text style={styles.senderIdentityText}>
+            {record.senderIsKnownContact ? 'Saved contact' : 'Not found in Contacts'}
+          </Text>
+        </View>
+      ) : null}
       <Text style={styles.redactedPreview} numberOfLines={2}>
         {translated ? translation.text : (record.preview ?? record.redactedPreview)}
       </Text>
+      {record.categories?.length ? (
+        <View style={styles.categoryRow}>
+          {record.categories.map((category) => {
+            const categoryTone = categoryTones[category];
+            return (
+              <View key={category} style={[styles.categoryBadge, { backgroundColor: categoryTone.surface }]}>
+                <Text style={[styles.categoryBadgeText, { color: categoryTone.color }]}>
+                  {categoryLabels[category]}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
       <View style={styles.recordFooter}>
         <Text style={[styles.score, { color: tone.color }]}>
           {isMessageBlocked(record) ? 'Notification blocked' : `Risk score ${record.score}/100`}
@@ -225,6 +264,13 @@ function DetailModal({
           <Text selectable style={styles.detailValue}>
             {messageSender(record)}
           </Text>
+          {record.senderIsKnownContact !== null && record.senderIsKnownContact !== undefined ? (
+            <Text style={styles.senderIdentityDetail}>
+              {record.senderIsKnownContact
+                ? 'This sender matched a contact saved on your phone.'
+                : 'This sender did not match a contact saved on your phone.'}
+            </Text>
+          ) : null}
           <Text style={styles.detailLabel}>MESSAGE STORED ON THIS DEVICE</Text>
           {translated ? (
             <View style={styles.translationBar}>
@@ -307,6 +353,7 @@ export default function HistoryScreen() {
   const [query, setQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [filter, setFilter] = useState<MessageFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<MessageCategoryFilter>('all');
   const focused = useRef(false);
   const request = useRef(0);
   const detailRequest = useRef(0);
@@ -453,7 +500,7 @@ export default function HistoryScreen() {
   }, []);
 
   const monthGroups = useMemo(() => {
-    const filtered = filterMessages(records, filter, query).filter((record) => {
+    const filtered = filterMessages(records, filter, query, categoryFilter).filter((record) => {
       const month = monthName(record.receivedAt);
       return !selectedMonth || selectedMonth === month;
     });
@@ -463,7 +510,7 @@ export default function HistoryScreen() {
       groups[month].push(record);
       return groups;
     }, {});
-  }, [query, records, selectedMonth, filter]);
+  }, [query, records, selectedMonth, filter, categoryFilter]);
   const months = useMemo(() => [...new Set(records.map((record) => monthName(record.receivedAt)))], [records]);
   const sections = useMemo(() => Object.entries(monthGroups).map(([title, data]) => ({ title, data })), [monthGroups]);
   const totalFiltered = useMemo(() => sections.reduce((sum, section) => sum + section.data.length, 0), [sections]);
@@ -474,9 +521,9 @@ export default function HistoryScreen() {
         <Ionicons name="chatbubbles-outline" size={38} color={colors.headerText} />
       </View>
       <Text style={styles.heading}>Messages</Text>
-      <Text style={styles.subheading}>SMS notifications captured while scanning is on</Text>
+      <Text style={styles.subheading}>Only messages with warning signs are kept here</Text>
       <View style={styles.counterRow}>
-        <Counter icon="chatbubbles-outline" value={records.length} label="Captured" tone="safe" />
+        <Counter icon="shield-checkmark-outline" value={records.length} label="Alerts" tone="danger" />
         <Counter
           icon="mail-unread-outline"
           value={records.filter((record) => !record.isRead).length}
@@ -487,14 +534,14 @@ export default function HistoryScreen() {
       <View style={styles.privacyBanner}>
         <Ionicons name="lock-closed-outline" size={19} color="#006DAB" />
         <Text style={styles.privacyText}>
-          Messages are captured only while monitoring is on, and are encrypted on this device. Older SMS and manual
-          scans are not included. Message text is never uploaded.
+          Safe conversations are checked on-device and discarded. Only Suspicious or Dangerous alerts are saved in
+          encrypted History; message text is not uploaded.
         </Text>
       </View>
       {isNativeMonitoringAvailable() && !supportsMessageInbox() && (
         <View style={styles.privacyBanner}>
           <Text style={styles.privacyText}>
-            Update to the full Android app to see all scanned messages. This version only shows blocked messages.
+            Update the Android app to view all flagged alerts. This older build only shows messages you block.
           </Text>
         </View>
       )}
@@ -505,50 +552,79 @@ export default function HistoryScreen() {
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search sender or message preview"
+              placeholder="Search alert sender or message"
               placeholderTextColor="#8294AA"
               style={styles.searchInput}
-              accessibilityLabel="Search captured message senders and previews"
+              accessibilityLabel="Search alert senders and messages"
             />
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
-            {inboxFilters.map((item) => (
+          <View style={styles.filterPanel}>
+            <Text style={styles.filterLabel}>CATEGORY</Text>
+            <View style={styles.categorySegment}>
+              {categoryFilters.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => setCategoryFilter(item)}
+                  style={[styles.categorySegmentItem, categoryFilter === item && styles.categorySegmentItemActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: categoryFilter === item }}
+                >
+                  <Text
+                    style={[styles.categorySegmentText, categoryFilter === item && styles.categorySegmentTextActive]}
+                  >
+                    {item === 'all' ? 'All' : categoryLabels[item]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.filterLabel}>RISK & STATUS</Text>
+            <View style={styles.filterOptions}>
+              {inboxFilters.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => setFilter(item)}
+                  style={[styles.monthChip, filter === item && styles.monthChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: filter === item }}
+                >
+                  <Text style={[styles.monthText, filter === item && styles.monthTextActive]}>
+                    {item.charAt(0).toUpperCase() + item.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.dateFilterHeader}>
+              <Text style={styles.filterLabel}>DATE</Text>
+              {selectedMonth ? (
+                <Pressable onPress={() => setSelectedMonth(null)} accessibilityRole="button">
+                  <Text style={styles.resetDate}>Reset</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateOptions}>
               <Pressable
-                key={item}
-                onPress={() => setFilter(item)}
-                style={[styles.monthChip, filter === item && styles.monthChipActive]}
+                onPress={() => setSelectedMonth(null)}
+                style={[styles.monthChip, !selectedMonth && styles.monthChipActive]}
                 accessibilityRole="button"
-                accessibilityState={{ selected: filter === item }}
+                accessibilityLabel="Show all history months"
+                accessibilityState={{ selected: !selectedMonth }}
               >
-                <Text style={[styles.monthText, filter === item && styles.monthTextActive]}>
-                  {item.charAt(0).toUpperCase() + item.slice(1)}
-                </Text>
+                <Text style={[styles.monthText, !selectedMonth && styles.monthTextActive]}>All months</Text>
               </Pressable>
-            ))}
-          </ScrollView>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.months}>
-            <Pressable
-              onPress={() => setSelectedMonth(null)}
-              style={[styles.monthChip, !selectedMonth && styles.monthChipActive]}
-              accessibilityRole="button"
-              accessibilityLabel="Show all history months"
-              accessibilityState={{ selected: !selectedMonth }}
-            >
-              <Text style={[styles.monthText, !selectedMonth && styles.monthTextActive]}>All months</Text>
-            </Pressable>
-            {months.map((month) => (
-              <Pressable
-                key={month}
-                onPress={() => setSelectedMonth(month)}
-                style={[styles.monthChip, selectedMonth === month && styles.monthChipActive]}
-                accessibilityRole="button"
-                accessibilityLabel={`Show ${month} history`}
-                accessibilityState={{ selected: selectedMonth === month }}
-              >
-                <Text style={[styles.monthText, selectedMonth === month && styles.monthTextActive]}>{month}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+              {months.map((month) => (
+                <Pressable
+                  key={month}
+                  onPress={() => setSelectedMonth(month)}
+                  style={[styles.monthChip, selectedMonth === month && styles.monthChipActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${month} history`}
+                  accessibilityState={{ selected: selectedMonth === month }}
+                >
+                  <Text style={[styles.monthText, selectedMonth === month && styles.monthTextActive]}>{month}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
           <View style={styles.listHeader}>
             <Text style={styles.recentHeading}>Messages ({totalFiltered})</Text>
             <Pressable onPress={removeAll} accessibilityRole="button">
@@ -584,10 +660,10 @@ export default function HistoryScreen() {
           <View style={styles.emptyIcon}>
             <Ionicons name="time-outline" size={35} color="#8DA4C3" />
           </View>
-          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptyTitle}>No alerts yet</Text>
           <Text style={styles.emptyCopy}>
-            Turn on real-time scanning and allow Notification Access. New scanned SMS notifications will appear here,
-            including Safe, Suspicious, and Dangerous messages.
+            Turn on real-time scanning and allow Notification Access. Safe conversations are checked on-device and
+            discarded; only messages with warning signs appear here.
           </Text>
           <Pressable onPress={() => router.push('/settings')} style={styles.scanLink} accessibilityRole="button">
             <Text style={styles.scanLinkText}>Go to Settings</Text>
@@ -599,6 +675,7 @@ export default function HistoryScreen() {
           <Pressable
             onPress={() => {
               setFilter('all');
+              setCategoryFilter('all');
               setQuery('');
               setSelectedMonth(null);
             }}
@@ -746,7 +823,45 @@ function createStyles(colors: ThemeColors) {
       gap: 8,
     },
     searchInput: { flex: 1, color: colors.textPrimary, fontSize: 14 },
-    months: { gap: 8, paddingVertical: 12 },
+    filterPanel: {
+      alignSelf: 'stretch',
+      marginTop: 14,
+      padding: 14,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 10,
+    },
+    filterLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+    categorySegment: {
+      flexDirection: 'row',
+      padding: 4,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 12,
+      gap: 3,
+    },
+    categorySegmentItem: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 36,
+      paddingHorizontal: 4,
+      borderRadius: 9,
+    },
+    categorySegmentItemActive: {
+      backgroundColor: colors.headerBg,
+      shadowColor: '#0B203A',
+      shadowOpacity: 0.16,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    categorySegmentText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+    categorySegmentTextActive: { color: '#fff' },
+    filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+    dateFilterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    resetDate: { color: colors.accent, fontSize: 11, fontWeight: '700' },
+    dateOptions: { gap: 7, paddingRight: 2 },
     monthChip: { backgroundColor: colors.surfaceAlt, borderRadius: 16, paddingVertical: 7, paddingHorizontal: 11 },
     monthChipActive: { backgroundColor: colors.headerBg },
     monthText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
@@ -771,11 +886,15 @@ function createStyles(colors: ThemeColors) {
     recordCard: {
       alignSelf: 'stretch',
       backgroundColor: colors.surface,
-      borderRadius: 0,
-      padding: 16,
-      marginBottom: 0,
-      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderRadius: 16,
+      padding: 15,
+      marginBottom: 10,
+      borderWidth: 1,
       borderColor: colors.border,
+      shadowColor: '#1E2D43',
+      shadowOpacity: 0.06,
+      shadowRadius: 6,
+      elevation: 1,
     },
     recordTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
     senderRow: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
@@ -788,6 +907,20 @@ function createStyles(colors: ThemeColors) {
       justifyContent: 'center',
     },
     sender: { color: colors.textPrimary, fontWeight: '800', fontSize: 14 },
+    senderIdentity: {
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 10,
+      marginLeft: 51,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 9,
+    },
+    senderIdentityText: { color: colors.textSecondary, fontSize: 10, fontWeight: '700' },
+    senderIdentityDetail: { color: colors.textMuted, fontSize: 12, marginTop: 5 },
     date: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
     dangerBadge: {
       alignSelf: 'flex-start',
@@ -802,6 +935,9 @@ function createStyles(colors: ThemeColors) {
     dangerBadgeText: { color: '#B42318', fontWeight: '800', fontSize: 9 },
     redactedLabel: { color: '#7186A4', fontWeight: '800', fontSize: 10, letterSpacing: 0.5, marginTop: 13 },
     redactedPreview: { color: colors.textSecondary, lineHeight: 20, marginTop: 9, fontSize: 13, marginLeft: 51 },
+    categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, marginLeft: 51 },
+    categoryBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+    categoryBadgeText: { fontSize: 10, fontWeight: '800' },
     recordFooter: {
       flexDirection: 'row',
       justifyContent: 'space-between',

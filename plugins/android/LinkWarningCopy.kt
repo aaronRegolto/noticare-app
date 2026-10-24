@@ -25,6 +25,9 @@ object LinkWarningCopy {
     open val confirmBody =
       "NotiCare flagged this link as risky. Opening it could expose your accounts or personal information."
     open val confirmCancel = "Cancel"
+    open val chooseBrowser = "Choose a browser"
+    open val openBrowser = "Open"
+    open val cancel = "Cancel"
     open val noBrowser = "No other browser is installed to open this link."
     open fun openFailed(browser: String) = "Could not open this link in $browser."
 
@@ -62,6 +65,9 @@ object LinkWarningCopy {
     override val confirmBody =
       "Na-flag ng NotiCare ang link na ito bilang mapanganib. Kapag binuksan mo ito, maaaring manakaw ang iyong account o personal na impormasyon."
     override val confirmCancel = "Kanselahin"
+    override val chooseBrowser = "Pumili ng browser"
+    override val openBrowser = "Buksan"
+    override val cancel = "Kanselahin"
     override val noBrowser = "Walang ibang browser na naka-install para buksan ang link na ito."
     override fun openFailed(browser: String) = "Hindi mabuksan ang link sa $browser."
 

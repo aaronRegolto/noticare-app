@@ -18,20 +18,20 @@ const pages = [
   {
     icon: 'shield-checkmark-outline' as const,
     title: 'Welcome to NotiCare',
-    body: 'NotiCare protects you from scam text messages (smishing). It checks new SMS notifications from your Messages app right on your phone, even when NotiCare is closed, and warns you before you tap a risky link.',
+    body: 'NotiCare checks message notifications on your phone for scam and threat warning signs. Safe messages are checked on-device and immediately discarded; only suspicious alerts are saved. SMS scanning is available by default; Messenger scanning is an optional app-by-app choice in Settings.',
     note: "NotiCare can't check messages whose preview Android hides, and no app can catch every scam, so stay alert.",
   },
   {
     icon: 'notifications-outline' as const,
     title: 'Allow notification access',
-    body: 'To check new texts as they arrive, Android needs you to turn on Notification Access for NotiCare. NotiCare only reads notifications from your default Messages app.',
-    note: 'Notifications from every other app, like social media, email, banking, and shopping, are ignored without being read.',
+    body: 'Android needs Notification Access for real-time scanning. NotiCare reads only notifications from apps you enable in Settings: your default Messages app and Messenger.',
+    note: 'Other apps are ignored before their notification text is read. Some selected apps may hide or redact previews.',
   },
   {
     icon: 'speedometer-outline' as const,
     title: 'Understand the warnings',
     body: 'Every message gets a risk score from 0 to 100. Safe (0) has no strong warning signs, Suspicious (30–69) means be careful, and Dangerous (70–100) is very likely a scam. For risky messages, NotiCare shows why and lets you choose Block & Report or Ignore.',
-    note: 'Blocking only hides the notification. The original SMS stays in your Messages app.',
+    note: 'Blocking only hides a notification. It never deletes the original message from its source app.',
   },
   {
     icon: 'lock-closed-outline' as const,

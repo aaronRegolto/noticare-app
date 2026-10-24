@@ -2,13 +2,13 @@
 
 ## Required test layers
 
-| Layer                         | Purpose                                                                    | Minimum evidence                                                         |
-| ----------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| TypeScript unit tests         | Normalization, URL extraction, scoring, Manual Scan UI logic               | Shared corpus covers at least 50 English, Tagalog, and Taglish messages. |
-| Kotlin unit tests             | Native rule evaluator, package gate, duplicate handling, preference gate   | Same corpus produces the same result as TypeScript.                      |
-| Android instrumentation tests | Native module, notification listener behavior, encrypted History           | Tests run on a device/emulator API level supported by the app.           |
-| Supabase/RLS tests            | Ownership, RPC input validation, aggregates, idempotency                   | Two-user isolation test and retry test pass.                             |
-| Physical-device test          | Actual Notification Access, default Messages package, suppression behavior | Tested with a development or release build, never Expo Go.               |
+| Layer                         | Purpose                                                           | Minimum evidence                                                                              |
+| ----------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| TypeScript unit tests         | Normalization, URL extraction, scoring, Manual Scan UI logic      | Shared corpus covers at least 50 English, Tagalog, and Taglish messages.                      |
+| Kotlin unit tests             | Native rules, selected-package gate, repeat scoring, link sharing | Same rule corpus produces the same result as TypeScript; Messenger routing is fixture-tested. |
+| Android instrumentation tests | Native module, notification listener behavior, encrypted History  | Tests run on a device/emulator API level supported by the app.                                |
+| Supabase/RLS tests            | Ownership, RPC input validation, aggregates, idempotency          | Two-user isolation test and retry test pass.                                                  |
+| Physical-device test          | Actual Notification Access, selected apps, suppression behavior   | Tested with a development or release build, never Expo Go.                                    |
 
 ## Fast checks
 
@@ -59,26 +59,27 @@ Use two phone-authenticated users, **A** and **B**, and distinct registered devi
 
 1. Use a development or release APK; do not use Expo Go.
 2. Sign in with a test phone number and complete onboarding.
-3. Set the intended Messages application as Android's default SMS app.
+3. Set the intended Messages application as Android's default SMS app. In NotiCare Settings, verify Messenger installed status, then enable it if you want to test Messenger notifications.
 4. Turn scanning on, accept the explanation, and grant Notification Access in Android Settings.
-5. Return to NotiCare and verify status is Active only when permission, service connection, and a default Messages app are all present.
-6. Send synthetic Safe, Suspicious, and Dangerous messages to the physical test device. Never use real customer messages.
-7. Confirm a non-SMS app notification is ignored before extras are accessed and does not appear in History or analytics.
-8. Confirm a Safe SMS remains visible without a NotiCare alert.
-9. Confirm a Suspicious SMS remains visible and yields a caution alert but no History record.
-10. Confirm a Dangerous notification shows its heuristic reasons and Block/Ignore controls in the selected warning style. Verify **Ignore** leaves the notification visible and creates no History record. Then repeat, choose **Block**, and—when Android/source app permits—confirm suppression and exactly one encrypted History record. Verify the SMS still exists in the Messages inbox.
+5. Return to NotiCare and verify app selections persist and the listener reports permission/service state honestly.
+6. Send synthetic Safe, Suspicious, and Dangerous messages to the physical test device from each selected app available. Verify Safe results are evaluated but never saved in History or telemetry, and only Suspicious/Dangerous results create alerts. Never use real customer messages.
+7. Verify an unselected app and an unrelated package are rejected before extras are read.
+8. Confirm readable selected-app previews are classified in memory, Safe previews are discarded, and only Suspicious/Dangerous alerts are saved in encrypted History. Verify category and alert filters.
+9. Confirm Suspicious and Dangerous notifications show warning controls. **Ignore** leaves the notification visible; **Block** attempts suppression and sets the blocked marker only when Android accepts the request. Verify the underlying message remains in its source app.
+10. After one SMS with independent spam/phishing evidence in the default Messages app, send subsequent SMS messages from that sender. Verify the score rises; verify Messenger messages from the same displayed name do not inherit the SMS repeat-sender score. Benign repeated SMS messages alone must not escalate.
 11. Turn scanning off and repeat a message test; confirm no notification content is processed.
 12. Hide message previews/lock the device and confirm the app reports `content_unavailable`, not a guessed result.
-13. Change the default Messages app, revoke/regrant access, restart the device, and update the app. Verify the Dashboard state changes honestly.
+13. Change the default Messages app, revoke/regrant access, restart the device, and update the app. Verify per-app installed/selected status remains accurate.
 14. Sign out while keeping protected History, sign in as a different test account, and verify that the second account cannot list, open, delete, or clear the first account's records.
 
-Record Android version, Messages app/package/version, device model, build SHA, scanner rule version, and observed limitation. Do not attach raw SMS content or full phone numbers to test reports.
+Record Android version, tested source app/package/version, device model, build SHA, scanner rule version, and observed limitation. Do not attach raw message content or full phone numbers to test reports.
 
 ## Manual Scan checks
 
 - Clipboard remains untouched until the user taps Paste.
 - Paste, clear, character count, disabled-empty scan button, tutorial replay/skip/hide, and accessibility labels work.
 - URLs are displayed as text only; no link is opened, previewed, resolved, or fetched.
+- Sharing exactly one http/https URL to NotiCare routes it through the same local URL checker. Missing or multiple links are rejected.
 - Manual scans use the same rule version as the native scanner.
 - A Manual Scan can send anonymous classification metadata but never `blocked=true` and never creates encrypted blocked History.
 

@@ -34,6 +34,23 @@ class V3RiskEvaluatorTest {
   }
 
   @Test
+  fun highSpecificityModelOnlySignalRaisesSafeToSuspiciousButNeverDangerous() {
+    val rules = SmishingEvaluator.evaluate("An ordinary message with no recognized rule.")
+    val below = V3RiskEvaluator.combine(rules, 0.79f, 0.003735364f, 0.8f)
+    assertEquals(ThreatLevel.SAFE, below.level)
+    assertEquals(rules, below)
+
+    val above = V3RiskEvaluator.combine(rules, 0.8f, 0.003735364f, 0.8f)
+    assertEquals(ThreatLevel.SUSPICIOUS, above.level)
+    assertEquals(30, above.score)
+    assertEquals(listOf("v3-model-risk"), above.reasons.map { it.code })
+    assertEquals(above.score, above.reasons.sumOf { it.weight })
+
+    val highest = V3RiskEvaluator.combine(rules, 1f, 0.003735364f, 0.8f)
+    assertEquals(ThreatLevel.SUSPICIOUS, highest.level)
+  }
+
+  @Test
   fun modelMayReinforceSpecificAccountWarningButNeverCreateDangerous() {
     val rules = SmishingEvaluator.evaluate("Your account is suspended.")
     assertEquals(ThreatLevel.SAFE, rules.level)

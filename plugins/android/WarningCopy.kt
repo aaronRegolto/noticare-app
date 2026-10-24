@@ -196,6 +196,14 @@ object WarningCopy {
         "Pinapapadala ka ng pera, gift card, o bayad sa isang personal na account o bagong numero — karaniwang modus ng mga nagpapanggap na kapamilya, boss, o kumpanya."),
       "advance-fee-request" to ("Pinapabayad muna bago makatanggap" to
         "Pinapabayad ka muna ng fee bago mo makuha ang premyo, loan, refund, trabaho, o padala."),
+      "abusive-language" to ("Mura o mapanakit na pananalita" to
+        "May nakilalang mura sa Ingles o Filipino; maaaring mag-iba ang kahulugan depende sa konteksto."),
+      "direct-threat" to ("Tahasang banta ng pananakit" to
+        "Nagbabanta ang mensahe ng pisikal na pananakit o pag-atake nang personal."),
+      "cyber-threat" to ("Banta na mang-hack, maglantad, o gumamit ng pribadong impormasyon" to
+        "Nagbabanta ang mensahe na pasukin o agawin ang account, ilantad ang pribadong impormasyon, o gamitin ito sa maling paraan."),
+      "repeat-sender-escalation" to ("Paulit-ulit na kahina-hinalang nagpadala ng SMS" to
+        "Nagpadala ulit ang taong ito ng SMS matapos matukoy dati ang spam o phishing sa Messages app."),
       "obfuscated-text" to ("Itinagong teksto" to
         "May nakatagong character o kahawig na letra ang mensahe."),
       "url-ip-address" to ("Link na IP address" to

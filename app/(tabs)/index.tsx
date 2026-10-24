@@ -365,7 +365,7 @@ export default function DashboardScreen() {
       if (enabled && !monitoring?.notificationAccessGranted) {
         Alert.alert(
           'Allow Notification Access?',
-          'NotiCare needs Android Notification Access to check your default Messages app. It ignores every other app.',
+          'NotiCare needs Android Notification Access to check only the apps you enable in Settings. Other apps are ignored before their notification text is read.',
           [
             { text: 'Not now', style: 'cancel' },
             {
@@ -735,7 +735,7 @@ export default function DashboardScreen() {
             />
             <Metric
               icon="archive-outline"
-              title="Total blocked"
+              title="Total alerts"
               // The lifetime count, not history.length: only the newest messages are kept as full
               // detail records on-device (see Settings), but this stat keeps counting all-time.
               value={String(monitoring?.lifetimeBlockedCount ?? history.length)}

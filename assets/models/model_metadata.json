@@ -1,55 +1,118 @@
 {
-    "model_provenance": {
-        "candidate_status": "prototype_candidate",
-        "version": "3.0.0-augmented",
-        "keras_file": "noticare_smishing_v3.keras",
-        "dataset_provenance_counts": {
-            "UCI_SMS_Spam": 5158,
-            "NCSU_SMS_Phishing": 4135
-        }
+  "model_provenance": {
+    "candidate_status": "retrained_candidate",
+    "version": "3.2.0",
+    "architecture": "Byte-level CNN text classifier",
+    "keras_file": "noticare_smishing_v3.keras",
+    "training_script": "ml/train.py",
+    "dataset_provenance_counts": {
+      "Local_PH_SMS_spam": 725,
+      "NCSU_SMS_Phishing": 4135,
+      "UCI_SMS_Spam": 5159
+    }
+  },
+  "final_training_set": {
+    "total_rows": 10019,
+    "splits": {
+      "train": {
+        "total": 7001,
+        "scam": 3835,
+        "legitimate": 3166
+      },
+      "validation": {
+        "total": 1460,
+        "scam": 821,
+        "legitimate": 639
+      },
+      "test": {
+        "total": 1558,
+        "scam": 846,
+        "legitimate": 712
+      }
     },
-    "final_training_set": {
-        "base_rows": 6537,
-        "synthetic_rows": 1435,
-        "total_rows": 7972,
-        "note": "Source provenance may overlap for individual deduplicated rows."
+    "skipped": {
+      "UCI_SMS_Spam: duplicate within source": 415,
+      "NCSU_SMS_Phishing: duplicate within source": 39285,
+      "NCSU_SMS_Phishing: over max_rows": 24609,
+      "Local_PH_SMS_spam: duplicate within source": 105
     },
-    "technical_specifications": {
-        "input_shape": [
-            256
-        ],
-        "runtime_tensor_shape": [
-            1,
-            256
-        ],
-        "input_dtype": "int32",
-        "preprocessing": {
-            "encoding": "UTF-8",
-            "max_length": 256,
-            "byte_offset": "add 1 to each byte value",
-            "padding": "zero-pad to max_length",
-            "truncation": "truncate beyond 256 bytes"
-        },
-        "locked_thresholds": {
-            "safe": 0.0037353637162595987,
-            "dangerous": 0.0239969864487648
-        }
+    "note": "Duplicates removed; splits are assigned by message template so one campaign never spans train and test."
+  },
+  "technical_specifications": {
+    "input_shape": [256],
+    "runtime_tensor_shape": [1, 256],
+    "input_dtype": "int32",
+    "preprocessing": {
+      "encoding": "UTF-8",
+      "max_length": 256,
+      "byte_offset": "add 1 to each byte value",
+      "padding": "zero-pad to max_length",
+      "truncation": "truncate beyond 256 bytes"
     },
-    "audit_performance_frozen_test": {
-        "sample_count": 1366,
-        "accuracy": 0.9773,
-        "pr_auc": 0.9977,
-        "safety_errors": {
-            "false_negatives": 2,
-            "false_positives": 25,
-            "rate": "1.98%"
-        },
-        "uncertainty_count": 90
+    "locked_thresholds": {
+      "safe": 0.2185145765542984,
+      "dangerous": 0.2185145765542984,
+      "model_only": 0.360069215297699
     },
-    "known_limitations": [
-        "Five-case Philippine regression suite is not exhaustive",
-        "Known False Positive trigger for high-value legitimate GCash receipts",
-        "SAFE label represents lower estimated risk, not guaranteed safety"
-    ],
-    "exported_at": "2026-08-22 22:35:52"
+    "threshold_rule": "safe keeps 99.5% of validation scams at or above it; dangerous lets at most 2.0% of validation legitimate messages reach it; model-only keeps at most 0.5% of validation legitimate messages above threshold"
+  },
+  "audit_performance_frozen_test": {
+    "sample_count": 1558,
+    "accuracy": 0.9936,
+    "pr_auc": 0.9997,
+    "roc_auc": 0.9996,
+    "safety_errors": {
+      "false_negatives": 5,
+      "false_positives": 9,
+      "rate": "0.90%"
+    },
+    "uncertainty_count": 0,
+    "at_app_threshold": {
+      "scams_flagged": 841,
+      "scams_total": 846,
+      "legitimate_flagged": 9,
+      "legitimate_total": 712
+    },
+    "at_model_only_threshold": {
+      "scams_flagged": 841,
+      "scams_total": 846,
+      "legitimate_flagged": 7,
+      "legitimate_total": 712,
+      "validation_max_false_alarm_rate": 0.005
+    },
+    "by_source": {
+      "Local_PH_SMS_spam": {
+        "scams_flagged": "116/116",
+        "legitimate_flagged": "0/0"
+      },
+      "NCSU_SMS_Phishing": {
+        "scams_flagged": "641/641",
+        "legitimate_flagged": "0/0"
+      },
+      "UCI_SMS_Spam": {
+        "scams_flagged": "84/89",
+        "legitimate_flagged": "9/712"
+      }
+    }
+  },
+  "training": {
+    "runtime": "TensorFlow 2.21.0",
+    "parameters": 20641,
+    "epochs_run": 19,
+    "best_epoch": 15,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "seed": 42,
+    "class_weight": {
+      "0": 1.1057,
+      "1": 0.9128
+    },
+    "tflite_max_difference": 2.384185791015625e-7
+  },
+  "known_limitations": [
+    "Accuracy is measured on a test split of the same datasets, not on messages from NotiCare users.",
+    "SAFE label represents lower estimated risk, not guaranteed safety.",
+    "The model-only high-specificity threshold may raise a message to Suspicious but never Dangerous; rule evidence still controls Dangerous results."
+  ],
+  "exported_at": "2026-10-23 23:48:41"
 }

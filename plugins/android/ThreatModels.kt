@@ -19,6 +19,8 @@ enum class ThreatLevel(val wireValue: String) {
   DANGEROUS("dangerous"),
 }
 
+internal fun ThreatLevel.shouldRetainInHistory(): Boolean = this != ThreatLevel.SAFE
+
 data class ThreatResult(
   val level: ThreatLevel,
   val score: Int,
@@ -64,4 +66,5 @@ data class BlockedHistoryRecord(
   val level: ThreatLevel = ThreatLevel.DANGEROUS,
   val blocked: Boolean = true,
   val isRead: Boolean = false,
+  val senderIsKnownContact: Boolean? = null,
 )

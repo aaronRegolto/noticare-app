@@ -48,6 +48,25 @@ describe('credential wording regressions', () => {
   ])('suspicious: %s', (message) => {
     expect(evaluateThreat(message).level).toBe('suspicious');
   });
+
+  describe('abusive-language and threat indicators', () => {
+    it.each(['You are a damn idiot.', 'Putang ina, gago ka.'])('marks profanity as suspicious: %s', (message) => {
+      const result = evaluateThreat(message);
+      expect(result.level).toBe('suspicious');
+      expect(result.reasons.some((reason) => reason.code === 'abusive-language')).toBe(true);
+    });
+
+    it.each([
+      ['I will hurt you if you come here.', 'direct-threat'],
+      ['Papatayin kita.', 'direct-threat'],
+      ['I will hack your account.', 'cyber-threat'],
+      ['Magbayad ka or ipapakalat ko ang private photos mo.', 'cyber-threat'],
+    ])('marks a direct or cyber threat dangerous: %s', (message, code) => {
+      const result = evaluateThreat(message);
+      expect(result.level).toBe('dangerous');
+      expect(result.reasons.some((reason) => reason.code === code)).toBe(true);
+    });
+  });
   it.each([
     'hello love',
     'Never reply with your six-digit OTP.',

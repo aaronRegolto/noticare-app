@@ -218,6 +218,22 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
       'Pinapabayad muna bago makatanggap',
       'Pinapabayad ka muna ng fee bago mo makuha ang premyo, loan, refund, trabaho, o padala.',
     ],
+    'abusive-language': [
+      'Mura o mapanakit na pananalita',
+      'May nakilalang mura sa Ingles o Filipino; maaaring mag-iba ang kahulugan depende sa konteksto.',
+    ],
+    'direct-threat': [
+      'Tahasang banta ng pananakit',
+      'Nagbabanta ang mensahe ng pisikal na pananakit o pag-atake nang personal.',
+    ],
+    'cyber-threat': [
+      'Banta na mang-hack, maglantad, o gumamit ng pribadong impormasyon',
+      'Nagbabanta ang mensahe na pasukin o agawin ang account, ilantad ang pribadong impormasyon, o gamitin ito sa maling paraan.',
+    ],
+    'repeat-sender-escalation': [
+      'Paulit-ulit na kahina-hinalang nagpadala ng SMS',
+      'Nagpadala ulit ang taong ito ng SMS matapos matukoy dati ang spam o phishing sa Messages app.',
+    ],
     'obfuscated-text': ['Itinagong teksto', 'May nakatagong character o kahawig na letra ang mensahe.'],
     'url-ip-address': [
       'Link na IP address',

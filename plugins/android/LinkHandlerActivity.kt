@@ -1,6 +1,7 @@
 package __NOTICARE_PACKAGE__.bridge
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -11,7 +12,7 @@ import android.widget.Toast
  * excludeFromRecents theme so it never shows a visible window of its own
  * while it decides what to do with the link.
  *
- * SAFE links are forwarded straight to the user's real browser.
+ * SAFE links show a browser picker after NotiCare checks them.
  * SUSPICIOUS/DANGEROUS links open [LinkWarningActivity] at once, natively,
  * without waiting for React Native to start.
  */
@@ -20,10 +21,26 @@ class LinkHandlerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
+    }
 
-        val url = intent?.dataString
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(incoming: Intent?) {
+        val url = when (incoming?.action) {
+            Intent.ACTION_VIEW -> incoming.dataString
+            Intent.ACTION_SEND -> SharedLinkExtractor.extractSingleUrl(
+                incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+            )
+            else -> null
+        }
         if (url == null) {
-            Log.w(TAG, "LinkHandlerActivity started without a URL; finishing.")
+            Log.w(TAG, "LinkHandlerActivity started without exactly one supported URL; finishing.")
+            Toast.makeText(this, "Share one http or https link with NotiCare to check it.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -33,18 +50,11 @@ class LinkHandlerActivity : Activity() {
         Log.i(TAG, "Checked a link: ${result.verdict} (${result.reason})")
 
         if (result.verdict == UrlVerdict.SAFE) {
-            val copy = LinkWarningCopy.forContext(this)
-            when (val forwarded = LinkForwarder.openInRealBrowser(this, url)) {
-                is LinkForwarder.ForwardResult.NoBrowserInstalled ->
-                    Toast.makeText(this, copy.noBrowser, Toast.LENGTH_LONG).show()
-                is LinkForwarder.ForwardResult.Failed ->
-                    Toast.makeText(this, copy.openFailed(forwarded.browserLabel), Toast.LENGTH_LONG).show()
-                is LinkForwarder.ForwardResult.Opened -> Unit
-            }
+            LinkForwarder.showBrowserChooser(this, url) { finish() }
         } else {
             startActivity(LinkWarningActivity.intent(this, url))
+            finish()
         }
-        finish()
     }
 
     companion object {

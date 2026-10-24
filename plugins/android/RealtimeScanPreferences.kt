@@ -75,6 +75,9 @@ object RealtimeScanPreferences {
   private val scanQuotaCountKey = intPreferencesKey("scan_quota_count_v1")
   private val scanQuotaNoticeMonthKey = stringPreferencesKey("scan_quota_notice_month_v1")
   private val lastContentStatusKey = stringPreferencesKey("last_content_status_v1")
+  private val smsSourceEnabledKey = booleanPreferencesKey("scan_source_sms_v1")
+  private val messengerSourceEnabledKey = booleanPreferencesKey("scan_source_messenger_v1")
+  private val senderContactLookupEnabledKey = booleanPreferencesKey("sender_contact_lookup_enabled_v1")
 
   /** Free tier's monthly cap on automatic (real-time) scans. Manual paste-text scanning is never limited. */
   const val freeMonthlyScanQuota = 10
@@ -91,6 +94,38 @@ object RealtimeScanPreferences {
     preferencesStore(context).edit { preferences ->
       preferences[scanningEnabledKey] = enabled
     }
+  }
+
+  suspend fun isSourceEnabled(context: Context, sourceId: String): Boolean {
+    val key = sourceKey(sourceId)
+    return preferencesStore(context).data
+      .catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+      }
+      .first()[key] ?: (sourceId == "sms")
+  }
+
+  suspend fun setSourceEnabled(context: Context, sourceId: String, enabled: Boolean) {
+    val key = sourceKey(sourceId)
+    preferencesStore(context).edit { preferences -> preferences[key] = enabled }
+  }
+
+  suspend fun isSenderContactLookupEnabled(context: Context): Boolean = preferencesStore(context).data
+    .catch { error ->
+      if (error is IOException) emit(emptyPreferences()) else throw error
+    }
+    .first()[senderContactLookupEnabledKey] ?: false
+
+  suspend fun setSenderContactLookupEnabled(context: Context, enabled: Boolean) {
+    preferencesStore(context).edit { preferences ->
+      preferences[senderContactLookupEnabledKey] = enabled
+    }
+  }
+
+  private fun sourceKey(sourceId: String) = when (sourceId) {
+    "sms" -> smsSourceEnabledKey
+    "messenger" -> messengerSourceEnabledKey
+    else -> throw IllegalArgumentException("Unsupported notification source")
   }
 
   /** Full-screen warnings are opt-in; banners remain the safe platform fallback. */

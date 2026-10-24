@@ -96,15 +96,16 @@ class SmsNotificationListener : NotificationListenerService() {
     // 2. Resolve the device's current default SMS provider for every event.
     // This automatically handles default-Messages-app changes.
     val defaultSmsPackage = ScanRuntime.defaultSmsPackage(applicationContext)
-    if (defaultSmsPackage == null) {
-      Log.d(logTag, "drop: no default SMS package resolved")
-      return
-    }
     val sourcePackage = sbn.packageName ?: return
 
-    // 3. Reject all non-default-SMS and NotiCare notifications BEFORE extras.
-    if (sourcePackage != defaultSmsPackage || sourcePackage == packageName) {
-      Log.d(logTag, "drop: source=$sourcePackage default=$defaultSmsPackage")
+    // 3. Validate the source package and its opt-in before touching notification extras.
+    val sourceId = NotificationSource.idForPackage(sourcePackage, defaultSmsPackage)
+    if (
+      sourceId == null ||
+      sourcePackage == packageName ||
+      !RealtimeScanPreferences.isSourceEnabled(applicationContext, sourceId)
+    ) {
+      Log.d(logTag, "drop: source not enabled or unsupported: $sourcePackage")
       return
     }
 
@@ -138,7 +139,11 @@ class SmsNotificationListener : NotificationListenerService() {
     // This runs before the duplicate check below: the same scam resent within its two-minute
     // window has the same sender and text, and must still be hidden rather than silently skipped
     // (which would leave it visible). A double-posted notification just replaces the banner.
-    if (BlockedMessageStore.contains(applicationContext, ownerScope, BlockedMessageStore.hash(text))) {
+    val sourceHash = BlockedMessageStore.hash(text, sourcePackage)
+    val isRememberedBlock = BlockedMessageStore.contains(applicationContext, ownerScope, sourceHash) ||
+      (sourceId == "sms" &&
+        BlockedMessageStore.contains(applicationContext, ownerScope, BlockedMessageStore.hash(text)))
+    if (isRememberedBlock) {
       val hidden = runCatching {
         cancelNotification(sbn.key)
         true
@@ -180,7 +185,15 @@ class SmsNotificationListener : NotificationListenerService() {
       return
     }
 
-    val result = V3RiskEvaluator.evaluate(applicationContext, text)
+    val evaluated = V3RiskEvaluator.evaluate(applicationContext, text)
+    val result = RepeatSenderScorer.escalate(
+      result = evaluated,
+      sourceId = sourceId,
+      sender = sender,
+      sourcePackage = sourcePackage,
+      history = EncryptedHistoryStore.list(applicationContext, ownerScope),
+      now = sbn.postTime,
+    )
     // Do not attribute an in-flight scan to a newly signed-in profile.
     if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != ownerScope) {
       Log.d(logTag, "drop: owner scope changed mid-scan")
@@ -191,6 +204,24 @@ class SmsNotificationListener : NotificationListenerService() {
       return
     }
     Log.d(logTag, "evaluated: level=${result.level} score=${result.score}")
+    if (!result.level.shouldRetainInHistory()) {
+      RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")
+      Log.d(logTag, "safe message checked in memory and discarded")
+      return
+    }
+    val senderIsKnownContact = if (
+      RealtimeScanPreferences.isSenderContactLookupEnabled(applicationContext) &&
+      !sender.isNullOrBlank()
+    ) {
+      try {
+        SenderContactLookup.isKnownContact(applicationContext, sender)
+      } catch (error: SecurityException) {
+        Log.w(logTag, "Contacts permission was revoked during sender lookup", error)
+        null
+      }
+    } else {
+      null
+    }
     val saved = EncryptedHistoryStore.saveScanned(
       context = applicationContext,
       ownerScope = ownerScope,
@@ -204,13 +235,14 @@ class SmsNotificationListener : NotificationListenerService() {
       ruleVersion = result.ruleVersion,
       level = result.level,
       retentionLimit = EncryptedHistoryStore.retentionLimitPerAccount(tier),
+      senderIsKnownContact = senderIsKnownContact,
     )
     val recordId = (saved as? EncryptedHistoryStore.SaveResult.Saved)?.id
     RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")
     Log.d(logTag, "saved=${saved::class.simpleName} recordId=${recordId != null}")
 
     when (result.level) {
-      ThreatLevel.SAFE -> EncryptedTelemetryQueue.enqueue(applicationContext, result, false, sbn.postTime)
+      ThreatLevel.SAFE -> Unit
       ThreatLevel.SUSPICIOUS -> {
         handleActionableNotification(sbn, sender, text, sourcePackage, result, ownerScope, recordId)
       }
@@ -273,7 +305,11 @@ class SmsNotificationListener : NotificationListenerService() {
       }
 
       EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, true, pending.postedAt)
-      BlockedMessageStore.remember(applicationContext, pending.ownerScope, BlockedMessageStore.hash(pending.message))
+      BlockedMessageStore.remember(
+        applicationContext,
+        pending.ownerScope,
+        BlockedMessageStore.hash(pending.message, pending.sourcePackage),
+      )
       val historySaved = pending.recordId?.let { id ->
         runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
           .getOrDefault(false)
@@ -305,6 +341,7 @@ class SmsNotificationListener : NotificationListenerService() {
       .digest("$sourcePackage\n$text".toByteArray(Charsets.UTF_8))
     return bytes.joinToString(separator = "") { byte -> "%02x".format(Locale.ROOT, byte.toInt() and 0xff) }
   }
+
 }
 
 private object NotificationTextExtractor {

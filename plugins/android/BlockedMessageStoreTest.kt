@@ -29,4 +29,14 @@ class BlockedMessageStoreTest {
       BlockedMessageStore.hash("  Hello   World "),
     )
   }
+
+  @Test
+  fun sourceScopedHashesDoNotCrossSuppressDifferentApps() {
+    val message = "Your account is locked. Send your OTP now."
+    assertNotEquals(
+      BlockedMessageStore.hash(message, "com.google.android.apps.messaging"),
+      BlockedMessageStore.hash(message, "com.facebook.orca"),
+    )
+    assertEquals(BlockedMessageStore.hash(message), BlockedMessageStore.hash(message, null))
+  }
 }

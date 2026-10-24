@@ -18,10 +18,13 @@ const message = (id: string, overrides: Partial<HistorySummary> = {}): HistorySu
   ...overrides,
 });
 
-test('all scanned levels remain visible, newest first, without mutating the input', () => {
-  const records = [message('safe'), message('risk', { level: 'dangerous', receivedAt: 2 })];
-  expect(filterMessages(records, 'all', '').map((item) => item.id)).toEqual(['risk', 'safe']);
-  expect(records[0].id).toBe('safe');
+test('alert records are sorted newest first without mutating the input', () => {
+  const records = [
+    message('suspicious', { level: 'suspicious', receivedAt: 1 }),
+    message('dangerous', { level: 'dangerous', receivedAt: 2 }),
+  ];
+  expect(filterMessages(records, 'all', '').map((item) => item.id)).toEqual(['dangerous', 'suspicious']);
+  expect(records[0].id).toBe('suspicious');
 });
 test('blocked status is independent of classification and read status', () => {
   const records = [
@@ -38,4 +41,15 @@ test('sender and preview search combine with filters, including legacy blocked r
   expect(filterMessages(records, 'safe', 'BANK')).toHaveLength(0);
   expect(filterMessages(records, 'suspicious', 'bank')[0].id).toBe('b');
   expect(isMessageBlocked(message('legacy', { blocked: undefined }))).toBe(true);
+});
+
+test('category and risk-level filters combine', () => {
+  const records = [
+    message('spam-safe', { categories: ['spam'] }),
+    message('phishing-risk', { categories: ['phishing'], level: 'dangerous', score: 85 }),
+    message('threat', { categories: ['threats'], level: 'suspicious', score: 30 }),
+  ];
+  expect(filterMessages(records, 'all', '', 'spam').map((item) => item.id)).toEqual(['spam-safe']);
+  expect(filterMessages(records, 'dangerous', '', 'phishing').map((item) => item.id)).toEqual(['phishing-risk']);
+  expect(filterMessages(records, 'safe', '', 'threats')).toEqual([]);
 });

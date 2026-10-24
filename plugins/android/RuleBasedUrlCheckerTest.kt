@@ -44,4 +44,12 @@ class RuleBasedUrlCheckerTest {
       assertTrue(reason.name, LinkWarningCopy.Tagalog.reason(result).isNotBlank())
     }
   }
+
+  @Test
+  fun browserChooserCopyIsAvailableInBothLanguages() {
+    assertEquals("Choose a browser", LinkWarningCopy.English.chooseBrowser)
+    assertEquals("Open", LinkWarningCopy.English.openBrowser)
+    assertEquals("Pumili ng browser", LinkWarningCopy.Tagalog.chooseBrowser)
+    assertEquals("Buksan", LinkWarningCopy.Tagalog.openBrowser)
+  }
 }

@@ -39,11 +39,19 @@ const summary = (id: string, level: HistorySummary['level'], score: number): His
 
 test('a native scan always shows a Safe result as 0 but keeps its reason codes', async () => {
   native.scanText.mockResolvedValueOnce(legacySafe);
-  expect(await scanTextLocally('hello')).toEqual({ ...legacySafe, score: 0, reasons: [{ ...reason, weight: 0 }] });
+  expect(await scanTextLocally('hello')).toEqual({
+    ...legacySafe,
+    score: 0,
+    reasons: [{ ...reason, weight: 0 }],
+    categories: ['spam'],
+  });
 
   const dangerous: LocalThreatResult = { ...legacySafe, level: 'dangerous', score: 90 };
   native.scanText.mockResolvedValueOnce(dangerous);
-  expect(await scanTextLocally('scam')).toBe(dangerous);
+  expect(await scanTextLocally('scam')).toEqual({
+    ...dangerous,
+    categories: ['spam'],
+  });
 });
 
 test('History saved with a Safe 1–29 score reads as 0', async () => {

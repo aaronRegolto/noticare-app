@@ -34,6 +34,7 @@ def predict():
     metadata = ROOT / 'assets/models/model_metadata.json'
     specs = json.loads(metadata.read_text())['technical_specifications']
     threshold = specs['locked_thresholds']['safe']
+    model_only_threshold = specs['locked_thresholds'].get('model_only')
     interpreter = tf.lite.Interpreter(model_path=str(model), num_threads=1)
     interpreter.allocate_tensors()
     input_info = interpreter.get_input_details()[0]
@@ -44,7 +45,7 @@ def predict():
         raise ValueError('Expected a single model probability')
     provenance = {'created_at': datetime.now(timezone.utc).isoformat(), 'model_sha256': digest(model),
                   'metadata_sha256': digest(metadata), 'runtime': f'TensorFlow {tf.__version__}',
-                  'warning_threshold': threshold, 'sources': {},
+                  'warning_threshold': threshold, 'model_only_threshold': model_only_threshold, 'sources': {},
                   'limitations': ['Training overlap unknown; not held-out accuracy.',
                                   'UCI spam labels do not establish phishing.',
                                   'Philippine examples are synthetic and marked unverified.',
@@ -53,7 +54,8 @@ def predict():
     total = 0
     with (OUTPUT / 'inputs.tsv').open('w', encoding='utf-8', newline='') as handle:
         writer = csv.writer(handle, delimiter='\t', lineterminator='\n')
-        writer.writerow(['threshold', threshold])
+        writer.writerow(['safe_threshold', threshold])
+        writer.writerow(['model_only_threshold', '' if model_only_threshold is None else model_only_threshold])
         for name in SOURCES:
             path = ROOT / 'datasets' / name
             counts, unique = Counter(), set()
@@ -88,7 +90,7 @@ def report():
     expected = sum(sum(source['labels'].values()) for source in provenance['sources'].values())
     if len(rows) != expected:
         raise ValueError('Kotlin prediction count does not match the input corpus')
-    threshold = provenance['warning_threshold']
+    threshold = provenance['model_only_threshold'] or provenance['warning_threshold']
     summary = {'provenance': provenance, 'diagnostics': {}}
     lines = ['# Local interception classifier evaluation', '',
              f"Model inference: {provenance['created_at']} · {provenance['runtime']}", '',
@@ -108,7 +110,7 @@ def report():
                 return f'{value} ({value / len(group):.1%})'
             lines.append(f"| {source} | {label} | {len(group)} | {cell(counts['model_warnings'])} | {cell(counts['rule_warnings'])} | {cell(counts['combined_warnings'])} |")
     lines += ['', '## Limits', ''] + [f'- {item}' for item in provenance['limitations']]
-    lines += ['', 'Thresholds and model weights were not tuned on this evaluation. Rule coverage was expanded after inspecting missed examples: rule set 2026.09.29 was written using the 50 Philippine phishing rows above, so their detection rate is not an unbiased estimate. As a separate check at that time, 12 newly written scam variants were all flagged and 20 newly written lookalike legitimate messages all stayed Safe; a subset of both is kept as the Philippine regression tests in src/features/detection/__tests__/evaluator.test.ts. These corpora are development diagnostics, not independent validation. No source message bodies are included in this report.', '',
+    lines += ['',     'Thresholds and model weights were not tuned on this evaluation. Rule coverage was expanded after inspecting synthetic Philippine examples, so those detection rates are development diagnostics, not an unbiased estimate. The attached local Philippine messages were used for training and are not part of this report or an independent test. No source message bodies are included in this report.', '',
               '## Reproduce', '', 'See `scripts/evaluate-model.py` and `docs/ML_VALIDATION.md`.', '',
               f"Kotlin rules SHA-256: `{digest(ROOT / 'plugins/android/SmishingEvaluator.kt')}`", '',
               f"Model SHA-256: `{provenance['model_sha256']}`", '',

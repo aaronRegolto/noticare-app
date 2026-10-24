@@ -1,12 +1,20 @@
 import { NativeModules, Platform } from 'react-native';
 
 import { finalizeThreatResult } from '@/src/features/detection';
+import { categoriesForCodes, type MessageCategory } from '@/src/features/messages/categories';
 
 export type MonitoringState = 'active' | 'off' | 'permission_required' | 'service_disconnected' | 'sms_app_unavailable';
 
 export type ThreatLevel = 'safe' | 'suspicious' | 'dangerous';
 
 export type SubscriptionTier = 'free' | 'pro';
+export type MonitoredAppId = 'sms' | 'messenger';
+export type MonitoredApp = {
+  id: MonitoredAppId;
+  name: string;
+  installed: boolean;
+  enabled: boolean;
+};
 
 export type ThreatReason = {
   code: string;
@@ -28,6 +36,7 @@ export type LocalThreatResult = {
   reasons: ThreatReason[];
   urls: ExtractedUrl[];
   ruleVersion: string;
+  categories?: MessageCategory[];
 };
 
 export type MonitoringStatus = {
@@ -44,6 +53,8 @@ export type MonitoringStatus = {
   historyOwnerConfigured: boolean;
   historyStorageAvailable: boolean;
   historyStorageStatus: 'available' | 'unavailable';
+  contactsPermissionGranted: boolean;
+  senderContactLookupEnabled: boolean;
   lastContentStatus: 'idle' | 'processed' | 'content_unavailable';
   appNotificationsGranted: boolean;
   /** False means Android's battery manager can kill NotiCare in the background and miss messages. */
@@ -64,6 +75,7 @@ export type MonitoringStatus = {
    */
   lifetimeBlockedCount: number;
   historyRetentionLimit: number;
+  monitoredApps?: MonitoredApp[];
 };
 
 export type HistorySummary = {
@@ -82,6 +94,9 @@ export type HistorySummary = {
   warningSignCount: number;
   sourcePackage: string;
   ruleVersion: string;
+  /** Local-only address-book match; null when contact identification was not enabled. */
+  senderIsKnownContact?: boolean | null;
+  categories?: MessageCategory[];
 };
 
 export type HistoryRecord = HistorySummary & {
@@ -135,6 +150,8 @@ type NotificationListenerNativeModule = {
   requestNotificationPolicyAccess?(): Promise<boolean>;
   getMonitoringStatus(): Promise<MonitoringStatus>;
   setScanningEnabled(enabled: boolean): Promise<MonitoringStatus>;
+  setMonitoredAppEnabled?(sourceId: MonitoredAppId, enabled: boolean): Promise<MonitoringStatus>;
+  setSenderContactLookupEnabled?(enabled: boolean): Promise<MonitoringStatus>;
   setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatus>;
   setHistoryOwner(ownerId: string | null): Promise<MonitoringStatus>;
   setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringStatus>;
@@ -241,6 +258,22 @@ export function setScanningEnabled(enabled: boolean): Promise<MonitoringStatus> 
   return requireAndroidNativeModule().setScanningEnabled(enabled);
 }
 
+export function setMonitoredAppEnabled(sourceId: MonitoredAppId, enabled: boolean): Promise<MonitoringStatus> {
+  const module = requireAndroidNativeModule();
+  if (!module.setMonitoredAppEnabled) {
+    return Promise.reject(new Error('Per-app notification scanning requires a newer Android build.'));
+  }
+  return module.setMonitoredAppEnabled(sourceId, enabled);
+}
+
+export function setSenderContactLookupEnabled(enabled: boolean): Promise<MonitoringStatus> {
+  const module = requireAndroidNativeModule();
+  if (!module.setSenderContactLookupEnabled) {
+    return Promise.reject(new Error('Sender identification requires a newer Android build.'));
+  }
+  return module.setSenderContactLookupEnabled(enabled);
+}
+
 /** Chooses an immersive warning when possible; Android may still use a banner as a platform fallback. */
 export function setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatus> {
   return requireAndroidNativeModule().setFullScreenWarnings(enabled);
@@ -265,7 +298,12 @@ export function setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringS
  * a Safe result always scores 0, even from a native build that still returns the raw 1–29.
  */
 export function scanTextLocally(text: string): Promise<LocalThreatResult> {
-  return requireAndroidNativeModule().scanText(text).then(finalizeThreatResult);
+  return requireAndroidNativeModule()
+    .scanText(text)
+    .then((result) => ({
+      ...finalizeThreatResult(result),
+      categories: result.categories ?? categoriesForCodes(result.reasons.map((reason) => reason.code)),
+    }));
 }
 
 /** True in a native build that can read text from a photo for Manual Scan. */

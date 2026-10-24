@@ -89,12 +89,24 @@ What happens, in order:
 At the end you'll see something like:
 
 ```
-Saved to C:\...\noticare-app\ml\output\20261005-183649
-Test accuracy 99.24% | PR-AUC 0.9995 | missed scams 5 | false alarms 9
-Current model on the same test split: accuracy 96.26% | PR-AUC 0.9963 | missed scams 2 | false alarms 25
+Saved to C:\...\noticare-app\ml\output\<date-time>
+Test accuracy 99.36% | PR-AUC 0.9997 | missed scams 5 | false alarms 9
+Current model on the same test split: accuracy 94.48% | PR-AUC 0.9962 | missed scams 2 | false alarms 25
 ```
 
 Each run gets its own folder in `ml/output/` named by date and time, so older runs are never overwritten.
+
+### Include the attached categorized dataset
+
+Save the attached `text-messages.csv` locally, then run:
+
+```powershell
+py -3.12 ml/import_local_spam.py "C:\path\to\text-messages.csv"
+py -3.12 ml/data.py "ml\output\local_sources.json"
+py -3.12 ml/train.py --sources "ml\output\local_sources.json"
+```
+
+The importer uses only rows whose category is `spam`; it excludes sender/date fields and masks common identifiers, email addresses, long numbers, and URL paths/queries. Review the generated sanitized CSV because masking does not guarantee complete anonymization. The unlabeled `SPAM_SMS.csv` is not used or assumed to contain phishing messages. The generated manifest, sanitized CSV, and training output stay under ignored `ml/output/`.
 
 ---
 
@@ -112,7 +124,7 @@ Open `ml/output/<your run>/training_report.md` in VS Code. (Press `Ctrl+Shift+V`
 | **False alarms** | Legitimate messages the model scored as dangerous                     | Lower       |
 | **Uncertain**    | Messages between the two thresholds                                   | Lower       |
 
-The report shows the **new model next to the current model** on the same test messages. Keep the new model only if it is **clearly better**, especially on missed scams, without many more false alarms.
+The report shows the **new model next to the current model** on the same test messages. Review missed scams and false alarms together. The attached-data run has 5 missed scams versus 2 for the previous model, but 9 false alarms versus 25; that is a trade-off, not an across-the-board improvement. Its 116 Philippine spam test examples were all flagged, but they are from one supplied dataset and are not independent real-world validation.
 
 ### Files in each run folder
 

@@ -8,13 +8,13 @@
 
 ## 1. What this app does
 
-NotiCare is an Android anti-smishing application. When you turn on Real-Time Scanning and grant Android Notification Access, it examines notifications from the Messages application that Android identifies as your device's current default SMS application. It ignores notifications from all other applications before reading their content.
+NotiCare is an Android scam-detection application. When you turn on Real-Time Scanning and grant Android Notification Access, it examines only notifications from apps you enable in Settings: the current default SMS app and Messenger. Messenger is optional and default off. Other apps are rejected before notification text is read. Android or a source app may hide or redact previews.
 
-NotiCare does not use the Android `READ_SMS` permission, does not become your default SMS application, and does not delete SMS messages from your Messages inbox.
+NotiCare does not use the Android `READ_SMS` permission, does not become your default SMS application, and does not delete messages from their source apps.
 
 ## 2. Information we process
 
-**On your device:** NotiCare may process the text, sender/display information, and URLs included in an eligible SMS notification in order to scan it locally. If Android permits NotiCare to suppress a Dangerous notification, the message may be saved in encrypted local History. The encryption key is protected by Android Keystore and is not uploaded.
+**On your device:** NotiCare may process the available text, sender/display information, and URLs included in an enabled app's notification preview in memory to scan it locally. Safe messages are discarded immediately. Only Suspicious or Dangerous alerts may be saved in encrypted local History, subject to the in-app retention limit. If you enable sender identification and grant Android Contacts permission, NotiCare checks whether the flagged sender matches a saved contact; the lookup stays on-device and only the match/no-match flag is saved with the alert. Contact details are not copied or uploaded. The encryption key is protected by Android Keystore and is not uploaded.
 
 **For authentication:** We use your phone number through Supabase Phone OTP to send and verify a login code. Our application profile stores only the last four digits of the verified phone number.
 
@@ -22,13 +22,13 @@ NotiCare does not use the Android `READ_SMS` permission, does not become your de
 
 **Feedback:** If you submit a correction, we process the classification you selected, optional event reference, stable rule codes, rule version, and timestamp.
 
-## 3. Information we do not upload
+## 3. Information we do not upload by default
 
-We do not upload full SMS text, full sender numbers, contact names, notification titles, raw URLs, clipboard contents, OTP contents, Android/advertising/hardware IDs, local encryption keys, or links you may have visited.
+We do not upload scanned message text, full sender numbers, contact names, notification titles, raw URLs, clipboard contents, OTP contents, Android/advertising/hardware IDs, local encryption keys, or links you may have visited unless you explicitly choose a message-report action. A report shares that message's text and sender with the community service so other users can be warned.
 
 ## 4. How we use information
 
-We use local notification data to classify a message, explain a result, issue an on-device caution or warning, and maintain encrypted local History for successfully suppressed Dangerous notifications. We use authenticated and anonymous metadata to operate the service, prevent duplicate aggregate counts, show community trends, improve rules using non-content feedback, and protect the service from abuse.
+We use local notification data to classify a message, explain a result, issue an on-device caution or warning, and maintain encrypted local History for successfully scanned notifications. We use authenticated and anonymous metadata to operate the service, prevent duplicate aggregate counts, show community trends, improve rules using non-content feedback, and protect the service from abuse.
 
 We do not sell SMS content, build an advertising profile, or use message content to target advertising.
 
@@ -38,7 +38,7 @@ We use Supabase for authentication and database services and `[SMS PROVIDER]` to
 
 ## 6. Retention
 
-Full blocked-message History remains on your device until you delete it, clear it, uninstall the app, or choose removal at sign-out. Authentication data is retained by the authentication provider according to the operator's configured retention policy. Anonymous event and aggregate retention periods are: `[DEFINE PERIODS]`.
+Encrypted local History is capped by the account's current plan and older records may be pruned as new messages arrive. You can delete records, clear History, or choose removal at sign-out. Authentication data is retained by the authentication provider according to the operator's configured retention policy. Anonymous event and aggregate retention periods are: `[DEFINE PERIODS]`.
 
 ## 7. Your choices and rights
 

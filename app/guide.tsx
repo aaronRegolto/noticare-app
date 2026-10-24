@@ -13,7 +13,7 @@ type GuideTopic = { title: string; body: string };
 const topics: GuideTopic[] = [
   {
     title: 'What NotiCare does',
-    body: 'NotiCare checks notifications only from your current default Messages app. It looks for common phishing and credential-theft warning signs on your device.',
+    body: 'NotiCare checks notifications from the apps you enable in Settings: your default Messages app and Messenger. It looks for common scam, phishing, and threat warning signs on your device. Safe messages are checked in memory and discarded; only Suspicious or Dangerous alerts appear in Messages.',
   },
   {
     title: 'Signing in with a one-time code',
@@ -21,11 +21,11 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Notification access',
-    body: 'Android requires Notification Access for real-time scanning. NotiCare checks the Messages app package before it reads notification text.',
+    body: 'Android requires Notification Access for real-time scanning. NotiCare checks the package and your per-app selection before it reads notification text. Messenger is optional and appears as unavailable when not installed. Android or the source app may hide message previews.',
   },
   {
     title: 'Turn Real-Time Scanning on or off',
-    body: 'Open Dashboard settings and use the Real-Time Scanning switch. When turning it on, allow Notification Access in Android settings, return to NotiCare, and check that a default Messages app is detected.',
+    body: 'Open Dashboard settings, use the Real-Time Scanning switch, and select which installed apps to monitor. Optional Identify saved senders checks whether a flagged sender matches a contact on your phone; contact details are never copied or uploaded. When turning scanning on, allow Notification Access in Android settings and return to NotiCare.',
   },
   {
     title: 'Threat levels',
@@ -33,7 +33,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Choose Block & Report or Ignore',
-    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
+    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), marks the protected alert in History as blocked, and shares the message text so other NotiCare users can spot it. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
   },
   {
     title: 'Manual Scan',
@@ -41,7 +41,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Safe Link Protection',
-    body: 'When NotiCare is your default browser, it checks every link you tap in apps that open links in your browser (Messages, email, and others) before it opens. Safe links open straight away in your normal browser. Risky links show a warning screen at once: Dangerous for domains on NotiCare\'s known-scam list, Suspicious for shortened links, links to a numeric address, uncommon domain endings often used by scams, look-alikes of brands like GCash, Maya, or BDO, and links that use an "@" to hide where they really go. The check happens on your phone; NotiCare never opens or loads the link to check it. Apps such as Facebook and Messenger open links in their own built-in browser, so NotiCare can\'t check those; in Facebook, turning on Settings → Media → "Links open externally" sends them to NotiCare.',
+    body: 'When NotiCare is your default browser, it checks links that Android sends to a browser before opening them. Safe links open in your chosen browser; risky links show a warning. Facebook and Messenger may open links in an in-app browser that NotiCare cannot transparently inspect. Use Share → NotiCare to check a shared link, or enable the source app’s “open links externally” option where available. The check happens on your phone; NotiCare never opens or loads the link to check it.',
   },
   {
     title: 'Turn on Safe Link Protection',
@@ -53,7 +53,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Messages inbox',
-    body: 'Messages shows every SMS notification captured while real-time scanning is on. Search senders or message previews, filter by classification or unread status, and tap a message to read it. Pull down to refresh. Earlier SMS and manual scans are not imported. Deleting a local copy does not delete the original SMS.',
+    body: 'Messages shows only notifications classified Suspicious or Dangerous. Safe conversations are checked on-device and immediately discarded, not saved. Search alert senders or message text, filter by category, risk, unread/blocked status, and month, then tap an alert for details. Earlier SMS and Manual Scan results are not imported. Deleting an alert does not delete the original message.',
   },
   {
     title: 'Privacy',

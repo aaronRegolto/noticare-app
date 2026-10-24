@@ -18,6 +18,8 @@ class ModelEvaluationTest {
       output.appendLine("source\trow\tlabel\tprobability\trules\tcombined\treasons")
       input.bufferedReader().use { reader ->
         val threshold = reader.readLine().split('\t')[1].toFloat()
+        val modelOnlyValue = reader.readLine().split('\t')[1]
+        val modelOnlyThreshold = modelOnlyValue.toFloatOrNull()
         reader.lineSequence().forEach { line ->
           val fields = line.split('\t')
           assertEquals(5, fields.size)
@@ -25,7 +27,7 @@ class ModelEvaluationTest {
           assertTrue(probability.isFinite() && probability in 0f..1f)
           val text = Base64.getDecoder().decode(fields[4]).toString(Charsets.UTF_8)
           val rules = SmishingEvaluator.evaluate(text)
-          val combined = V3RiskEvaluator.combine(rules, probability, threshold)
+          val combined = V3RiskEvaluator.combine(rules, probability, threshold, modelOnlyThreshold)
           output.appendLine((fields.take(4) + listOf(rules.level.wireValue, combined.level.wireValue,
             combined.reasons.joinToString(",") { it.code })).joinToString("\t"))
         }

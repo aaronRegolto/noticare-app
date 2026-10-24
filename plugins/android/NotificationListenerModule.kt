@@ -24,6 +24,8 @@ import __NOTICARE_PACKAGE__.bridge.EncryptedHistoryStore
 import __NOTICARE_PACKAGE__.bridge.EncryptedTelemetryQueue
 import __NOTICARE_PACKAGE__.bridge.ExtractedUrl
 import __NOTICARE_PACKAGE__.bridge.MessageTranslator
+import __NOTICARE_PACKAGE__.bridge.MessageCategories
+import __NOTICARE_PACKAGE__.bridge.NotificationSource
 import __NOTICARE_PACKAGE__.bridge.WarningCopy
 import __NOTICARE_PACKAGE__.bridge.NotiCareNotifications
 import __NOTICARE_PACKAGE__.bridge.RealtimeScanPreferences
@@ -198,6 +200,39 @@ class NotificationListenerModule(
         monitoringStatusMap()
       }.onSuccess(promise::resolve)
         .onFailure { error -> promise.reject("scanning_preference_failed", "Unable to save the real-time scanning preference.", error) }
+    }
+  }
+
+  @ReactMethod
+  fun setMonitoredAppEnabled(sourceId: String, enabled: Boolean, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        RealtimeScanPreferences.setSourceEnabled(appContext, sourceId, enabled)
+        monitoringStatusMap()
+      }.onSuccess(promise::resolve)
+        .onFailure { error ->
+          promise.reject("notification_source_preference_failed", "Unable to save this app's scanning preference.", error)
+        }
+    }
+  }
+
+  @ReactMethod
+  fun setSenderContactLookupEnabled(enabled: Boolean, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        if (
+          enabled &&
+          appContext.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+          throw SecurityException("Contacts permission is required to identify saved senders.")
+        }
+        RealtimeScanPreferences.setSenderContactLookupEnabled(appContext, enabled)
+        monitoringStatusMap()
+      }.onSuccess(promise::resolve)
+        .onFailure { error ->
+          promise.reject("sender_contact_lookup_preference_failed", "Unable to update sender identification.", error)
+        }
     }
   }
 
@@ -515,6 +550,7 @@ class NotificationListenerModule(
     val historyOwnerScope = RealtimeScanPreferences.historyOwnerScope(appContext)
     val subscriptionTier = RealtimeScanPreferences.subscriptionTier(appContext)
     val historyStorageAvailable = EncryptedHistoryStore.storageAvailable(appContext)
+    val monitoredApps = monitoredAppsMap(defaultSmsPackage)
 
     return Arguments.createMap().apply {
       putString("status", status)
@@ -528,7 +564,14 @@ class NotificationListenerModule(
       putBoolean("historyOwnerConfigured", historyOwnerScope != null)
       putBoolean("historyStorageAvailable", historyStorageAvailable)
       putString("historyStorageStatus", if (historyStorageAvailable) "available" else "unavailable")
+      putBoolean(
+        "contactsPermissionGranted",
+        appContext.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) ==
+          android.content.pm.PackageManager.PERMISSION_GRANTED,
+      )
+      putBoolean("senderContactLookupEnabled", RealtimeScanPreferences.isSenderContactLookupEnabled(appContext))
       putString("lastContentStatus", RealtimeScanPreferences.lastContentStatus(appContext))
+      putArray("monitoredApps", monitoredApps)
       putBoolean("batteryOptimizationExempt", ScanRuntime.isIgnoringBatteryOptimizations(appContext))
       putBoolean("fullScreenIntentPermitted", ScanRuntime.canUseFullScreenIntent(appContext))
       putBoolean("overlayPermitted", ThreatWarningOverlay.canDrawOverlays(appContext))
@@ -545,6 +588,32 @@ class NotificationListenerModule(
     }
   }
 
+  private suspend fun monitoredAppsMap(defaultSmsPackage: String?): WritableArray {
+    val smsName = ScanRuntime.defaultSmsAppLabel(appContext, defaultSmsPackage) ?: "Default messages app"
+    val apps = listOf(
+      Triple("sms", smsName, defaultSmsPackage),
+      Triple("messenger", "Messenger", NotificationSource.MESSENGER_PACKAGE),
+    )
+    return Arguments.createArray().apply {
+      apps.forEach { (id, name, packageName) ->
+        val installed = packageName != null && isPackageInstalled(packageName)
+        pushMap(Arguments.createMap().apply {
+          putString("id", id)
+          putString("name", name)
+          putBoolean("installed", installed)
+          putBoolean("enabled", RealtimeScanPreferences.isSourceEnabled(appContext, id))
+        })
+      }
+    }
+  }
+
+  private fun isPackageInstalled(packageName: String): Boolean = try {
+      appContext.packageManager.getApplicationInfo(packageName, 0)
+      true
+    } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+      false
+    }
+
   private fun historyListMap(record: BlockedHistoryRecord): WritableMap = Arguments.createMap().apply {
     putString("id", record.id)
     putString("maskedSender", EncryptedHistoryStore.maskedSender(record.sender))
@@ -552,12 +621,17 @@ class NotificationListenerModule(
     putString("preview", record.message.replace(Regex("\\s+"), " ").take(160))
     putBoolean("blocked", record.blocked)
     putBoolean("isRead", record.isRead)
+    if (record.senderIsKnownContact == null) putNull("senderIsKnownContact")
+    else putBoolean("senderIsKnownContact", record.senderIsKnownContact)
     putDouble("receivedAt", record.receivedAt.toDouble())
     putString("level", record.level.wireValue)
     putInt("score", record.score)
     // Preserve the old label for older JS bundles; the new inbox uses preview.
     putString("redactedPreview", record.redactedPreview)
     putInt("warningSignCount", record.reasons.size)
+    putArray("categories", Arguments.createArray().apply {
+      MessageCategories.fromReasons(record.reasons).forEach(::pushString)
+    })
     putString("sourcePackage", record.sourcePackage)
     putString("ruleVersion", record.ruleVersion)
   }
@@ -576,6 +650,9 @@ class NotificationListenerModule(
     putString("level", result.level.wireValue)
     putInt("score", result.score)
     putArray("reasons", reasonsArray(result.reasons))
+    putArray("categories", Arguments.createArray().apply {
+      MessageCategories.fromReasons(result.reasons).forEach(::pushString)
+    })
     putArray("urls", urlsArray(result.urls))
     putString("ruleVersion", result.ruleVersion)
   }

@@ -1,27 +1,29 @@
 # Android native scanning foundation
 
-NotiCare real-time scanning is Android-only and requires a development or release build. It does not run in Expo Go.
+NotiCare real-time scanning is Android-only and requires a development or release build. It does not run in Expo Go. SMS scanning is enabled by default when monitoring is turned on; Messenger is an opt-in per-app source.
 
 ## Privacy boundary
 
 `SmsNotificationListener` is a Kotlin `NotificationListenerService`. For each posted notification it:
 
 1. Reads the persisted `realtime_scanning_enabled` DataStore value; the default is Off.
-2. Resolves the current default SMS package with `Telephony.Sms.getDefaultSmsPackage(context)`.
-3. Compares the notification package to that package and rejects all other packages before reading notification extras.
+2. Resolves the current default SMS package and maps the notification package to SMS or Messenger.
+3. Checks the per-app opt-in and rejects unsupported packages before reading notification extras.
 4. Rejects NotiCare's own notifications and group summaries.
 5. Selects the latest structured message by timestamp, or a single expanded/main text payload, only after the package check. It never joins different notification fields or InboxStyle entries into one SMS. Missing, malformed, or ambiguous content is reported unavailable.
 
-Consequently, social, email, banking, shopping, and other unrelated notifications are never read, scored, saved, or queued by this service. The app does not request `READ_SMS`, does not become the default SMS app, and does not use an accessibility service. The only overlay is the opt-in full-screen threat warning described below, which requires the user-granted **Display over other apps** permission and is shown only when a Suspicious or Dangerous message is detected.
+Consequently, notifications from apps other than the default SMS app and Messenger (`com.facebook.orca`) are never read. Messenger is detected as installed, default off, and selectable in Settings. The app does not request `READ_SMS`, does not become the default SMS app, and does not use an accessibility service. The only overlay is the opt-in full-screen threat warning described below, which requires the user-granted **Display over other apps** permission and is shown only when a Suspicious or Dangerous message is detected.
 
 If Android hides a notification preview, the listener records the non-sensitive runtime status `content_unavailable`; it does not guess at message content.
 
 ## Native actions
 
-The Kotlin evaluator is offline-only and mirrors the versioned TypeScript rules in `src/features/detection/rules.ts` (version `2026.09.10`). The bundled V3 LiteRT model uses its audited UTF-8 byte preprocessing and locked threshold, but can raise a rule-safe result to Suspicious only when concrete phishing evidence also exists. Generic urgency, instructions to click or reply, and text obfuscation alone cannot support that escalation. Messages with no supporting indicators, such as ordinary greetings, retain their rule result. Existing Suspicious and Dangerous rule results are preserved. Model loading failures, invalid outputs, or invalid thresholds fall back to the rules. Neither evaluator opens, resolves, previews, or fetches a URL. This decision-policy change has regression coverage; it is not a model retraining or a new measured accuracy claim.
+The Kotlin evaluator is offline-only and mirrors the versioned TypeScript rules in `src/features/detection/rules.ts` (version `2026.10.24`). The bundled V3 LiteRT model uses its audited UTF-8 byte preprocessing and validation-calibrated thresholds. A high-specificity model-only result can raise a message to Suspicious, never Dangerous; deterministic rules still control Dangerous results. Every eligible notification is evaluated in memory, but Safe results are immediately discarded and are not saved to History or telemetry. Only Suspicious and Dangerous results are retained locally and shown as alerts. Repeat-sender escalation applies only to the default Messages/SMS source: it requires a retained SMS with independent spam or phishing evidence from the same sender, then raises subsequent SMS scores with a bounded 30-day lookback. Messenger messages do not inherit this sender-history escalation. Model loading failures and invalid outputs fall back to deterministic rules. Neither evaluator opens, resolves, previews, or fetches a URL.
+
+Optional sender identification uses Android's `READ_CONTACTS` permission only after the user enables **Identify saved senders** in Settings. It performs an exact sender-number or sender-name lookup on-device only for a Suspicious or Dangerous result. Contact names and details are not copied or uploaded; a local match/no-match flag is stored with that alert. Without permission or when lookup is off, the alert has no contact-identification flag.
 
 - **Safe:** leaves the notification visible and queues sanitized aggregate metadata.
-- **Suspicious / Dangerous:** shows a full-screen warning or actionable banner with reasons and **Block**/**Ignore** controls. With **Full-screen warning** selected (Pro): while the phone is unlocked and in use, `ThreatWarningOverlay` draws the warning over whatever app is open (requires **Display over other apps**); while locked or with the screen off, the notification's full-screen intent opens `ThreatWarningActivity`. Without the overlay permission, an in-use phone shows the heads-up banner. The actionable notification is always posted as a fallback. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. A captured message is marked _blocked_ only when Android accepts that call. **Ignore** leaves the notification visible. The original SMS is never deleted from the Messages app. All scanned levels are saved in the encrypted local Messages inbox when storage is available.
+- **Suspicious / Dangerous:** shows a full-screen warning or actionable banner with reasons and **Block**/**Ignore** controls. With **Full-screen warning** selected (Pro): while the phone is unlocked and in use, `ThreatWarningOverlay` draws the warning over whatever app is open (requires **Display over other apps**); while locked or with the screen off, the notification's full-screen intent opens `ThreatWarningActivity`. Without the overlay permission, an in-use phone shows the heads-up banner. The actionable notification is always posted as a fallback. NotiCare calls `cancelNotification(sbn.key)` only after **Block** is chosen. A captured notification is marked _blocked_ only when Android accepts that call. **Ignore** leaves the notification visible. The original message stays in its source app. All scanned levels are saved in the encrypted local Messages inbox when storage is available.
 
 Android does not provide a separate, synchronous “delivery suppressed” acknowledgement after `cancelNotification`; the app treats the platform accepting the cancellation call as the available best-effort success signal.
 
@@ -29,7 +31,7 @@ Android does not provide a separate, synchronous “delivery suppressed” ackno
 
 Captured Messages are stored in an AES-GCM encrypted file. The encryption key is created in Android Keystore under a NotiCare-specific alias and never crosses the React Native bridge. Messages are scoped to a hash of the currently signed-in profile: a different profile cannot list, open, delete, or clear another profile's records. Clearing the owner scope on sign-out also turns monitoring off. If encrypted storage cannot be initialized, raw message text is not written to a fallback store and native status reports storage as unavailable.
 
-Messages lists include the captured sender, a 160-character preview, risk metadata, blocked status, and read status. Full message text is returned by `getHistoryRecord(id)` after the user opens it. These local fields never enter the telemetry payload.
+Messages lists include only Suspicious and Dangerous alerts, with sender, a 160-character preview, risk metadata, category, source app, blocked status, read status, and the optional local contact match. Full message text is returned by `getHistoryRecord(id)` after the user opens an alert. Safe conversation text is not written to disk, and these local fields never enter telemetry.
 
 The separate telemetry queue is also encrypted. It contains only:
 
@@ -48,17 +50,18 @@ It never contains SMS text, sender, notification title, raw URL, OTP, token, or 
 
 The public typed wrapper is `src/services/notificationListener.ts`.
 
-| Function                                      | Purpose                                                                                                            |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `getMonitoringStatus()`                       | DataStore preference, Notification Access, listener connection, detected default SMS app, and storage diagnostics. |
-| `requestNotificationListenerAccess()`         | Opens Android Notification Access settings after user confirmation.                                                |
-| `openAppNotificationSettings()`               | Opens Android's app-notification settings for warning alerts.                                                      |
-| `setScanningEnabled(enabled)`                 | Persists the requested scan preference. `active` is returned only when all runtime requirements are met.           |
-| `setHistoryOwner(ownerId \| null)`            | Sets the active encrypted-History owner using a native hash; `null` clears the scope and disables scanning.        |
-| `scanTextLocally(text)`                       | Runs the same native offline evaluator for a user-initiated Manual Scan.                                           |
-| `getHistory()` / `getHistoryRecord(id)`       | Lists local message previews and opens a selected encrypted record.                                                |
-| `deleteHistoryRecord(id)` / `clearHistory()`  | Local encrypted History deletion actions.                                                                          |
-| `getPendingTelemetry()` / `ackTelemetry(ids)` | Sanitized native realtime telemetry synchronization.                                                               |
+| Function                                      | Purpose                                                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `getMonitoringStatus()`                       | DataStore preference, Notification Access, listener connection, detected apps and per-app selection, and storage diagnostics. |
+| `requestNotificationListenerAccess()`         | Opens Android Notification Access settings after user confirmation.                                                           |
+| `openAppNotificationSettings()`               | Opens Android's app-notification settings for warning alerts.                                                                 |
+| `setScanningEnabled(enabled)`                 | Persists the requested scan preference. `active` is returned only when all runtime requirements are met.                      |
+| `setMonitoredAppEnabled(id, enabled)`         | Enables or disables SMS or Messenger without granting access to other package notifications.                                  |
+| `setHistoryOwner(ownerId \| null)`            | Sets the active encrypted-History owner using a native hash; `null` clears the scope and disables scanning.                   |
+| `scanTextLocally(text)`                       | Runs the same native offline evaluator for a user-initiated Manual Scan.                                                      |
+| `getHistory()` / `getHistoryRecord(id)`       | Lists local message previews and opens a selected encrypted record.                                                           |
+| `deleteHistoryRecord(id)` / `clearHistory()`  | Local encrypted History deletion actions.                                                                                     |
+| `getPendingTelemetry()` / `ackTelemetry(ids)` | Sanitized native realtime telemetry synchronization.                                                                          |
 
 No listener callback sends a background SMS payload to JavaScript. Full message text is only decrypted when the person explicitly opens one of their local History records.
 

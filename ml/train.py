@@ -37,7 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--sources', default=str(ROOT / 'ml' / 'sources.json'))
     parser.add_argument('--output', default=str(ROOT / 'ml' / 'output'))
-    parser.add_argument('--version', default='3.1.0', help='Version recorded in model_metadata.json')
+    parser.add_argument('--version', default='3.2.0', help='Version recorded in model_metadata.json')
     parser.add_argument('--epochs', type=int, default=30, help='Maximum epochs; training stops early when validation stops improving')
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
@@ -46,6 +46,8 @@ def parse_args():
                         help='Share of validation scams that must score at or above the safe threshold')
     parser.add_argument('--max-false-alarm-rate', type=float, default=0.02,
                         help='Largest share of validation legitimate messages allowed at or above the dangerous threshold')
+    parser.add_argument('--model-only-max-false-alarm-rate', type=float, default=0.005,
+                        help='Largest share of validation legitimate messages allowed at the model-only Suspicious threshold')
     parser.add_argument('--install', action='store_true', help='Copy the new model into assets/models/ (old files are backed up)')
     return parser.parse_args()
 
@@ -76,6 +78,19 @@ def choose_thresholds(labels, probabilities, target_recall, max_false_alarm_rate
     # The app ignores thresholds outside (0, 1).
     safe = min(max(safe, 1e-6), 1 - 1e-6)
     return safe, min(max(dangerous, safe), 1 - 1e-6)
+
+
+def choose_model_only_threshold(labels, probabilities, max_false_alarm_rate):
+    """Choose a high-specificity threshold for an advisory Suspicious-only model signal."""
+    if not 0 <= max_false_alarm_rate < 1:
+        raise ValueError('model-only false-alarm rate must be in [0, 1)')
+    legitimate = np.sort(probabilities[labels == 0])[::-1]
+    if len(legitimate) == 0:
+        raise ValueError('validation split must contain legitimate messages')
+    allowed = int(np.floor(max_false_alarm_rate * len(legitimate)))
+    if allowed >= len(legitimate):
+        return float(np.nextafter(np.float32(1), np.float32(0)))
+    return float(np.nextafter(np.float32(legitimate[allowed]), np.float32(np.inf)))
 
 
 def score(labels, probabilities, safe, dangerous):
@@ -154,7 +169,6 @@ def current_model_score(labels, encoded):
 
 def write_report(path, metadata, current, history_epochs):
     new = metadata['audit_performance_frozen_test']
-    apps = new['at_app_threshold']
     rows = [('Accuracy (cut-off 0.5)', 'accuracy'), ('PR-AUC', 'pr_auc'), ('ROC-AUC', 'roc_auc'),
             ('Missed scams (below safe)', ('safety_errors', 'false_negatives')),
             ('False alarms (above dangerous)', ('safety_errors', 'false_positives')),
@@ -177,9 +191,11 @@ def write_report(path, metadata, current, history_epochs):
         '| --- | ---: |' + (' ---: |' if current else ''),
         *[f'| {label} | {get(new, key)} |' + (f' {get(current, key)} |' if current else '') for label, key in rows],
         '',
-        f"At the app's safe threshold the new model flags {apps['scams_flagged']} of {apps['scams_total']} scams and "
-        f"{apps['legitimate_flagged']} of {apps['legitimate_total']} legitimate messages. In the app it only adds "
-        'points when the rules already found a real warning sign.', '',
+        f"At the high-specificity model-only threshold the model flags "
+        f"{new['at_model_only_threshold']['scams_flagged']} of {new['at_model_only_threshold']['scams_total']} "
+        f"scams and {new['at_model_only_threshold']['legitimate_flagged']} of "
+        f"{new['at_model_only_threshold']['legitimate_total']} legitimate messages. A model-only hit can raise a "
+        "message to Suspicious, never Dangerous; rule evidence still controls Dangerous results.", '',
     ]
     if current:
         lines += ['The current model may have been trained on some of these test messages (its training split is '
@@ -187,6 +203,7 @@ def write_report(path, metadata, current, history_epochs):
     lines += ['## Thresholds', '',
               f"- safe = {metadata['technical_specifications']['locked_thresholds']['safe']:.10f}",
               f"- dangerous = {metadata['technical_specifications']['locked_thresholds']['dangerous']:.10f}",
+              f"- model_only = {metadata['technical_specifications']['locked_thresholds']['model_only']:.10f}",
               f"- Rule: {metadata['technical_specifications']['threshold_rule']}", '',
               '## Known limitations', '', *[f'- {item}' for item in metadata['known_limitations']], '']
     path.write_text('\n'.join(lines), encoding='utf-8')
@@ -232,6 +249,9 @@ def main():
     validation_x, validation_y = data['validation']
     validation_p = model.predict(validation_x, batch_size=256, verbose=0).ravel()
     safe, dangerous = choose_thresholds(validation_y, validation_p, args.target_recall, args.max_false_alarm_rate)
+    model_only = choose_model_only_threshold(
+        validation_y, validation_p, args.model_only_max_false_alarm_rate,
+    )
 
     print('Exporting the phone model and checking it matches...', flush=True)
     tflite_model = export_tflite(model)
@@ -244,6 +264,13 @@ def main():
 
     print('Scoring on the frozen test split...', flush=True)
     result = score(test_y, test_p, safe, dangerous)
+    result['at_model_only_threshold'] = {
+        'scams_flagged': int(((test_y == 1) & (test_p >= model_only)).sum()),
+        'scams_total': int((test_y == 1).sum()),
+        'legitimate_flagged': int(((test_y == 0) & (test_p >= model_only)).sum()),
+        'legitimate_total': int((test_y == 0).sum()),
+        'validation_max_false_alarm_rate': args.model_only_max_false_alarm_rate,
+    }
     result['by_source'] = {}
     for source in sorted({example.source for example in splits['test']}):
         mask = np.array([example.source == source for example in splits['test']])
@@ -259,7 +286,7 @@ def main():
     limitations = [
         'Accuracy is measured on a test split of the same datasets, not on messages from NotiCare users.',
         'SAFE label represents lower estimated risk, not guaranteed safety.',
-        'In the app the model only supports the rule engine: it cannot raise a warning or mark a message Dangerous alone.',
+        'The model-only high-specificity threshold may raise a message to Suspicious but never Dangerous; rule evidence still controls Dangerous results.',
     ]
     if enabled_sources <= {'UCI_SMS_Spam', 'NCSU_SMS_Phishing'}:
         limitations.insert(0, 'Training data is mostly English (UCI, NCSU); it has no reviewed Tagalog or Taglish messages.')
@@ -291,9 +318,10 @@ def main():
                 'padding': 'zero-pad to max_length',
                 'truncation': f'truncate beyond {MAX_LENGTH} bytes',
             },
-            'locked_thresholds': {'safe': safe, 'dangerous': dangerous},
+            'locked_thresholds': {'safe': safe, 'dangerous': dangerous, 'model_only': model_only},
             'threshold_rule': (f'safe keeps {args.target_recall:.1%} of validation scams at or above it; dangerous lets at most '
-                               f'{args.max_false_alarm_rate:.1%} of validation legitimate messages reach it'),
+                               f'{args.max_false_alarm_rate:.1%} of validation legitimate messages reach it; model-only '
+                               f'keeps at most {args.model_only_max_false_alarm_rate:.1%} of validation legitimate messages above threshold'),
         },
         'audit_performance_frozen_test': result,
         'training': {

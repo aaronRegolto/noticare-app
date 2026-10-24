@@ -27,6 +27,18 @@ py -3.12 ml/data.py      # optional: preview how many messages each source gives
 py -3.12 ml/train.py     # train and export (takes about a minute on a laptop CPU)
 ```
 
+To include the attached categorized Philippine SMS export, first run the local-only importer, then pass its generated manifest:
+
+```powershell
+py -3.12 ml/import_local_spam.py "C:\path\to\text-messages.csv"
+py -3.12 ml/data.py "ml\output\local_sources.json"
+py -3.12 ml/train.py --sources "ml\output\local_sources.json"
+```
+
+Only rows with `category=spam` are used. `SPAM_SMS.csv` is excluded because it has no label column. The importer drops sender/date fields and masks common identifiers, but this is not guaranteed complete anonymization.
+
+Public sources and licensing caveats are summarized in [../docs/ML_DATA_SOURCES.md](../docs/ML_DATA_SOURCES.md).
+
 Each run is saved in `ml/output/<date-time>/`:
 
 - `noticare_smishing_v3.tflite`: the phone model
@@ -94,12 +106,13 @@ Duplicates (same first 256 bytes, ignoring case and spacing) are removed. A mess
 
 ## Thresholds
 
-The model outputs a probability from 0 to 1 that a message is a scam. Two thresholds are chosen on the **validation** split (never the test split):
+The model outputs a probability from 0 to 1 that a message is a scam. Training chooses validation thresholds (never from the test split):
 
 - `safe`: at least 99.5% of validation scams score at or above it (`--target-recall`).
 - `dangerous`: at most 2% of validation legitimate messages score at or above it (`--max-false-alarm-rate`).
+- `model_only`: at most 0.5% of validation legitimate messages score at or above it.
 
-The app uses only `safe`. When the rules find a real warning sign but still rate a message Safe, and the model's probability is at or above `safe`, the message is raised to Suspicious (score 30). The model never marks a message Dangerous and never warns on its own.
+The app uses a separate high-specificity `model_only` threshold to raise a model-only hit to Suspicious (score 30); that path never marks a message Dangerous. When the rules already find non-weak warning evidence, the `safe` threshold may add the AI evidence to the rule score. Threshold false-alarm limits apply only to the validation split, not every future message population.
 
 ## Notes
 

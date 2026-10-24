@@ -7,11 +7,11 @@ import java.util.Locale
 import kotlin.math.min
 
 /**
- * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.09.29).
+ * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.10.24).
  * Both implementations are deterministic, offline, and make no network request.
  */
 object SmishingEvaluator {
-  const val RULE_VERSION = "2026.09.29"
+  const val RULE_VERSION = "2026.10.24"
   private const val scoreCap = 100
   private const val suspiciousThreshold = 30
   private const val dangerousThreshold = 70
@@ -146,6 +146,24 @@ object SmishingEvaluator {
     "Upfront fee to receive money",
     "The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.",
     20,
+  )
+  private val abusiveLanguage = Rule(
+    "abusive-language",
+    "Profanity or abusive language",
+    "The message contains a recognized English or Filipino profanity term; context may affect interpretation.",
+    30,
+  )
+  private val directThreat = Rule(
+    "direct-threat",
+    "Direct threat of harm",
+    "The message threatens physical harm or an in-person attack.",
+    70,
+  )
+  private val cyberThreat = Rule(
+    "cyber-threat",
+    "Threat to hack, expose, or misuse private information",
+    "The message threatens unauthorized access, disclosure, or misuse of private data or accounts.",
+    70,
   )
   private val obfuscatedText = Rule(
     "obfuscated-text",
@@ -304,6 +322,35 @@ object SmishingEvaluator {
       ),
       listOf("advance-fee-request"),
       true,
+    ),
+    TextRule(
+      abusiveLanguage,
+      listOf(
+        insensitive("""\b(?:fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina|putangina|tangina|tang\s+ina|puta|gago|gaga|tanga|bobo|ulol|leche|bwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b"""),
+      ),
+      listOf("abusive-language"),
+    ),
+    TextRule(
+      directThreat,
+      listOf(
+        insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b"""),
+        insensitive("""\b(?:you(?:'re| are)\s+dead|you\s+will\s+(?:die|get hurt|get beaten)|i(?:'m| am)\s+going\s+to\s+(?:kill|hurt|beat)\s+you)\b"""),
+        insensitive("""\b(?:patayin\s+(?:kita|ka|ko\s+ikaw)|papatayin\s+(?:kita|ka|ko\s+ikaw)|sasaktan\s+(?:kita|ka)|saktan\s+(?:kita|ka)|bugbugin\s+(?:kita|ka)|susugurin\s+(?:kita|ka))\b"""),
+        insensitive("""\b(?:pupuntahan\s+(?:kita|ka)\s+(?:sa\s+bahay|at\s+(?:sasaktan|bugbugin|patayin))|hahanapin\s+(?:kita|ka)\s+at\s+(?:sasaktan|bugbugin|patayin))\b"""),
+      ),
+      listOf("direct-threat"),
+    ),
+    TextRule(
+      cyberThreat,
+      listOf(
+        insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:hack|break\s+into|take\s+over)\s+(?:your\s+)?(?:account|phone|device|email|socials?)\b"""),
+        insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:leak|expose|publish|post|share|send|release)\s+(?:your\s+)?(?:private\s+)?(?:photos?|pictures?|messages?|contacts?|contact\s+list|address|personal\s+data|information|records)\b"""),
+        insensitive("""\b(?:pay|magbayad)\b[\s\S]{0,80}\b(?:or\s+(?:i(?:'ll| will)|we(?:'ll| will))\s+)?(?:leak|expose|post|publish|send|share)\b"""),
+        insensitive("""\b(?:doxx?(?:ed|ing)?\s+you|ransomware|encrypt(?:ed|ing)?\s+your\s+files)\b"""),
+        insensitive("""\b(?:i[-\s]?hack|ihack|na[-\s]?hack)\s+(?:ang\s+)?(?:account|phone|email|facebook|messenger|whatsapp)\s+(?:mo|ninyo|mo\s+na)\b"""),
+        insensitive("""\b(?:ikalat|ipapakalat|ilalabas|ipapadala|i-post|ipost)\s+(?:ko\s+|namin\s+)?(?:ang\s+)?(?:private\s+)?(?:photos?|pictures?|messages?|contacts?|contact\s+list|address|personal\s+data|impormasyon)\s+(?:mo|ninyo)\b"""),
+      ),
+      listOf("cyber-threat"),
     ),
   )
 

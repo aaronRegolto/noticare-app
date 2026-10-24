@@ -6,7 +6,7 @@ import type { DetectionRuleBundle } from './types';
  * We intentionally score combinations, rather than a brand name or one keyword alone.
  */
 export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
-  version: '2026.09.29',
+  version: '2026.10.24',
   scoreCap: 100,
   thresholds: {
     suspicious: 30,
@@ -203,7 +203,8 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
     {
       code: 'advance-fee-request',
       label: 'Upfront fee to receive money',
-      description: 'The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.',
+      description:
+        'The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.',
       weight: 20,
       signals: ['advance-fee-request'],
       ignoreWhenPrecededBySafetyAdvice: true,
@@ -211,6 +212,45 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         String.raw`\b(?:pay|magbayad|bayaran|deposit|send|magpadala)\s+(?:muna\s+)?(?:(?:the|a|an|ng|ang)\s+)?(?:(?:php|p|₱)\s?[\d.,]+\s+)?(?:processing|release|releasing|activation|insurance|clearance|claiming|verification|handling|redelivery|re-delivery)\s+(?:fee|charge)\b`,
         String.raw`\bdeposit\s+(?:(?:php|p|₱)\s?)?[\d,]+\s+to\s+(?:activate|unlock|start|withdraw|release|claim)\b`,
         String.raw`\b(?:magpadala|magbayad)\s+muna\b`,
+      ],
+    },
+    {
+      code: 'abusive-language',
+      label: 'Profanity or abusive language',
+      description:
+        'The message contains a recognized English or Filipino profanity term; context may affect interpretation.',
+      weight: 30,
+      signals: ['abusive-language'],
+      patterns: [
+        String.raw`\b(?:fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina|putangina|tangina|tang\s+ina|puta|gago|gaga|tanga|bobo|ulol|leche|bwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b`,
+      ],
+    },
+    {
+      code: 'direct-threat',
+      label: 'Direct threat of harm',
+      description: 'The message threatens physical harm or an in-person attack.',
+      weight: 70,
+      signals: ['direct-threat'],
+      patterns: [
+        String.raw`\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b`,
+        String.raw`\b(?:you(?:'re| are)\s+dead|you\s+will\s+(?:die|get hurt|get beaten)|i(?:'m| am)\s+going\s+to\s+(?:kill|hurt|beat)\s+you)\b`,
+        String.raw`\b(?:patayin\s+(?:kita|ka|ko\s+ikaw)|papatayin\s+(?:kita|ka|ko\s+ikaw)|sasaktan\s+(?:kita|ka)|saktan\s+(?:kita|ka)|bugbugin\s+(?:kita|ka)|susugurin\s+(?:kita|ka))\b`,
+        String.raw`\b(?:pupuntahan\s+(?:kita|ka)\s+(?:sa\s+bahay|at\s+(?:sasaktan|bugbugin|patayin))|hahanapin\s+(?:kita|ka)\s+at\s+(?:sasaktan|bugbugin|patayin))\b`,
+      ],
+    },
+    {
+      code: 'cyber-threat',
+      label: 'Threat to hack, expose, or misuse private information',
+      description: 'The message threatens unauthorized access, disclosure, or misuse of private data or accounts.',
+      weight: 70,
+      signals: ['cyber-threat'],
+      patterns: [
+        String.raw`\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:hack|break\s+into|take\s+over)\s+(?:your\s+)?(?:account|phone|device|email|socials?)\b`,
+        String.raw`\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:leak|expose|publish|post|share|send|release)\s+(?:your\s+)?(?:private\s+)?(?:photos?|pictures?|messages?|contacts?|contact\s+list|address|personal\s+data|information|records)\b`,
+        String.raw`\b(?:pay|magbayad)\b[\s\S]{0,80}\b(?:or\s+(?:i(?:'ll| will)|we(?:'ll| will))\s+)?(?:leak|expose|post|publish|send|share)\b`,
+        String.raw`\b(?:doxx?(?:ed|ing)?\s+you|ransomware|encrypt(?:ed|ing)?\s+your\s+files)\b`,
+        String.raw`\b(?:i[-\s]?hack|ihack|na[-\s]?hack)\s+(?:ang\s+)?(?:account|phone|email|facebook|messenger|whatsapp)\s+(?:mo|ninyo|mo\s+na)\b`,
+        String.raw`\b(?:ikalat|ipapakalat|ilalabas|ipapadala|i-post|ipost)\s+(?:ko\s+|namin\s+)?(?:ang\s+)?(?:private\s+)?(?:photos?|pictures?|messages?|contacts?|contact\s+list|address|personal\s+data|impormasyon)\s+(?:mo|ninyo)\b`,
       ],
     },
   ],

@@ -20,7 +20,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 
 /**
  * The risky-link warning, shown the moment a SUSPICIOUS or DANGEROUS link is tapped in any app
@@ -48,9 +47,12 @@ class LinkWarningActivity : Activity() {
         // Checked again here rather than trusting a passed-in verdict, so this screen always
         // matches the rules that will apply if the user opens the link.
         val result = urlChecker.check(url)
-        if (url.isBlank() || result.verdict == UrlVerdict.SAFE) {
-            if (url.isNotBlank()) forward()
+        if (url.isBlank()) {
             finishAndRemoveTask()
+            return
+        }
+        if (result.verdict == UrlVerdict.SAFE) {
+            forward()
             return
         }
         val dangerous = result.verdict == UrlVerdict.DANGEROUS
@@ -86,20 +88,12 @@ class LinkWarningActivity : Activity() {
             .setNegativeButton(copy.confirmCancel, null)
             .setPositiveButton(copy.openAnyway) { _, _ ->
                 forward()
-                finishAndRemoveTask()
             }
             .show()
     }
 
     private fun forward() {
-        val copy = LinkWarningCopy.forContext(this)
-        when (val result = LinkForwarder.openInRealBrowser(this, url)) {
-            is LinkForwarder.ForwardResult.NoBrowserInstalled ->
-                Toast.makeText(this, copy.noBrowser, Toast.LENGTH_LONG).show()
-            is LinkForwarder.ForwardResult.Failed ->
-                Toast.makeText(this, copy.openFailed(result.browserLabel), Toast.LENGTH_LONG).show()
-            is LinkForwarder.ForwardResult.Opened -> Unit
-        }
+        LinkForwarder.showBrowserChooser(this, url) { finishAndRemoveTask() }
     }
 
     private fun build(copy: LinkWarningCopy.Copy, result: UrlCheckResult, dangerous: Boolean, accent: Int): ScrollView {

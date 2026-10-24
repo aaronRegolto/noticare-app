@@ -17,7 +17,9 @@ const codes = [
   rules.urlContextRule,
   rules.brandUnrelatedUrlRule,
   ...rules.combinationRules,
-].map((rule) => rule.code);
+]
+  .map((rule) => rule.code)
+  .concat('repeat-sender-escalation');
 
 test.each([...codes, 'v3-model-risk'])('the Tagalog warning copy translates "%s"', (code) => {
   expect(tagalog).toContain(`"${code}" to (`);
