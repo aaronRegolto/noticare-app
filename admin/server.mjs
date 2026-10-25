@@ -208,7 +208,12 @@ export const server = createServer(async (req, res) => {
       if (input.source !== PH_SMS_SOURCE) throw fail('Choose a supported dataset source.');
       const rows = parseSourceRows(input.csv);
       const { data, error } = await db.rpc('replace_admin_dataset_rows', {
-        p_rows: rows.map(({ row_index, message_text, label }) => ({ row_index, message_text, label })),
+        p_rows: rows.map(({ row_index, message_text, message_base64, label }) => ({
+          row_index,
+          message_text,
+          message_base64,
+          label,
+        })),
       });
       if (error) throw fail('Could not store the CSV rows. Check the admin dataset migration and try again.', 502);
       return send({ source: PH_SMS_SOURCE, rows: data }, 201);
@@ -247,10 +252,11 @@ export const server = createServer(async (req, res) => {
       if (search.length > 200) throw fail('Search must be 200 characters or fewer.');
       let query = db
         .from('admin_dataset_rows')
-        .select('row_index,message_text,label', { count: 'exact' })
+        .select('row_index,message_base64,label', { count: 'exact' })
         .eq('source', source)
         .order('row_index');
-      if (search) query = query.ilike('search_text', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      if (search)
+        query = query.ilike('search_text', `%${search.replace(/[\\%_]/g, '\\$&').replaceAll('\0', '\uFFFD')}%`);
       const { data, count, error } = await query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (error)
         throw fail('Could not load stored dataset rows. Apply the admin dataset migration and try again.', 502);
@@ -270,9 +276,9 @@ export const server = createServer(async (req, res) => {
               })
           : count || 0;
       return send({
-        rows: data.map(({ row_index, message_text, label }) => ({
+        rows: data.map(({ row_index, message_base64, label }) => ({
           row: row_index,
-          text: message_text,
+          text: Buffer.from(message_base64, 'base64').toString('utf8'),
           label,
         })),
         count: count || 0,

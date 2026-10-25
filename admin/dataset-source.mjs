@@ -25,7 +25,8 @@ export function parseSourceRows(csv) {
     return {
       source: PH_SMS_SOURCE,
       row_index: index + 1,
-      message_text: text,
+      message_text: text.replaceAll('\0', '\uFFFD'),
+      message_base64: Buffer.from(text, 'utf8').toString('base64'),
       label,
     };
   });
