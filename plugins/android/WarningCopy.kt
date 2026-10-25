@@ -51,7 +51,7 @@ object WarningCopy {
     open val total = "Total"
     open val riskScore = "Risk score"
     open fun cappedNote(rawTotal: Int) = "The signs add up to $rawTotal points; the score is capped at 100."
-    open val legend = "Safe 0 · Suspicious 30–69 · Dangerous 70–100"
+    open val legend = "Safe 0 · Suspicious 1–59 · Dangerous 60–100"
     open fun suspiciousDomains(domains: List<String>) =
       "Suspicious link ${if (domains.size == 1) "domain" else "domains"}: ${domains.joinToString(", ")}"
     open val reviewOnlyNote =
@@ -125,7 +125,7 @@ object WarningCopy {
     override val total = "Kabuuan"
     override val riskScore = "Risk score"
     override fun cappedNote(rawTotal: Int) = "Umaabot sa $rawTotal puntos ang mga babala; hanggang 100 lang ang score."
-    override val legend = "Ligtas 0 · Kahina-hinala 30–69 · Mapanganib 70–100"
+    override val legend = "Ligtas 0 · Kahina-hinala 1–59 · Mapanganib 60–100"
     override fun suspiciousDomains(domains: List<String>) =
       "Kahina-hinalang ${if (domains.size == 1) "domain" else "mga domain"} ng link: ${domains.joinToString(", ")}"
     override val reviewOnlyNote =
@@ -182,6 +182,10 @@ object WarningCopy {
         "Sinasabi ng mensahe na pindutin o buksan ang isang link, o mag-reply para magpatuloy."),
       "prize-or-reward-bait" to ("Premyo o gantimpala" to
         "Gumagamit ang mensahe ng premyo, gantimpala, o libreng pera para mapakilos ka."),
+      "high-value-bonus-offer" to ("Hindi karaniwang malaking bonus" to
+        "Nag-aalok ang mensahe ng bonus na hindi bababa sa 100%, isang padron na madalas gamitin sa mga hindi hinihinging promo at alok sa sugal."),
+      "bonus-offer-link-combination" to ("Malaking bonus na may link" to
+        "May link ang mensahe kasama ng hindi karaniwang malaking bonus; i-verify ang alok bago mag-sign up o magdeposito ng pera."),
       "refund-bait" to ("Refund o cash back" to
         "Nangangako ang mensahe ng refund, reimbursement, o cash back na kailangan mong kunin."),
       "parcel-delivery-bait" to ("Problema sa padala" to
@@ -190,6 +194,12 @@ object WarningCopy {
         "Nagbabanta ang mensahe ng parusa dahil sa umano'y hindi nabayarang bill."),
       "government-aid-impersonation" to ("Alok na tulong mula sa gobyerno" to
         "Nag-aalok ang mensahe ng ayuda o tulong-pinansyal mula sa gobyerno sa paraang madalas gamitin sa scam."),
+      "government-authority-threat" to ("Banta mula sa gobyerno o tagapagpatupad ng batas" to
+        "Inaangkin ng mensahe na may awtoridad ang nagpadala at nagbabanta ng pag-aresto, warrant, demanda, o aksyon ng pulisya."),
+      "government-benefit-freeze" to ("Banta na i-freeze ang ari-arian o benepisyo" to
+        "Nagbabanta ang mensahe na i-freeze o kumpiskahin ang bank account, ari-arian, asset, o benepisyong panlipunan."),
+      "government-coercion-combination" to ("Banta ng gobyerno na may parusang pinansyal" to
+        "Pinagsasama ng mensahe ang pagbabanta ng awtoridad ng gobyerno o pulisya at banta na i-freeze ang ari-arian o benepisyo."),
       "access-loss-threat" to ("Banta na mawawalan ng access o serbisyo" to
         "Nagbabanta ang mensahe na aalisin ang iyong access o puputulin ang isang serbisyo."),
       "money-transfer-request" to ("Hinihinging magpadala ng pera sa personal na account" to
@@ -227,7 +237,7 @@ object WarningCopy {
       "url-obfuscated" to ("Itinagong link" to
         "Binago ang pagkakasulat ng link, gaya ng protocol, espasyo, o tuldok."),
       "url-with-sensitive-request" to ("Sensitibong hiling na may kasamang link" to
-        "May hiling tungkol sa account, bayad, premyo, o padala na may kasamang link."),
+        "May sensitibong hiling, premyo, hindi karaniwang malaking bonus, o problema sa padala na may kasamang link."),
       "brand-with-unrelated-url" to ("Brand na may kasamang ibang link" to
         "Binanggit ang isang bangko, e-wallet, o ahensya ng gobyerno, pero hindi sa opisyal nilang website ang link."),
       "credential-link-combination" to ("Hinihingi ang lihim na code kasama ang link" to

@@ -130,8 +130,8 @@ export type PendingCommunityReport = {
   indicatorCodes: string[];
   ruleVersion: string;
   /**
-   * The detector's risk score (Safe is always 0, otherwise 30–100); null for reports queued before
-   * it was stored. Older builds may have queued a Safe 1–29, which is sent as 0.
+   * The detector's risk score (Safe is always 0, otherwise 1–100); null for reports queued before
+   * it was stored.
    */
   riskScore?: number | null;
   createdAt: number;

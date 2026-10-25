@@ -10,8 +10,8 @@ type Reason = { code: string; label: string; description: string; weight: number
 
 const BANDS: { level: ThreatLevel; range: string }[] = [
   { level: 'safe', range: '0' },
-  { level: 'suspicious', range: '30–69' },
-  { level: 'dangerous', range: '70–100' },
+  { level: 'suspicious', range: '1–59' },
+  { level: 'dangerous', range: '60–100' },
 ];
 
 /**

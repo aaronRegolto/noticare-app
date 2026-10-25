@@ -48,8 +48,10 @@ class RuleBasedUrlCheckerTest {
   @Test
   fun browserChooserCopyIsAvailableInBothLanguages() {
     assertEquals("Choose a browser", LinkWarningCopy.English.chooseBrowser)
-    assertEquals("Open", LinkWarningCopy.English.openBrowser)
+    assertEquals("Open in Chrome", LinkWarningCopy.English.openInBrowser("Chrome"))
     assertEquals("Pumili ng browser", LinkWarningCopy.Tagalog.chooseBrowser)
-    assertEquals("Buksan", LinkWarningCopy.Tagalog.openBrowser)
+    assertEquals("Buksan sa Chrome", LinkWarningCopy.Tagalog.openInBrowser("Chrome"))
+    assertTrue(LinkWarningCopy.English.safeCaveat.contains("not a guarantee"))
+    assertTrue(LinkWarningCopy.Tagalog.safeCaveat.contains("Hindi ito garantiya"))
   }
 }

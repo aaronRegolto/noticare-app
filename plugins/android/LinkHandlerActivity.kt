@@ -12,7 +12,7 @@ import android.widget.Toast
  * excludeFromRecents theme so it never shows a visible window of its own
  * while it decides what to do with the link.
  *
- * SAFE links show a browser picker after NotiCare checks them.
+ * SAFE links open a local verdict screen before the user chooses a browser.
  * SUSPICIOUS/DANGEROUS links open [LinkWarningActivity] at once, natively,
  * without waiting for React Native to start.
  */
@@ -49,12 +49,8 @@ class LinkHandlerActivity : Activity() {
         // Never log the link itself: it can reveal what the user reads or contain personal data.
         Log.i(TAG, "Checked a link: ${result.verdict} (${result.reason})")
 
-        if (result.verdict == UrlVerdict.SAFE) {
-            LinkForwarder.showBrowserChooser(this, url) { finish() }
-        } else {
-            startActivity(LinkWarningActivity.intent(this, url))
-            finish()
-        }
+        startActivity(LinkWarningActivity.intent(this, url))
+        finish()
     }
 
     companion object {

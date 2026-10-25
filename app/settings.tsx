@@ -10,6 +10,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 import { useOnboarding } from '@/src/providers/OnboardingProvider';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { WarningAppearanceSelector } from '@/src/components/warning-appearance-selector';
+import { MessageSourceIcon } from '@/src/components/message-source-icon';
 import { OptionSheet, SettingsAlert, SettingsItem, SettingsSection, SheetOption } from '@/src/components/settings-ui';
 import { AccentSwatchPicker, ThemeModeSelector } from '@/src/components/theme-selector';
 import { formatVersion } from '@/src/features/app-update/release';
@@ -585,6 +586,7 @@ export default function SettingsScreen() {
             <SettingsItem
               key={app.id}
               icon={app.id === 'sms' ? 'chatbubble-ellipses-outline' : 'chatbubble-outline'}
+              iconElement={app.id === 'messenger' ? <MessageSourceIcon source="messenger" size={19} /> : undefined}
               title={app.name}
               subtitle={
                 !app.installed

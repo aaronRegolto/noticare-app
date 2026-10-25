@@ -2,3 +2,5 @@
 *.CSV
 !UCI_SMS_Spam.csv
 !NCSU_SMS_Phishing.csv
+!government_impersonation_synthetic.csv
+!reward_bonus_synthetic.csv

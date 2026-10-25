@@ -63,7 +63,7 @@ beforeEach(() => {
 
 test('reporting a Safe result stores and sends risk score 0, even from an unfinalized result', async () => {
   const raw = evaluateRules(SAFE_TEXT);
-  expect(raw.score).toBe(12);
+  expect(raw.score).toBe(0);
   rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
   await reportAndBlockMessage(SAFE_TEXT, null, raw);
   expect(sentRiskScores()).toEqual([0]);
@@ -71,13 +71,13 @@ test('reporting a Safe result stores and sends risk score 0, even from an unfina
   expect(queued.map((report: { riskScore: number }) => report.riskScore)).toEqual([0]);
 });
 
-test('reports an older build queued with a Safe 1–29 score are sent and re-queued as 0', async () => {
+test('reports queued by an older rule set with a Safe 1–29 score are sent and re-queued as 0', async () => {
   const queued = (id: string, riskScore: number | null | undefined) => ({
     id,
     messageText: `message ${id}`,
     sampleSender: null,
     indicatorCodes: ['urgency-pressure'],
-    ruleVersion: 'test-v1',
+    ruleVersion: '2026.10.25',
     riskScore,
     createdAt: '2026-10-01T00:00:00.000Z',
     attempts: 0,
@@ -93,14 +93,14 @@ test('reports an older build queued with a Safe 1–29 score are sent and re-que
   expect(requeued).toEqual([{ ...queued('a', 0), attempts: 1 }]);
 });
 
-test('native Block & Report taps with a Safe 1–29 score are sent as 0', async () => {
+test('native Block & Report taps from an older rule set with a Safe 1–29 score are sent as 0', async () => {
   (isNativeMonitoringAvailable as jest.Mock).mockReturnValue(true);
   const pending = (id: string, riskScore: number | null) => ({
     id,
     messageText: `native ${id}`,
     sampleSender: null,
     indicatorCodes: [],
-    ruleVersion: 'test-v1',
+    ruleVersion: '2026.10.25',
     riskScore,
     createdAt: Date.now(),
   });
@@ -121,19 +121,19 @@ const rankingRow = (id: string, messageText: string, riskScore: number | null) =
   risk_score: riskScore,
 });
 
-test('ranking rows show a Safe 1–29 or re-scored Safe message as 0 and cache it that way', async () => {
+test('ranking rows preserve Suspicious 1–59 scores and cache them unchanged', async () => {
   rpc.mockResolvedValueOnce({
     data: [rankingRow('a', 'old safe report', 12), rankingRow('b', 'scam', 75), rankingRow('c', SAFE_TEXT, null)],
     error: null,
   });
   const { entries, source } = await getViralPhishingRanking('manual');
   expect(source).toBe('network');
-  expect(entries.map((entry) => entry.riskScore)).toEqual([0, 75, 0]);
-  const cached = JSON.parse(storage.get('noticare.viral-phishing-ranking.v2.manual') ?? '[]');
-  expect(cached.map((entry: { riskScore: number }) => entry.riskScore)).toEqual([0, 75, 0]);
+  expect(entries.map((entry) => entry.riskScore)).toEqual([12, 75, 0]);
+  const cached = JSON.parse(storage.get('noticare.viral-phishing-ranking.v3.manual') ?? '[]');
+  expect(cached.map((entry: { riskScore: number }) => entry.riskScore)).toEqual([12, 75, 0]);
 });
 
-test('a cached ranking saved by an older build reads a Safe 1–29 as 0', async () => {
+test('a cached ranking saved by an older build reads legacy Safe 1–29 scores as 0', async () => {
   const cachedEntry = (reportId: string, riskScore: number | null) => ({
     reportId,
     messageText: `cached ${reportId}`,

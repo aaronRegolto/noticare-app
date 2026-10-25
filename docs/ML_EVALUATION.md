@@ -1,17 +1,17 @@
 # Local interception classifier evaluation
 
-Model inference: 2026-10-24T00:09:31.806451+00:00 · TensorFlow 2.21.0
+Model inference: 2026-10-25T11:24:44.410271+00:00 · TensorFlow 2.21.0
 
 **Diagnostic results, not held-out accuracy or a claim of production readiness.**
 
 A warning means Suspicious or Dangerous. Phishing labelled Safe is a missed warning. Safe/ham labelled Suspicious or Dangerous is a false alarm.
 
-| Source                   | Label    | Count | Model-only warnings | Rules warnings | Combined warnings |
-| ------------------------ | -------- | ----: | ------------------: | -------------: | ----------------: |
-| noticare_philippines.csv | phishing |    50 |          42 (84.0%) |     46 (92.0%) |       50 (100.0%) |
-| noticare_philippines.csv | safe     |    50 |          32 (64.0%) |       0 (0.0%) |        32 (64.0%) |
-| UCI_SMS_Spam.csv         | ham      |  4827 |           16 (0.3%) |      92 (1.9%) |        108 (2.2%) |
-| UCI_SMS_Spam.csv         | spam     |   747 |         733 (98.1%) |      14 (1.9%) |       733 (98.1%) |
+| Source | Label | Count | Model-only warnings | Rules warnings | Combined warnings |
+| --- | --- | ---: | ---: | ---: | ---: |
+| noticare_philippines.csv | phishing | 50 | 42 (84.0%) | 50 (100.0%) | 50 (100.0%) |
+| noticare_philippines.csv | safe | 50 | 32 (64.0%) | 0 (0.0%) | 0 (0.0%) |
+| UCI_SMS_Spam.csv | ham | 4827 | 16 (0.3%) | 156 (3.2%) | 156 (3.2%) |
+| UCI_SMS_Spam.csv | spam | 747 | 733 (98.1%) | 362 (48.5%) | 362 (48.5%) |
 
 ## Limits
 
@@ -27,7 +27,7 @@ Thresholds and model weights were not tuned on this evaluation. Rule coverage wa
 
 See `scripts/evaluate-model.py` and `docs/ML_VALIDATION.md`.
 
-Kotlin rules SHA-256: `37416159af45663c4bc706821f641d4713fc9aa0d25363992b5e60f6c08f9ab1`
+Kotlin rules SHA-256: `972c9434a3fba970b59570ea2473ba25ed9c1274c28d91c7f744e7c4f01bc606`
 
 Model SHA-256: `921c0baed60662db5ec23f4c66e3ffcd8596dad8b290ad8af6f8e2979eda360a`
 

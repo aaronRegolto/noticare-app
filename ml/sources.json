@@ -18,6 +18,22 @@
       "note": "NC State SMS phishing collection. The file has no label column; every row is a reported phishing message. Capped so scam messages do not swamp the legitimate ones."
     },
     {
+      "name": "government_impersonation_synthetic",
+      "file": "datasets/government_impersonation_synthetic.csv",
+      "text_column": "text",
+      "label_column": "label",
+      "enabled": true,
+      "note": "Balanced, project-written synthetic government-impersonation examples and legitimate controls. Use for targeted coverage, not as evidence of real-world accuracy."
+    },
+    {
+      "name": "reward_bonus_synthetic",
+      "file": "datasets/reward_bonus_synthetic.csv",
+      "text_column": "text",
+      "label_column": "label",
+      "enabled": true,
+      "note": "Balanced, project-written unsolicited high-bonus/reward promotion examples and legitimate controls. Synthetic spam labels broaden targeted training coverage; they are not evidence that a real offer is fraudulent."
+    },
+    {
       "name": "noticare_philippines",
       "file": "datasets/noticare_philippines.csv",
       "text_column": "text",

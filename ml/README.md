@@ -118,4 +118,6 @@ The app uses a separate high-specificity `model_only` threshold to raise a model
 
 - This script rebuilds the training of the bundled V3 model from its documented architecture, preprocessing, and dataset counts. The original training code and its 1,435 synthetic messages are not in this project, so results differ slightly from V3's metadata.
 - The NCSU file has no label column. All of its rows are phishing messages collected by the dataset authors, so it uses `fixed_label: scam`.
+- `government_impersonation_synthetic.csv` is a small, balanced project-written set for targeted coverage. It is not independently sourced, and results on it do not establish real-world government-scam accuracy.
+- `reward_bonus_synthetic.csv` adds balanced project-written high-bonus/reward spam examples and legitimate promotion controls. Its labels are synthetic development labels, not verified evidence of fraud; it must not be used to claim production accuracy.
 - Accuracy here comes from a test split of the same public datasets. It is not accuracy on Tagalog/Taglish or on real NotiCare users' messages; that needs a reviewed local test set.

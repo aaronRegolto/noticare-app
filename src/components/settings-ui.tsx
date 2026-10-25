@@ -53,6 +53,7 @@ export function SettingsItem({
   value,
   valueTone = 'muted',
   accessory,
+  iconElement,
   onPress,
   destructive = false,
   disabled = false,
@@ -65,6 +66,7 @@ export function SettingsItem({
   value?: string;
   valueTone?: Tone;
   accessory?: ReactNode;
+  iconElement?: ReactNode;
   onPress?: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -82,7 +84,7 @@ export function SettingsItem({
   const content = (
     <>
       <View style={[styles.icon, destructive && styles.iconDanger]}>
-        <Ionicons name={icon} size={19} color={destructive ? colors.danger : colors.link} />
+        {iconElement ?? <Ionicons name={icon} size={19} color={destructive ? colors.danger : colors.link} />}
       </View>
       <View style={styles.copy}>
         <Text style={[styles.title, destructive && styles.titleDanger]} numberOfLines={1}>

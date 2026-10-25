@@ -9,6 +9,8 @@ This directory is the Supabase source of truth for NotiCare. Ordinary scan telem
 | `migrations/20260811000100_noticare_schema.sql`      | Tables, constraints, masked-profile trigger, and aggregate trigger. |
 | `migrations/20260811000200_noticare_rls_and_rpc.sql` | RLS, grants, and authenticated RPCs.                                |
 | `migrations/20260811000300_seed_rule_set.sql`        | Initial versioned rule bundle.                                      |
+| `migrations/20261026000100_seed_rule_set_2026_10_26.sql` | Active scoring thresholds and bonus-promotion indicator.             |
+| `migrations/20261026000200_preserve_suspicious_report_scores.sql` | Preserves new nonzero Suspicious report scores.                       |
 | `types/database.types.ts`                            | TypeScript database contract generated from the migration schema.   |
 
 The older `backend/api` PHP endpoints and MySQL schema are not part of this Supabase design. Do not send production mobile data to those placeholder endpoints.
@@ -92,7 +94,7 @@ The client should cache the last successful aggregate result and fill missing da
 - `profiles` contains the authenticated user ID and only the last four phone digits.
 - `devices` stores a generated installation UUID, app/rule versions, and last-seen time. It stores no advertising or hardware ID.
 - `threat_events` stores classification metadata only. A database constraint blocks `blocked=true` unless the source is `realtime` and level is `dangerous`.
-- Safe results always carry a score of 0 (Safe 0, Suspicious 30–69, Dangerous 70–100; classification itself is unchanged). `20261004000200_safe_risk_score_zero.sql` adds triggers that store `score_bucket = 0` for every Safe `threat_events` row and turn a `risk_score` of 1–29 into 0 in `viral_phishing_reports` and `viral_phishing_report_events`, and it backfilled existing rows. The triggers coerce and never reject, because old app builds and queued uploads still send 1–29 and clients retry a failed upload forever. A `NULL` risk score stays `NULL`.
+- Safe results always carry a score of 0 (Safe 0, Suspicious 1–59, Dangerous 60–100). `20261004000200_safe_risk_score_zero.sql` stored historical Safe scores as 0; `20261026000200_preserve_suspicious_report_scores.sql` removes its report-score normalizers so the new Suspicious 1–59 band remains intact. Safe `threat_events` still always use `score_bucket = 0`. The client recognizes legacy report queues by rule version and converts their old Safe 1–29 scores to 0 before upload. Community popularity counts distinct explicit reports only, never routine scans or received messages.
 - `community_daily_stats` and `community_hourly_stats` contain no user or device identifiers. A trigger excludes `is_demo=true` events.
 - `scan_feedback` records an expected classification and allow-listed rule codes, not a message.
 - `rule_sets` distributes the active checksummed rule bundle. Only active versions are readable by authenticated users.

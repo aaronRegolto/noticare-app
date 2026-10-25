@@ -29,8 +29,8 @@ You can turn scanning off globally or disable an individual app whenever you wan
 | Result     | Score  | Meaning                                                  | What NotiCare does                                                                        |
 | ---------- | ------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Safe       | 0      | No meaningful phishing signs were found.                 | Leaves the SMS notification alone.                                                        |
-| Suspicious | 30–69  | There are warning signs, but not enough strong evidence. | Uses your selected warning style and lets you Block or Ignore it.                         |
-| Dangerous  | 70–100 | Strong signs suggest phishing or credential theft.       | Shows Block and Ignore controls. The notification is suppressed only if you choose Block. |
+| Suspicious | 1–59   | There are warning signs, but not enough strong evidence. | Uses your selected warning style and lets you Block or Ignore it.                         |
+| Dangerous  | 60–100 | Strong signs suggest phishing or credential theft.       | Shows Block and Ignore controls. The notification is suppressed only if you choose Block. |
 
 A Safe result always shows a score of 0. It means no strong warning signs were found, not that the message is guaranteed to be safe. NotiCare's English and Filipino profanity list is curated, not exhaustive; a curse word may be misunderstood without context. Direct physical or cyber-threat patterns are scored Dangerous when matched.
 
@@ -48,7 +48,7 @@ When Android routes a link to NotiCare, NotiCare checks it first. Safe links sho
 
 ## Manually scan a message
 
-Use **Manual Scan** to check a message you weren't sent directly, such as one on a friend's phone or in a screenshot.
+Use **Manual Scan** to check a message you weren't sent directly, such as one on a friend's phone or in a screenshot. Manual Scan evaluates only the text you provide; it cannot see whether Android Messages separately marked the original as spam.
 
 1. Open **Manual Scan** and tap **Take a photo**, then point your camera at the message. Or tap **Upload screenshot**.
 2. Crop to just the message, leaving out names, times, and other messages.
@@ -58,7 +58,7 @@ The photo is read on your phone and deleted right after; it is never uploaded. N
 
 To check a message on your own phone, use that app's share menu and choose **NotiCare** when available, or copy the text and tap **Paste text** in Manual Scan. NotiCare reads the clipboard only when you tap Paste text. It shows URLs as text and does not open them. A Manual Scan does not add a message to the captured Messages inbox.
 
-Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. A scam report shares the message text you chose to report so other users can be warned; safe feedback contains classification metadata only. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
+Choose **Mark as safe** if you believe the message is legitimate, or **Report smishing** if you believe it is a scam. A scam report shares the message text you chose to report so other users can be warned; safe feedback contains classification metadata only. Community report counts rise only from distinct users' explicit reports, not ordinary scans or message receipts. With the local OTP bypass, reports are saved on this device and are not sent to admin. Verified Supabase sessions submit reports online.
 
 ## Read messages in Tagalog or English
 

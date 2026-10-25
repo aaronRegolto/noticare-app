@@ -41,7 +41,7 @@ class RepeatSenderScorerTest {
       ),
       now = 2_000,
     )
-    assertEquals(ThreatLevel.SUSPICIOUS, thirdRepeat.level)
+    assertEquals(ThreatLevel.DANGEROUS, thirdRepeat.level)
     assertEquals(60, thirdRepeat.score)
 
     val dangerousRepeat = RepeatSenderScorer.escalate(

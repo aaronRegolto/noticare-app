@@ -21,6 +21,7 @@ const URL_CONTEXT_SIGNALS = new Set([
   'credential-request',
   'account-warning',
   'prize-or-reward-bait',
+  'high-value-bonus-offer',
   'refund-bait',
   'parcel-delivery-bait',
   'unpaid-bill-pressure',
@@ -40,9 +41,8 @@ export function evaluateThreat(message: string): ThreatResult {
 }
 
 /**
- * The raw rule result, before finalizing: the score is the capped sum of the reasons' weights,
- * so a Safe message can still score 1–29 here. It mirrors Kotlin SmishingEvaluator.evaluate and
- * is what the parity test hashes. Never show, store, or send it; use evaluateThreat instead.
+ * The raw rule result, before finalizing. It mirrors Kotlin SmishingEvaluator.evaluate and is what
+ * the parity test hashes. Never show, store, or send it; use evaluateThreat instead.
  */
 export function evaluateRules(message: string): ThreatResult {
   const normalized = normalizeMessage(message);
@@ -134,10 +134,11 @@ export function finalizeThreatResult<T extends ThreatResult>(result: T): T {
 }
 
 /**
- * For a final score stored without its level, such as a community report's risk score. Any score
- * under the Suspicious threshold is Safe, so it reads as 0.
+ * For a score stored without its level, such as a community report. Legacy scores below 30 were
+ * Safe under earlier rule sets; preserve all scores from the current 1–59 Suspicious band.
  */
-export function finalizeRiskScore(score: number): number {
+export function finalizeRiskScore(score: number, ruleVersion = DETECTION_RULE_BUNDLE.version): number {
+  if (ruleVersion < DETECTION_RULE_BUNDLE.version && score > 0 && score < 30) return 0;
   return getThreatLevel(score) === 'safe' ? 0 : score;
 }
 

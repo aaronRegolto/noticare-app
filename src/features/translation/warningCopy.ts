@@ -17,7 +17,6 @@ export type WarningCopy = {
   safeScoreExplanation: string;
   suspiciousScoreExplanation: (score: number) => string;
   dangerousScoreExplanation: (score: number) => string;
-  checkingReports: string;
   reportedBy: (count: number) => string;
   notReportedYet: string;
   howScoreCalculated: string;
@@ -72,13 +71,13 @@ export const ENGLISH_WARNING_COPY: WarningCopy = {
   reportBadge: (count) => (count === 1 ? '1 report' : `${count} reports`),
   safeScoreExplanation: 'Safe messages always have a risk score of 0. No strong warning signs were found.',
   suspiciousScoreExplanation: (score) =>
-    `Scores from 30 to 69 are Suspicious. ${score}/100 means some warning signs were found, but not enough to call this a confirmed scam.`,
+    `Scores from 1 to 59 are Suspicious. ${score}/100 means some warning signs were found, but not enough to call this a confirmed scam.`,
   dangerousScoreExplanation: (score) =>
-    `Scores of 70 and above are Dangerous. ${score}/100 means strong phishing signs were found.`,
-  checkingReports: 'Checking whether other NotiCare users reported this exact message…',
+    `Scores of 60 and above are Dangerous. ${score}/100 means strong phishing signs were found.`,
   reportedBy: (count) =>
     `${count === 1 ? '1 NotiCare user has' : `${count} NotiCare users have`} reported this exact message.`,
-  notReportedYet: 'No one has reported this exact message yet. Tap Report to warn other NotiCare users.',
+  notReportedYet:
+    'Community reports are not checked during scans. Tap Report to share this message and see its report count.',
   howScoreCalculated: 'How the score was calculated',
   linksFound: 'Links found',
   recommendedAction: 'Recommended action',
@@ -99,7 +98,7 @@ export const ENGLISH_WARNING_COPY: WarningCopy = {
   cappedNote: (rawTotal) => `The signs add up to ${rawTotal} points; the score is capped at 100.`,
   bands: { safe: 'Safe', suspicious: 'Suspicious', dangerous: 'Dangerous' },
   bandsAccessibility: (level) =>
-    `Score bands: Safe 0, Suspicious 30 to 69, Dangerous 70 to 100. This message is ${level}.`,
+    `Score bands: Safe 0, Suspicious 1 to 59, Dangerous 60 to 100. This message is ${level}.`,
   pointsAccessibility: (points) => `${points} points`,
   warningSigns: 'WARNING SIGNS',
   noSignificantSigns: 'No significant warning signs detected.',
@@ -140,13 +139,12 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
   reportBadge: (count) => `${count} report`,
   safeScoreExplanation: 'Laging 0 ang risk score ng ligtas na mensahe. Walang nakitang malalakas na babala.',
   suspiciousScoreExplanation: (score) =>
-    `Kahina-hinala ang score na 30 hanggang 69. Ang ${score}/100 ay nangangahulugang may nakitang mga babala, pero hindi sapat para tawagin itong tiyak na scam.`,
+    `Kahina-hinala ang score na 1 hanggang 59. Ang ${score}/100 ay nangangahulugang may nakitang mga babala, pero hindi sapat para tawagin itong tiyak na scam.`,
   dangerousScoreExplanation: (score) =>
-    `Mapanganib ang score na 70 pataas. Ang ${score}/100 ay nangangahulugang may nakitang malalakas na palatandaan ng phishing.`,
-  checkingReports: 'Tinitingnan kung may ibang gumagamit ng NotiCare na nag-report ng mismong mensaheng ito…',
+    `Mapanganib ang score na 60 pataas. Ang ${score}/100 ay nangangahulugang may nakitang malalakas na palatandaan ng phishing.`,
   reportedBy: (count) => `${count} gumagamit ng NotiCare ang nag-report ng mismong mensaheng ito.`,
   notReportedYet:
-    'Wala pang nag-report ng mismong mensaheng ito. Pindutin ang Report para babalaan ang ibang gumagamit ng NotiCare.',
+    'Hindi tinitingnan ang mga community report habang nag-i-scan. Pindutin ang Report para ibahagi ang mensaheng ito at makita ang bilang ng report.',
   howScoreCalculated: 'Paano nakuha ang score',
   linksFound: 'Mga link na nakita',
   recommendedAction: 'Inirerekomendang gawin',
@@ -168,7 +166,7 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
   cappedNote: (rawTotal) => `Umaabot sa ${rawTotal} puntos ang mga babala; hanggang 100 lang ang score.`,
   bands: { safe: 'Ligtas', suspicious: 'Kahina-hinala', dangerous: 'Mapanganib' },
   bandsAccessibility: (level) =>
-    `Mga antas ng score: Ligtas 0, Kahina-hinala 30 hanggang 69, Mapanganib 70 hanggang 100. Ang mensaheng ito ay ${TAGALOG_LEVELS[level]}.`,
+    `Mga antas ng score: Ligtas 0, Kahina-hinala 1 hanggang 59, Mapanganib 60 hanggang 100. Ang mensaheng ito ay ${TAGALOG_LEVELS[level]}.`,
   pointsAccessibility: (points) => `${points} puntos`,
   warningSigns: 'MGA BABALA',
   noSignificantSigns: 'Walang nakitang malalaking babala.',
@@ -190,6 +188,14 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
       'Premyo o gantimpala',
       'Gumagamit ang mensahe ng premyo, gantimpala, o libreng pera para mapakilos ka.',
     ],
+    'high-value-bonus-offer': [
+      'Hindi karaniwang malaking bonus',
+      'Nag-aalok ang mensahe ng bonus na hindi bababa sa 100%, isang padron na madalas gamitin sa mga hindi hinihinging promo at alok sa sugal.',
+    ],
+    'bonus-offer-link-combination': [
+      'Malaking bonus na may link',
+      'May link ang mensahe kasama ng hindi karaniwang malaking bonus; i-verify ang alok bago mag-sign up o magdeposito ng pera.',
+    ],
     'refund-bait': [
       'Refund o cash back',
       'Nangangako ang mensahe ng refund, reimbursement, o cash back na kailangan mong kunin.',
@@ -205,6 +211,18 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
     'government-aid-impersonation': [
       'Alok na tulong mula sa gobyerno',
       'Nag-aalok ang mensahe ng ayuda o tulong-pinansyal mula sa gobyerno sa paraang madalas gamitin sa scam.',
+    ],
+    'government-authority-threat': [
+      'Banta mula sa gobyerno o tagapagpatupad ng batas',
+      'Inaangkin ng mensahe na may awtoridad ang nagpadala at nagbabanta ng pag-aresto, warrant, demanda, o aksyon ng pulisya.',
+    ],
+    'government-benefit-freeze': [
+      'Banta na i-freeze ang ari-arian o benepisyo',
+      'Nagbabanta ang mensahe na i-freeze o kumpiskahin ang bank account, ari-arian, asset, o benepisyong panlipunan.',
+    ],
+    'government-coercion-combination': [
+      'Banta ng gobyerno na may parusang pinansyal',
+      'Pinagsasama ng mensahe ang pagbabanta ng awtoridad ng gobyerno o pulisya at banta na i-freeze ang ari-arian o benepisyo.',
     ],
     'access-loss-threat': [
       'Banta na mawawalan ng access o serbisyo',
@@ -268,7 +286,7 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
     'url-obfuscated': ['Itinagong link', 'Binago ang pagkakasulat ng link, gaya ng protocol, espasyo, o tuldok.'],
     'url-with-sensitive-request': [
       'Sensitibong hiling na may kasamang link',
-      'May hiling tungkol sa account, bayad, premyo, o padala na may kasamang link.',
+      'May sensitibong hiling, premyo, hindi karaniwang malaking bonus, o problema sa padala na may kasamang link.',
     ],
     'brand-with-unrelated-url': [
       'Brand na may kasamang ibang link',

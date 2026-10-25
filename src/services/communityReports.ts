@@ -15,9 +15,8 @@ import {
 import { isSupabaseConfigured, supabase } from '@/src/services/supabase';
 
 const REPORT_QUEUE_KEY = 'noticare.phishing-report-queue.v1';
-const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v2';
-// The combined ranking cached before the Manual / Real-time split; still a valid Manual fallback.
-const LEGACY_RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v1';
+const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v3';
+const LEGACY_RANKING_CACHE_KEYS = ['noticare.viral-phishing-ranking.v2', 'noticare.viral-phishing-ranking.v1'];
 const FEEDBACK_RECORD_KEY = 'noticare.manual-feedback-record.v1';
 const MAX_QUEUED_REPORTS = 50;
 const MAX_FEEDBACK_RECORDS = 500;
@@ -84,8 +83,8 @@ export type ViralPhishingEntry = {
   firstReportedAt: string;
   lastReportedAt: string;
   /**
-   * The detector's risk score (Safe is always 0, otherwise 30–100); null for reports filed before
-   * it was stored. Older rows and cached rankings can hold a Safe 1–29, which reads as 0.
+   * The detector's risk score (Safe is always 0, otherwise 1–100); null for reports filed before
+   * it was stored.
    */
   riskScore: number | null;
 };
@@ -128,7 +127,9 @@ async function readQueue(userId: string): Promise<QueuedReport[]> {
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(isQueuedReport).map((report) => ({ ...report, riskScore: publicRiskScore(report.riskScore) }))
+      ? parsed
+          .filter(isQueuedReport)
+          .map((report) => ({ ...report, riskScore: publicRiskScore(report.riskScore, report.ruleVersion) }))
       : [];
   } catch {
     return [];
@@ -148,12 +149,13 @@ function isMissingSourceParameter(error: { code?: string } | null) {
 }
 
 /**
- * A stored or received risk score as 0-100, or null when absent. It has no level with it, but any
- * score under the Suspicious threshold is Safe, so the 1–29 that older builds queued and reported
- * for Safe messages (still held in queues, server rows, and cached rankings) reads as 0.
+ * A stored or received risk score as 0-100, or null when absent. Rule versions before 2026.10.26
+ * used 1–29 for Safe; scores in the current Suspicious band must remain nonzero.
  */
-function publicRiskScore(value: unknown): number | null {
-  return typeof value === 'number' ? finalizeRiskScore(Math.max(0, Math.min(100, Math.round(value)))) : null;
+function publicRiskScore(value: unknown, ruleVersion?: string): number | null {
+  return typeof value === 'number'
+    ? finalizeRiskScore(Math.max(0, Math.min(100, Math.round(value))), ruleVersion)
+    : null;
 }
 
 async function syncReport(report: QueuedReport, source: ReportSource): Promise<PhishingVirality> {
@@ -165,7 +167,7 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
     p_indicator_codes: report.indicatorCodes,
     p_rule_version: report.ruleVersion,
   };
-  const riskScore = publicRiskScore(report.riskScore);
+  const riskScore = publicRiskScore(report.riskScore, report.ruleVersion);
   let { data, error } = await supabase.rpc('record_phishing_report', {
     ...args,
     p_source: source,
@@ -314,21 +316,6 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
   return { synced: acknowledged.length, pending: pending.length - acknowledged.length };
 }
 
-/** Best-effort lookup of a message's current community standing; never files a new report. */
-export async function getMessageVirality(messageText: string): Promise<PhishingVirality | null> {
-  if (!isSupabaseConfigured) return null;
-  try {
-    const { data, error } = await supabase.rpc('get_phishing_message_virality', { p_message_text: messageText });
-    if (error) throw error;
-    const row = data?.[0];
-    if (!row) return null;
-    return { viralScore: row.viral_score, reportCount: row.report_count, isFirstReporter: false };
-  } catch (error) {
-    logError('phishing-virality-lookup-failed', error);
-    return null;
-  }
-}
-
 function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Record<string, unknown>;
@@ -345,14 +332,29 @@ function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
 }
 
 async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntry[]> {
-  const raw =
-    (await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`)) ??
-    (source === 'manual' ? await AsyncStorage.getItem(LEGACY_RANKING_CACHE_KEY) : null);
+  let raw = await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`);
+  let isLegacyCache = false;
+  if (!raw) {
+    for (const key of LEGACY_RANKING_CACHE_KEYS) {
+      if (key.endsWith('.v1') && source !== 'manual') continue;
+      raw = await AsyncStorage.getItem(key.endsWith('.v1') ? key : `${key}.${source}`);
+      if (raw) {
+        isLegacyCache = true;
+        break;
+      }
+    }
+  }
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter(isViralPhishingRow).map((entry) => ({ ...entry, riskScore: publicRiskScore(entry.riskScore) }))
+      ? parsed.filter(isViralPhishingRow).map((entry) => ({
+          ...entry,
+          riskScore:
+            isLegacyCache && entry.riskScore !== null && entry.riskScore > 0 && entry.riskScore < 30
+              ? 0
+              : publicRiskScore(entry.riskScore),
+        }))
       : [];
   } catch {
     return [];
@@ -361,7 +363,8 @@ async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntr
 
 /**
  * The Dashboard's "Most reported phishing messages" ranking for one report source, cached per
- * source for offline viewing. Counts and scores cover that source's reporters only.
+ * source for offline viewing. Counts and scores cover that source's reporters only. Older cached
+ * score bands are normalized to Safe 0 before they're shown under the current 1–59 Suspicious band.
  */
 export async function getViralPhishingRanking(
   reportSource: ReportSource,

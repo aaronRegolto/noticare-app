@@ -52,14 +52,12 @@ class V3RiskEvaluatorTest {
   }
 
   @Test
-  fun modelMayReinforceSpecificAccountWarningButNeverCreateDangerous() {
+  fun accountWarningIsAlreadySuspiciousAndModelDoesNotChangeItsClassification() {
     val rules = SmishingEvaluator.evaluate("Your account is suspended.")
-    assertEquals(ThreatLevel.SAFE, rules.level)
+    assertEquals(ThreatLevel.SUSPICIOUS, rules.level)
+    assertEquals(23, rules.score)
     val combined = V3RiskEvaluator.combine(rules, 1f, 0.003735364f)
-    assertEquals(ThreatLevel.SUSPICIOUS, combined.level)
-    assertEquals(30, combined.score)
-    assertEquals(rules.reasons.size + 1, combined.reasons.size)
-    assertEquals(combined.score, combined.reasons.sumOf { it.weight })
+    assertEquals(rules, combined)
     assertEquals(rules, V3RiskEvaluator.combine(rules, 0f, 0.003735364f))
     for (invalid in listOf(Float.NaN, Float.POSITIVE_INFINITY, -1f, 2f)) {
       assertEquals(rules, V3RiskEvaluator.combine(rules, invalid, 0.003735364f))
@@ -72,7 +70,7 @@ class V3RiskEvaluatorTest {
       "BANCO DE ORO: PLEASE BE ADVISED THAT YOUR ACCOUNT IS TEMPORARILY ON HOLD, DUE TO SECURITY PURPOSES. Kindly Visit: shortenis/MyBDO"
     val rules = SmishingEvaluator.evaluate(message)
     assertEquals(ThreatLevel.SUSPICIOUS, rules.level)
-    assertEquals(35, rules.score)
+    assertEquals(23, rules.score)
     assertEquals(listOf("account-warning", "link-or-reply-pressure"), rules.reasons.map { it.code })
     assertEquals(rules, V3RiskEvaluator.combine(rules, 1f, 0.003735364f))
   }
@@ -87,8 +85,8 @@ class V3RiskEvaluatorTest {
   @Test
   fun finalizedSafeShowsZeroButKeepsReasonCodes() {
     for ((message, rawScore) in listOf(
-      "Your account is suspended." to 23,
-      "Limited time menu: mango drinks are available this week." to 12,
+      "Limited time menu: mango drinks are available this week." to 0,
+      "Click here to read your neighborhood bulletin." to 0,
     )) {
       val rules = SmishingEvaluator.evaluate(message)
       assertEquals(message, ThreatLevel.SAFE, rules.level)
@@ -103,24 +101,24 @@ class V3RiskEvaluatorTest {
       assertEquals(message, rules.ruleVersion, finalized.ruleVersion)
       assertEquals(message, finalized, finalizeThreatResult(finalized))
     }
+    val accountWarning = SmishingEvaluator.evaluate("Your account is suspended.")
+    assertEquals(ThreatLevel.SUSPICIOUS, accountWarning.level)
+    assertSame(accountWarning, finalizeThreatResult(accountWarning))
   }
 
   @Test
-  fun finalizeRunsAfterCombineSoModelReinforcementIsUnchanged() {
+  fun finalizationPreservesSuspiciousRuleResults() {
     val rules = SmishingEvaluator.evaluate("Your account is suspended.")
     val combined = V3RiskEvaluator.combine(rules, 1f, 0.003735364f)
     val reinforced = finalizeThreatResult(combined)
     assertEquals(combined, reinforced)
     assertEquals(ThreatLevel.SUSPICIOUS, reinforced.level)
-    assertEquals(30, reinforced.score)
-    assertEquals(30, reinforced.reasons.sumOf { it.weight })
+    assertEquals(23, reinforced.score)
+    assertEquals(23, reinforced.reasons.sumOf { it.weight })
     assertEquals(reinforced, finalizeThreatResult(reinforced))
 
     val notReinforced = finalizeThreatResult(V3RiskEvaluator.combine(rules, 0f, 0.003735364f))
-    assertEquals(ThreatLevel.SAFE, notReinforced.level)
-    assertEquals(0, notReinforced.score)
-    assertEquals(0, notReinforced.reasons.sumOf { it.weight })
-    assertEquals(rules.reasons.map { it.code }, notReinforced.reasons.map { it.code })
+    assertEquals(rules, notReinforced)
   }
 
   @Test

@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/src/components/brand-logo';
+import { MessageSourceIcon } from '@/src/components/message-source-icon';
 import {
   filterMessages,
   isMessageBlocked,
@@ -25,6 +26,7 @@ import {
   type MessageCategoryFilter,
   type MessageFilter,
 } from '@/src/features/messages/inbox';
+import { messageSourceForPackage, messageSourceLabel } from '@/src/features/messages/source';
 import { LANGUAGE_NAMES, localizeReason } from '@/src/features/translation';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { logError } from '@/src/services/logger';
@@ -131,6 +133,8 @@ const RecordCard = memo(function RecordCard({
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
   const tone = tones[record.level];
+  const source = messageSourceForPackage(record.sourcePackage);
+  const sourceLabel = messageSourceLabel(source);
   // Only the SMS excerpt is translated; the redacted fallback is NotiCare's own text.
   const translation = useTranslatedMessage(record.preview);
   const translated = translation?.status === 'translated';
@@ -139,7 +143,7 @@ const RecordCard = memo(function RecordCard({
       onPress={() => onOpen(record.id)}
       style={({ pressed }) => [styles.recordCard, pressed && { backgroundColor: '#F1F6FA' }]}
       accessibilityRole="button"
-      accessibilityLabel={`${record.isRead ? '' : 'Unread, '}${tone.label} message from ${messageSender(record)}. Open message`}
+      accessibilityLabel={`${record.isRead ? '' : 'Unread, '}${tone.label} message from ${messageSender(record)} in ${sourceLabel}. Open message`}
     >
       <View style={styles.recordTop}>
         <View style={styles.senderRow}>
@@ -151,6 +155,10 @@ const RecordCard = memo(function RecordCard({
               {messageSender(record)}
             </Text>
             <Text style={styles.date}>{formatDate(record.receivedAt)}</Text>
+            <View style={styles.sourceLine}>
+              <MessageSourceIcon source={source} size={12} />
+              <Text style={styles.sourceText}>{sourceLabel}</Text>
+            </View>
           </View>
         </View>
         <View style={[styles.dangerBadge, { backgroundColor: tone.surface }]}>
@@ -310,10 +318,11 @@ function DetailModal({
           ) : null}
           <Text style={styles.detailLabel}>SCAN DETAILS</Text>
           <View style={styles.detailsTable}>
-            <Text style={styles.tableLabel}>Messages application</Text>
-            <Text selectable style={styles.tableValue}>
-              {record.sourcePackage}
-            </Text>
+            <Text style={styles.tableLabel}>Source app</Text>
+            <View style={styles.sourceValue}>
+              <MessageSourceIcon source={messageSourceForPackage(record.sourcePackage)} size={15} />
+              <Text style={styles.tableValue}>{messageSourceLabel(messageSourceForPackage(record.sourcePackage))}</Text>
+            </View>
             <Text style={styles.tableLabel}>Rule version</Text>
             <Text style={styles.tableValue}>{record.ruleVersion}</Text>
           </View>
@@ -889,6 +898,9 @@ function createStyles(colors: ThemeColors) {
     },
     sender: { color: colors.textPrimary, fontWeight: '800', fontSize: 14 },
     date: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+    sourceLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+    sourceText: { color: colors.textMuted, fontSize: 10, fontWeight: '600' },
+    sourceValue: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     dangerBadge: {
       alignSelf: 'flex-start',
       flexDirection: 'row',

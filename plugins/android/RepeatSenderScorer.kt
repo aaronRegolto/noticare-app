@@ -6,7 +6,7 @@ object RepeatSenderScorer {
   private const val lookbackMillis = 30L * 24 * 60 * 60 * 1000
   private const val initialRepeatScore = 30
   private const val increasePerRepeat = 15
-  private const val dangerousThreshold = 70
+  private const val dangerousThreshold = 60
 
   fun escalate(
     result: ThreatResult,

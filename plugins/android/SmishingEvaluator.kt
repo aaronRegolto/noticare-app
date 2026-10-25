@@ -7,14 +7,14 @@ import java.util.Locale
 import kotlin.math.min
 
 /**
- * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.10.24).
+ * Kotlin mirror of src/features/detection/rules.ts (bundle 2026.10.26).
  * Both implementations are deterministic, offline, and make no network request.
  */
 object SmishingEvaluator {
-  const val RULE_VERSION = "2026.10.24"
+  const val RULE_VERSION = "2026.10.26"
   private const val scoreCap = 100
-  private const val suspiciousThreshold = 30
-  private const val dangerousThreshold = 70
+  private const val suspiciousThreshold = 1
+  private const val dangerousThreshold = 60
   private const val maxInputCharacters = 12_000
 
   private data class Rule(
@@ -91,19 +91,25 @@ object SmishingEvaluator {
     "urgency-pressure",
     "Urgent pressure",
     "The message pressures you to act immediately or within a short deadline.",
-    12,
+    0,
   )
   private val linkOrReplyPressure = Rule(
     "link-or-reply-pressure",
     "Pressure to open a link or reply",
     "The message tells you to click, tap, open a link, or reply to continue.",
-    12,
+    0,
   )
   private val prizeOrRewardBait = Rule(
     "prize-or-reward-bait",
     "Prize or reward claim",
     "The message uses a prize, reward, or free-cash offer to attract action.",
     18,
+  )
+  private val highValueBonusOffer = Rule(
+    "high-value-bonus-offer",
+    "Unusually large bonus offer",
+    "The message advertises a bonus of at least 100%, a pattern often used in unsolicited reward and gambling promotions.",
+    16,
   )
   private val refundBait = Rule(
     "refund-bait",
@@ -129,6 +135,18 @@ object SmishingEvaluator {
     "The message offers government aid or cash assistance in a way often used for scams.",
     15,
   )
+  private val governmentAuthorityThreat = Rule(
+    "government-authority-threat",
+    "Government or law-enforcement threat",
+    "A message claiming government authority threatens arrest, a warrant, a lawsuit, or police action.",
+    40,
+  )
+  private val governmentBenefitFreeze = Rule(
+    "government-benefit-freeze",
+    "Threat to freeze property or benefits",
+    "A message threatens to freeze or seize bank accounts, property, assets, or social benefits.",
+    30,
+  )
   private val accessLossThreat = Rule(
     "access-loss-threat",
     "Threat of lost access or service",
@@ -150,7 +168,7 @@ object SmishingEvaluator {
   private val abusiveLanguage = Rule(
     "abusive-language",
     "Profanity or abusive language",
-    "The message contains a recognized English or Filipino profanity term; context may affect interpretation.",
+    "The message contains profanity, an insult, or targeted hostile language; context may affect interpretation.",
     30,
   )
   private val directThreat = Rule(
@@ -249,6 +267,14 @@ object SmishingEvaluator {
       listOf("prize-or-reward-bait"),
     ),
     TextRule(
+      highValueBonusOffer,
+      listOf(
+        insensitive("""\b(?:1\d{2,}|[2-9]\d{2,})\s*%\s*(?:deposit\s+)?bonus\b"""),
+        insensitive("""\bbonus\s+(?:of\s+)?(?:1\d{2,}|[2-9]\d{2,})\s*%\b"""),
+      ),
+      listOf("high-value-bonus-offer"),
+    ),
+    TextRule(
       refundBait,
       listOf(
         insensitive("""\b(?:refund|reimbursement|cashback|cash back)\s+(?:is\s+)?(?:ready|available|pending|waiting)\b"""),
@@ -293,6 +319,22 @@ object SmishingEvaluator {
       listOf("government-aid-impersonation"),
     ),
     TextRule(
+      governmentAuthorityThreat,
+      listOf(
+        insensitive("""\b(?:i\.?\s*r\.?\s*s\.?|internal revenue service|criminal investigation division|(?:tax|revenue)\s+(?:office|department|authority)|government|local police|police department|law enforcement|court)\b[\s\S]{0,180}\b(?:(?:an?\s+)?arrest warrant will be (?:issued|forwarded|sent)|warrant for your arrest (?:will be|has been) (?:issued|forwarded|sent)|your arrest warrant (?:will be|has been) (?:issued|forwarded|sent)|(?:filing|filed)\s+(?:a\s+)?lawsuit against you|lawsuit against you|criminal investigation against you|police (?:will|are going to)\s+arrest you)\b"""),
+        insensitive("""\b(?:(?:an?\s+)?arrest warrant will be (?:issued|forwarded|sent)|warrant for your arrest (?:will be|has been) (?:issued|forwarded|sent)|your arrest warrant (?:will be|has been) (?:issued|forwarded|sent)|(?:filing|filed)\s+(?:a\s+)?lawsuit against you|lawsuit against you|criminal investigation against you|police (?:will|are going to)\s+arrest you)\b[\s\S]{0,180}\b(?:i\.?\s*r\.?\s*s\.?|internal revenue service|criminal investigation division|(?:tax|revenue)\s+(?:office|department|authority)|government|local police|police department|law enforcement|court)\b"""),
+      ),
+      listOf("government-authority-threat"),
+    ),
+    TextRule(
+      governmentBenefitFreeze,
+      listOf(
+        insensitive("""\b(?:your\s+)?(?:property|bank accounts?|assets?|social benefits?|government benefits?|benefits?)\b[\s\S]{0,80}\b(?:will be|would be|shall be|are being|has been|have been)\s+(?:frozen|seized|confiscated|blocked)\s+by\s+(?:the\s+)?(?:government|(?:i\.?\s*r\.?\s*s\.?|internal revenue service|tax authority|police|law enforcement))\b"""),
+        insensitive("""\b(?:we|the government|(?:i\.?\s*r\.?\s*s\.?|internal revenue service|tax authority|law enforcement))\s+(?:will|shall)\s+(?:freeze|seize|confiscate|block)\s+(?:all\s+)?(?:your\s+)?(?:property|bank accounts?|assets?|social benefits?|government benefits?|benefits?)\b"""),
+      ),
+      listOf("government-benefit-freeze"),
+    ),
+    TextRule(
       accessLossThreat,
       listOf(
         insensitive("""\b(?:lose|loss\s+of|avoid)\s+(?:your\s+)?(?:access|account|service)\b"""),
@@ -327,7 +369,7 @@ object SmishingEvaluator {
     TextRule(
       abusiveLanguage,
       listOf(
-        insensitive("""\b(?:fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina|putangina|tangina|tang\s+ina|puta|gago|gaga|tanga|bobo|ulol|leche|bwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b"""),
+        insensitive("""\b(?:(?:sana\s+)?(?:mamatay|mamamatay)\s+(?:ka(?:\s+na)?|kana|kayo(?:\s+na)?)(?:\s+sana)?|fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina(?:\s+(?:mo|niyo|ninyo))?|putangina(?:mo|niyo|ninyo)?|tang\s+ina(?:\s+(?:mo|niyo|ninyo))?|tangina(?:mo|niyo|ninyo)?|anak\s+ng\s+puta|walang\s+(?:kwenta|silbi)|pakyu|pakyo|puta|gago|gaga|tanga|bobo|ulol|inutil|engot|siraulo|gunggong|leche|bwisit|buwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b"""),
       ),
       listOf("abusive-language"),
     ),
@@ -336,7 +378,7 @@ object SmishingEvaluator {
       listOf(
         insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b"""),
         insensitive("""\b(?:you(?:'re| are)\s+dead|you\s+will\s+(?:die|get hurt|get beaten)|i(?:'m| am)\s+going\s+to\s+(?:kill|hurt|beat)\s+you)\b"""),
-        insensitive("""\b(?:patayin\s+(?:kita|ka|ko\s+ikaw)|papatayin\s+(?:kita|ka|ko\s+ikaw)|sasaktan\s+(?:kita|ka)|saktan\s+(?:kita|ka)|bugbugin\s+(?:kita|ka)|susugurin\s+(?:kita|ka))\b"""),
+        insensitive("""\b(?:patayin|papatayin|ipapapatay|sasaktan|saktan|bugbugin|bubugbugin|susugurin|sasaksakin|saksakin|babarilin|barilin|susunugin|sunugin|papaluin|paluin)\s+(?:kita|ka|kayo|ko\s+ikaw|ko\s+kayo)\b"""),
         insensitive("""\b(?:pupuntahan\s+(?:kita|ka)\s+(?:sa\s+bahay|at\s+(?:sasaktan|bugbugin|patayin))|hahanapin\s+(?:kita|ka)\s+at\s+(?:sasaktan|bugbugin|patayin))\b"""),
       ),
       listOf("direct-threat"),
@@ -368,7 +410,7 @@ object SmishingEvaluator {
     Rule("url-obfuscated", "Obfuscated link", "The link was written with altered protocol, spacing, or dot characters.", 32),
   )
   private val urlRulesByCode = urlRules.associateBy(Rule::code)
-  private val urlContextRule = Rule("url-with-sensitive-request", "Sensitive request paired with a link", "A sensitive account, payment, prize, or delivery request appears with a link.", 10)
+  private val urlContextRule = Rule("url-with-sensitive-request", "Sensitive request paired with a link", "A sensitive request, prize claim, unusually large bonus, or delivery problem appears with a link.", 10)
   private val brandUnrelatedUrlRule = Rule("brand-with-unrelated-url", "Brand name paired with an unrelated link", "A financial or government brand is mentioned, but the link is not on a recognized brand domain.", 18)
   private val combinationRules = listOf(
     Pair(Rule("credential-link-combination", "Secret-code request with a link", "A request for a secret code or account information is paired with a link.", 22), listOf("credential-request", "url")),
@@ -377,6 +419,8 @@ object SmishingEvaluator {
     Pair(Rule("bait-link-combination", "Scam bait with a link", "A prize, refund, parcel, bill, or aid claim is paired with a link.", 15), listOf("bait", "url")),
     Pair(Rule("credential-urgency-combination", "Secret-code request under pressure", "The message asks for sensitive information while applying urgency.", 13), listOf("credential-request", "urgency-pressure")),
     Pair(Rule("account-urgency-combination", "Urgent account warning", "The message pairs an account warning with an urgent deadline.", 10), listOf("account-warning", "urgency-pressure")),
+    Pair(Rule("government-coercion-combination", "Government threat with financial consequences", "A claimed government or law-enforcement threat is paired with a threat to freeze assets or benefits.", 25), listOf("government-authority-threat", "government-benefit-freeze")),
+    Pair(Rule("bonus-offer-link-combination", "High-value bonus offer with a link", "An unusually large bonus is paired with a link; verify the offer before signing up or depositing money.", 10), listOf("high-value-bonus-offer", "url")),
   )
   private val brands = listOf(
     Brand(listOf("gcash"), listOf("gcash.com")),
@@ -410,7 +454,7 @@ object SmishingEvaluator {
   private val substitutionTokenPattern = Regex("""[A-Za-z0-9@$!.-]{3,}""")
   private val substitutions = mapOf('@' to 'a', '$' to 's', '0' to 'o', '1' to 'i', '3' to 'e', '4' to 'a', '5' to 's', '7' to 't', '!' to 'i')
   private val baitSignals = setOf("prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation", "advance-fee-request")
-  private val urlContextSignals = setOf("credential-request", "account-warning", "prize-or-reward-bait", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation", "access-loss-threat", "money-transfer-request", "advance-fee-request")
+  private val urlContextSignals = setOf("credential-request", "account-warning", "prize-or-reward-bait", "high-value-bonus-offer", "refund-bait", "parcel-delivery-bait", "unpaid-bill-pressure", "government-aid-impersonation", "access-loss-threat", "money-transfer-request", "advance-fee-request")
   // Amounts, codes, and units such as P500, GoSURF50, bus8, 3pm, 1st, or 100gb: not leetspeak.
   private val lettersThenDigits = Regex("""^[a-z]+\d+$""", regexOptions)
   private val digitsThenUnit = Regex("""^\d+(?:am|pm|st|nd|rd|th|gb|mb|kb|tb|g|k|m|hrs?|mins?|secs?|yrs?|days?|pcs|x|s|mg|ml|kg|km|cm|mm|ft)$""", regexOptions)

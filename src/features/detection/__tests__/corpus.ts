@@ -9,6 +9,8 @@ export type DetectionCorpusCase = {
     | 'taglish-phishing'
     | 'url-indicator'
     | 'social-engineering'
+    | 'government-impersonation'
+    | 'bonus-promotion'
     | 'obfuscation';
   message: string;
   expectedLevel: ThreatLevel;
@@ -68,6 +70,48 @@ export const DETECTION_CORPUS: readonly DetectionCorpusCase[] = [
     id: 'legitimate-promotion',
     family: 'legitimate',
     message: 'Weekend coffee promo: get 20% off until Friday at participating stores.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'legitimate-small-bonus-promotion',
+    family: 'legitimate',
+    message: 'Get a 25% bonus on your grocery rewards points in the store app this weekend.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'legitimate-annual-bonus-notice',
+    family: 'legitimate',
+    message: 'Your annual performance bonus will be included in this month’s payroll.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'reward-rush-high-bonus-link',
+    family: 'bonus-promotion',
+    message: 'Wednesday reward rush! FREE 20 SIGN UP, JL & PG max P5,000 x8 + 170% bonus + 3,888P! at WinRamps.com',
+    expectedLevel: 'suspicious',
+    expectedReasonCodes: [
+      'high-value-bonus-offer',
+      'url-with-sensitive-request',
+      'bonus-offer-link-combination',
+    ],
+    expectedUrlCount: 1,
+  },
+  {
+    id: 'high-bonus-promotion-link',
+    family: 'bonus-promotion',
+    message: 'Get a 200% deposit bonus when you sign up today: https://promo.example/offer',
+    expectedLevel: 'suspicious',
+  },
+  {
+    id: 'ordinary-bonus-word',
+    family: 'legitimate',
+    message: 'Your mobile plan includes a bonus 5GB of data this month.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'legitimate-free-account-signup',
+    family: 'legitimate',
+    message: 'Create a free account to sign up for the city library newsletter.',
     expectedLevel: 'safe',
   },
   {
@@ -219,6 +263,52 @@ export const DETECTION_CORPUS: readonly DetectionCorpusCase[] = [
     message: 'DSWD ayuda is available. Reply now to continue your application.',
     expectedLevel: 'suspicious',
     expectedReasonCodes: ['government-aid-impersonation', 'urgency-pressure'],
+  },
+  {
+    id: 'irs-arrest-benefits-freeze-scam',
+    family: 'government-impersonation',
+    message:
+      'WARNING: Criminal Investigation Division I.R.S. is filing a lawsuit against you. Otherwise your arrest warrant will be forwarded to your local police department and your property and bank accounts and social benefits will be frozen by government.',
+    expectedLevel: 'dangerous',
+    expectedReasonCodes: [
+      'government-authority-threat',
+      'government-benefit-freeze',
+      'government-coercion-combination',
+    ],
+  },
+  {
+    id: 'irs-warrant-threat-scam',
+    family: 'government-impersonation',
+    message: 'IRS: An arrest warrant will be sent unless you call our investigation office immediately.',
+    expectedLevel: 'suspicious',
+    expectedReasonCodes: ['government-authority-threat'],
+  },
+  {
+    id: 'benefits-freeze-threat-scam',
+    family: 'government-impersonation',
+    message: 'Your social benefits will be frozen by the government unless you call this number today.',
+    expectedLevel: 'suspicious',
+    expectedReasonCodes: ['government-benefit-freeze'],
+  },
+  {
+    id: 'legitimate-irs-tax-deadline',
+    family: 'legitimate',
+    message:
+      'Reminder: File your federal tax return by April 15 using your IRS online account. No payment is due by text.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'legitimate-irs-scam-advisory',
+    family: 'legitimate',
+    message:
+      'IRS scam alert: criminals may threaten an arrest warrant or say your benefits will be frozen. The IRS does not demand payment by text.',
+    expectedLevel: 'safe',
+  },
+  {
+    id: 'legitimate-police-warrant-news',
+    family: 'legitimate',
+    message: 'News update: Police issued an arrest warrant in the reported case. Read the full article in the newspaper.',
+    expectedLevel: 'safe',
   },
   {
     id: 'tagalog-access-warning',

@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from '@jest/globals';
 
-import { evaluateRules, evaluateThreat, finalizeRiskScore, finalizeThreatResult } from '../evaluator';
+import { evaluateRules, evaluateThreat, finalizeRiskScore, finalizeThreatResult, getThreatLevel } from '../evaluator';
 import { normalizeMessage } from '../normalize';
 import { DETECTION_RULE_BUNDLE } from '../rules';
 import type { ThreatResult } from '../types';
@@ -22,6 +23,19 @@ describe('offline phishing detection corpus', () => {
     expect(normalized.hadCharacterSubstitutions).toBe(true);
   });
 
+  it('uses the Safe 0 / Suspicious 1–59 / Dangerous 60–100 boundaries', () => {
+    expect(DETECTION_RULE_BUNDLE.thresholds).toEqual({ suspicious: 1, dangerous: 60 });
+    expect([0, 1, 59, 60, 100].map(getThreatLevel)).toEqual([
+      'safe',
+      'suspicious',
+      'suspicious',
+      'dangerous',
+      'dangerous',
+    ]);
+    const sample = evaluateThreat(corpusMessage('reward-rush-high-bonus-link'));
+    expect(sample.score).toBe(36);
+  });
+
   it.each(DETECTION_CORPUS)('$id classifies as $expectedLevel', (testCase) => {
     const result = evaluateThreat(testCase.message);
     expect(result.level).toBe(testCase.expectedLevel);
@@ -34,6 +48,20 @@ describe('offline phishing detection corpus', () => {
     for (const code of testCase.expectedReasonCodes ?? []) {
       expect(result.reasons.some((reason) => reason.code === code)).toBe(true);
     }
+  });
+
+  it('keeps the TypeScript corpus digest synchronized with the Android parity fixture', () => {
+    const canonical = DETECTION_CORPUS.map((testCase) => {
+      const result = evaluateThreat(testCase.message);
+      const codes = result.reasons.map((reason) => reason.code);
+      if (testCase.id === 'unicode-confusable-domain' && !codes.includes('url-punycode')) {
+        codes.push('url-punycode');
+      }
+      return [testCase.id, result.level, result.score, result.urls.length, codes.join(',')].join('|');
+    }).join('\n');
+    const digest = createHash('sha256').update(canonical).digest('hex');
+
+    expect(digest).toBe('6c1d175800fe0cbfc4a8ccef59e276bfdce2774dd5e64335320cd7949a1f9324');
   });
 });
 
@@ -50,15 +78,37 @@ describe('credential wording regressions', () => {
   });
 
   describe('abusive-language and threat indicators', () => {
-    it.each(['You are a damn idiot.', 'Putang ina, gago ka.'])('marks profanity as suspicious: %s', (message) => {
+    it.each([
+      'You are a damn idiot.',
+      'Putang ina, gago ka.',
+      'Mamatay ka na.',
+      'Sana mamatay ka na.',
+      'Putang ina mo.',
+      'Walang kwenta ka.',
+      'Inutil ka.',
+      'Pakyu ka.',
+    ])('marks profanity as suspicious: %s', (message) => {
       const result = evaluateThreat(message);
       expect(result.level).toBe('suspicious');
       expect(result.reasons.some((reason) => reason.code === 'abusive-language')).toBe(true);
     });
 
+    it('scores "mamatay ka na" as suspicious, not safe', () => {
+      const result = evaluateThreat('mamatay ka na');
+      expect(result.level).toBe('suspicious');
+      expect(result.score).toBe(30);
+    });
+
+    it('does not treat a non-targeted mention of death as abusive language', () => {
+      expect(evaluateThreat('Maaaring mamatay ang halaman kapag walang tubig.').level).toBe('safe');
+    });
+
     it.each([
       ['I will hurt you if you come here.', 'direct-threat'],
       ['Papatayin kita.', 'direct-threat'],
+      ['Sasaksakin kita.', 'direct-threat'],
+      ['Babarilin ka namin.', 'direct-threat'],
+      ['Susunugin ka nila.', 'direct-threat'],
       ['I will hack your account.', 'cyber-threat'],
       ['Magbayad ka or ipapakalat ko ang private photos mo.', 'cyber-threat'],
     ])('marks a direct or cyber threat dangerous: %s', (message, code) => {
@@ -83,7 +133,7 @@ describe('credential wording regressions', () => {
   });
 });
 
-/** Public bands: Safe 0 (every reason weighs 0), Suspicious 30–69, Dangerous 70–100. */
+/** Public bands: Safe 0, Suspicious 1–59, Dangerous 60–100. */
 function expectPublicScore(result: ThreatResult) {
   if (result.level === 'safe') {
     expect(result.score).toBe(0);
@@ -104,22 +154,21 @@ const corpusMessage = (id: string) => {
 };
 
 describe('Safe always scores 0', () => {
-  // The only Safe corpus cases with a non-zero raw score; Kotlin SmishingEvaluator must match it.
+  // The neutral click/urgency rules retain context without scoring ordinary language.
   it.each([
     ['benign-click-language', 'link-or-reply-pressure'],
     ['benign-limited-promo', 'urgency-pressure'],
-  ])('%s keeps raw 12 in evaluateRules but scores 0 publicly', (id, code) => {
+  ])('%s keeps the reason without adding risk points', (id, code) => {
     const raw = evaluateRules(corpusMessage(id));
     expect(raw.level).toBe('safe');
-    expect(raw.score).toBe(12);
-    expect(raw.reasons.map((reason) => [reason.code, reason.weight])).toEqual([[code, 12]]);
+    expect(raw.score).toBe(0);
+    expect(raw.reasons.map((reason) => [reason.code, reason.weight])).toEqual([[code, 0]]);
 
-    const finalized = { ...raw, score: 0, reasons: raw.reasons.map((reason) => ({ ...reason, weight: 0 })) };
-    expect(evaluateThreat(corpusMessage(id))).toEqual(finalized);
-    expect(finalizeThreatResult(raw)).toEqual(finalized);
+    expect(evaluateThreat(corpusMessage(id))).toEqual(raw);
+    expect(finalizeThreatResult(raw)).toEqual(raw);
     // Finalizing never mutates the raw result it was given.
-    expect(raw.score).toBe(12);
-    expect(raw.reasons[0].weight).toBe(12);
+    expect(raw.score).toBe(0);
+    expect(raw.reasons[0].weight).toBe(0);
   });
 
   it.each(DETECTION_CORPUS)('$id: evaluateThreat is the finalized raw result', (testCase) => {
@@ -145,14 +194,18 @@ describe('Safe always scores 0', () => {
 
   it.each([
     [0, 0],
-    [12, 0],
-    [29, 0],
+    [1, 1],
+    [29, 29],
+    [59, 59],
     [30, 30],
-    [69, 69],
-    [70, 70],
+    [60, 60],
     [100, 100],
   ])('finalizeRiskScore(%i) is %i', (score, expected) => {
     expect(finalizeRiskScore(score)).toBe(expected);
+  });
+
+  it.each([1, 29])('finalizeRiskScore(%i, legacy rule set) is 0', (score) => {
+    expect(finalizeRiskScore(score, '2026.10.25')).toBe(0);
   });
 });
 

@@ -102,7 +102,7 @@ function ViralEntryRow({
                 styles.viralScoreValue,
                 {
                   color:
-                    entry.riskScore >= 70 ? colors.danger : entry.riskScore >= 30 ? colors.warning : colors.success,
+                    entry.riskScore >= 60 ? colors.danger : entry.riskScore >= 1 ? colors.warning : colors.success,
                 },
               ]}
             >

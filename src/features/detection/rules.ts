@@ -6,11 +6,11 @@ import type { DetectionRuleBundle } from './types';
  * We intentionally score combinations, rather than a brand name or one keyword alone.
  */
 export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
-  version: '2026.10.24',
+  version: '2026.10.26',
   scoreCap: 100,
   thresholds: {
-    suspicious: 30,
-    dangerous: 70,
+    suspicious: 1,
+    dangerous: 60,
   },
   maxInputCharacters: 12_000,
   textRules: [
@@ -66,7 +66,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       code: 'urgency-pressure',
       label: 'Urgent pressure',
       description: 'The message pressures you to act immediately or within a short deadline.',
-      weight: 12,
+      weight: 0,
       signals: ['urgency-pressure'],
       patterns: [
         String.raw`\b(?:verify|act|respond|reply|click|pay|claim)\s+(?:now|today|immediately|asap)\b`,
@@ -82,7 +82,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       code: 'link-or-reply-pressure',
       label: 'Pressure to open a link or reply',
       description: 'The message tells you to click, tap, open a link, or reply to continue.',
-      weight: 12,
+      weight: 0,
       signals: ['link-or-reply-pressure'],
       patterns: [
         String.raw`\b(?:click|tap|open|visit|follow)\s+(?:(?:the|this|our)\s+)?(?:link|here|below)\b`,
@@ -113,6 +113,17 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
         // Task scams: "Earn PHP 5,000 daily by liking products"
         String.raw`\bearn\s+(?:up\s+to\s+)?(?:php|p|₱|\$|usd)?\s?[\d,]+\s*(?:daily|a\s+day|per\s+day|kada\s+araw)\b`,
         String.raw`\b(?:liking|rating|reviewing)\s+(?:products|videos|posts|items)\b`,
+      ],
+    },
+    {
+      code: 'high-value-bonus-offer',
+      label: 'Unusually large bonus offer',
+      description: 'The message advertises a bonus of at least 100%, a pattern often used in unsolicited reward and gambling promotions.',
+      weight: 16,
+      signals: ['high-value-bonus-offer'],
+      patterns: [
+        String.raw`\b(?:1\d{2,}|[2-9]\d{2,})\s*%\s*(?:deposit\s+)?bonus\b`,
+        String.raw`\bbonus\s+(?:of\s+)?(?:1\d{2,}|[2-9]\d{2,})\s*%\b`,
       ],
     },
     {
@@ -173,6 +184,30 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       ],
     },
     {
+      code: 'government-authority-threat',
+      label: 'Government or law-enforcement threat',
+      description:
+        'A message claiming government authority threatens arrest, a warrant, a lawsuit, or police action.',
+      weight: 40,
+      signals: ['government-authority-threat'],
+      patterns: [
+        String.raw`\b(?:i\.?\s*r\.?\s*s\.?|internal revenue service|criminal investigation division|(?:tax|revenue)\s+(?:office|department|authority)|government|local police|police department|law enforcement|court)\b[\s\S]{0,180}\b(?:(?:an?\s+)?arrest warrant will be (?:issued|forwarded|sent)|warrant for your arrest (?:will be|has been) (?:issued|forwarded|sent)|your arrest warrant (?:will be|has been) (?:issued|forwarded|sent)|(?:filing|filed)\s+(?:a\s+)?lawsuit against you|lawsuit against you|criminal investigation against you|police (?:will|are going to)\s+arrest you)\b`,
+        String.raw`\b(?:(?:an?\s+)?arrest warrant will be (?:issued|forwarded|sent)|warrant for your arrest (?:will be|has been) (?:issued|forwarded|sent)|your arrest warrant (?:will be|has been) (?:issued|forwarded|sent)|(?:filing|filed)\s+(?:a\s+)?lawsuit against you|lawsuit against you|criminal investigation against you|police (?:will|are going to)\s+arrest you)\b[\s\S]{0,180}\b(?:i\.?\s*r\.?\s*s\.?|internal revenue service|criminal investigation division|(?:tax|revenue)\s+(?:office|department|authority)|government|local police|police department|law enforcement|court)\b`,
+      ],
+    },
+    {
+      code: 'government-benefit-freeze',
+      label: 'Threat to freeze property or benefits',
+      description:
+        'A message threatens to freeze or seize bank accounts, property, assets, or social benefits.',
+      weight: 30,
+      signals: ['government-benefit-freeze'],
+      patterns: [
+        String.raw`\b(?:your\s+)?(?:property|bank accounts?|assets?|social benefits?|government benefits?|benefits?)\b[\s\S]{0,80}\b(?:will be|would be|shall be|are being|has been|have been)\s+(?:frozen|seized|confiscated|blocked)\s+by\s+(?:the\s+)?(?:government|(?:i\.?\s*r\.?\s*s\.?|internal revenue service|tax authority|police|law enforcement))\b`,
+        String.raw`\b(?:we|the government|(?:i\.?\s*r\.?\s*s\.?|internal revenue service|tax authority|law enforcement))\s+(?:will|shall)\s+(?:freeze|seize|confiscate|block)\s+(?:all\s+)?(?:your\s+)?(?:property|bank accounts?|assets?|social benefits?|government benefits?|benefits?)\b`,
+      ],
+    },
+    {
       code: 'access-loss-threat',
       label: 'Threat of lost access or service',
       description: 'The message threatens to remove access or disconnect a service.',
@@ -220,11 +255,11 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       code: 'abusive-language',
       label: 'Profanity or abusive language',
       description:
-        'The message contains a recognized English or Filipino profanity term; context may affect interpretation.',
+        'The message contains profanity, an insult, or targeted hostile language; context may affect interpretation.',
       weight: 30,
       signals: ['abusive-language'],
       patterns: [
-        String.raw`\b(?:fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina|putangina|tangina|tang\s+ina|puta|gago|gaga|tanga|bobo|ulol|leche|bwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b`,
+        String.raw`\b(?:(?:sana\s+)?(?:mamatay|mamamatay)\s+(?:ka(?:\s+na)?|kana|kayo(?:\s+na)?)(?:\s+sana)?|fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina(?:\s+(?:mo|niyo|ninyo))?|putangina(?:mo|niyo|ninyo)?|tang\s+ina(?:\s+(?:mo|niyo|ninyo))?|tangina(?:mo|niyo|ninyo)?|anak\s+ng\s+puta|walang\s+(?:kwenta|silbi)|pakyu|pakyo|puta|gago|gaga|tanga|bobo|ulol|inutil|engot|siraulo|gunggong|leche|bwisit|buwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b`,
       ],
     },
     {
@@ -236,7 +271,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       patterns: [
         String.raw`\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b`,
         String.raw`\b(?:you(?:'re| are)\s+dead|you\s+will\s+(?:die|get hurt|get beaten)|i(?:'m| am)\s+going\s+to\s+(?:kill|hurt|beat)\s+you)\b`,
-        String.raw`\b(?:patayin\s+(?:kita|ka|ko\s+ikaw)|papatayin\s+(?:kita|ka|ko\s+ikaw)|sasaktan\s+(?:kita|ka)|saktan\s+(?:kita|ka)|bugbugin\s+(?:kita|ka)|susugurin\s+(?:kita|ka))\b`,
+        String.raw`\b(?:patayin|papatayin|ipapapatay|sasaktan|saktan|bugbugin|bubugbugin|susugurin|sasaksakin|saksakin|babarilin|barilin|susunugin|sunugin|papaluin|paluin)\s+(?:kita|ka|kayo|ko\s+ikaw|ko\s+kayo)\b`,
         String.raw`\b(?:pupuntahan\s+(?:kita|ka)\s+(?:sa\s+bahay|at\s+(?:sasaktan|bugbugin|patayin))|hahanapin\s+(?:kita|ka)\s+at\s+(?:sasaktan|bugbugin|patayin))\b`,
       ],
     },
@@ -329,7 +364,7 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
   urlContextRule: {
     code: 'url-with-sensitive-request',
     label: 'Sensitive request paired with a link',
-    description: 'A sensitive account, payment, prize, or delivery request appears with a link.',
+    description: 'A sensitive request, prize claim, unusually large bonus, or delivery problem appears with a link.',
     weight: 10,
   },
   brandUnrelatedUrlRule: {
@@ -380,6 +415,20 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       description: 'The message pairs an account warning with an urgent deadline.',
       weight: 10,
       requiresAll: ['account-warning', 'urgency-pressure'],
+    },
+    {
+      code: 'government-coercion-combination',
+      label: 'Government threat with financial consequences',
+      description: 'A claimed government or law-enforcement threat is paired with a threat to freeze assets or benefits.',
+      weight: 25,
+      requiresAll: ['government-authority-threat', 'government-benefit-freeze'],
+    },
+    {
+      code: 'bonus-offer-link-combination',
+      label: 'High-value bonus offer with a link',
+      description: 'An unusually large bonus is paired with a link; verify the offer before signing up or depositing money.',
+      weight: 10,
+      requiresAll: ['high-value-bonus-offer', 'url'],
     },
   ],
   brands: [

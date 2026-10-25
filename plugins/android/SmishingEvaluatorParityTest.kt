@@ -29,6 +29,12 @@ class SmishingEvaluatorParityTest {
       Case("normal-tagalog-conversation", "Nasa bahay na ako. Kita tayo bukas pagkatapos ng klase.", ThreatLevel.SAFE),
       Case("normal-english-conversation", "Thanks for the update. I will bring the documents tomorrow morning.", ThreatLevel.SAFE),
       Case("legitimate-promotion", "Weekend coffee promo: get 20% off until Friday at participating stores.", ThreatLevel.SAFE),
+      Case("legitimate-small-bonus-promotion", "Get a 25% bonus on your grocery rewards points in the store app this weekend.", ThreatLevel.SAFE),
+      Case("legitimate-annual-bonus-notice", "Your annual performance bonus will be included in this month’s payroll.", ThreatLevel.SAFE),
+      Case("reward-rush-high-bonus-link", "Wednesday reward rush! FREE 20 SIGN UP, JL & PG max P5,000 x8 + 170% bonus + 3,888P! at WinRamps.com", ThreatLevel.SUSPICIOUS),
+      Case("high-bonus-promotion-link", "Get a 200% deposit bonus when you sign up today: https://promo.example/offer", ThreatLevel.SUSPICIOUS),
+      Case("ordinary-bonus-word", "Your mobile plan includes a bonus 5GB of data this month.", ThreatLevel.SAFE),
+      Case("legitimate-free-account-signup", "Create a free account to sign up for the city library newsletter.", ThreatLevel.SAFE),
       Case("legitimate-parcel-update", "Your parcel is out for delivery and is expected to arrive tomorrow.", ThreatLevel.SAFE),
       Case("legitimate-multiline-schedule", "School reminder:\nParent meeting on Friday, 3 PM.\nPlease bring your ID.", ThreatLevel.SAFE),
       Case("legitimate-appointment", "Your clinic appointment is confirmed for August 12 at 10:30 AM.", ThreatLevel.SAFE),
@@ -51,6 +57,12 @@ class SmishingEvaluatorParityTest {
       Case("parcel-reply-pressure", "Parcel delivery failed. Reply now to arrange redelivery.", ThreatLevel.SUSPICIOUS),
       Case("refund-click-pressure", "Your refund is ready. Click here to process it.", ThreatLevel.SUSPICIOUS),
       Case("government-aid-reply-pressure", "DSWD ayuda is available. Reply now to continue your application.", ThreatLevel.SUSPICIOUS),
+      Case("irs-arrest-benefits-freeze-scam", "WARNING: Criminal Investigation Division I.R.S. is filing a lawsuit against you. Otherwise your arrest warrant will be forwarded to your local police department and your property and bank accounts and social benefits will be frozen by government.", ThreatLevel.DANGEROUS),
+      Case("irs-warrant-threat-scam", "IRS: An arrest warrant will be sent unless you call our investigation office immediately.", ThreatLevel.SUSPICIOUS),
+      Case("benefits-freeze-threat-scam", "Your social benefits will be frozen by the government unless you call this number today.", ThreatLevel.SUSPICIOUS),
+      Case("legitimate-irs-tax-deadline", "Reminder: File your federal tax return by April 15 using your IRS online account. No payment is due by text.", ThreatLevel.SAFE),
+      Case("legitimate-irs-scam-advisory", "IRS scam alert: criminals may threaten an arrest warrant or say your benefits will be frozen. The IRS does not demand payment by text.", ThreatLevel.SAFE),
+      Case("legitimate-police-warrant-news", "News update: Police issued an arrest warrant in the reported case. Read the full article in the newspaper.", ThreatLevel.SAFE),
       Case("tagalog-access-warning", "Mawawala ang access sa account mo. Verify now.", ThreatLevel.SUSPICIOUS),
       Case("unpaid-bill-pressure", "Your unpaid bill must be paid now to avoid service disconnect.", ThreatLevel.SUSPICIOUS),
       Case("credential-request-no-link", "Send your OTP now so we can continue processing.", ThreatLevel.SUSPICIOUS),
@@ -95,25 +107,27 @@ class SmishingEvaluatorParityTest {
   }
 
   /**
-   * Canonical TypeScript output digest for all 60 corpus cases. It includes the
+   * Canonical TypeScript output digest for the shared synthetic corpus. It includes the
    * level, capped score, URL count, and ordered reason codes, so a Kotlin change
    * cannot silently retain only the broad safe/suspicious/dangerous classes.
    *
-   * As with the previous digest, "unicode-confusable-domain" includes url-punycode
-   * (Kotlin's IDN.toASCII turns the look-alike host into xn--). The TypeScript
-   * evaluator run under Jest leaves that host as Unicode and omits it, so a
-   * Jest-generated digest must add url-punycode to that one case.
+   * The "unicode-confusable-domain" case appends url-punycode to match the TypeScript
+   * Jest fixture order; Kotlin's IDN conversion emits that indicator earlier.
    */
   @Test
   fun sharedSyntheticCorpusMatchesTypeScriptScoresReasonsAndUrlCounts() {
     val canonical = syntheticCases().joinToString("\n") { case ->
       val result = SmishingEvaluator.evaluate(case.message)
+      val codes = result.reasons.map { it.code }.toMutableList()
+      if (case.id == "unicode-confusable-domain" && codes.remove("url-punycode")) {
+        codes.add("url-punycode")
+      }
       listOf(
         case.id,
         result.level.wireValue,
-        result.score.toString(),
+        (if (result.level == ThreatLevel.SAFE) 0 else result.score).toString(),
         result.urls.size.toString(),
-        result.reasons.joinToString(",") { it.code },
+        codes.joinToString(","),
       ).joinToString("|")
     }
     val actualDigest = MessageDigest.getInstance("SHA-256")
@@ -121,8 +135,8 @@ class SmishingEvaluatorParityTest {
       .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     assertEquals(
-      "Kotlin evaluator output differs from the TypeScript rule-bundle corpus.",
-      "fda115325e5e9207128ec925d57795a0f2419725c8dc5294b138f29aa486c299",
+      "Kotlin evaluator output differs from the TypeScript rule-bundle corpus: $canonical",
+      "6c1d175800fe0cbfc4a8ccef59e276bfdce2774dd5e64335320cd7949a1f9324",
       actualDigest,
     )
   }
@@ -135,7 +149,7 @@ class SmishingEvaluatorParityTest {
         "unicode-whitespace",
         "Verify\u1680your account now",
         ThreatLevel.SUSPICIOUS,
-        45,
+        33,
         listOf("account-warning", "urgency-pressure", "account-urgency-combination"),
         0,
       ),
@@ -143,7 +157,7 @@ class SmishingEvaluatorParityTest {
         "unicode-preceding-word-boundary",
         "éverify your account now",
         ThreatLevel.SUSPICIOUS,
-        45,
+        33,
         listOf("account-warning", "urgency-pressure", "account-urgency-combination"),
         0,
       ),
@@ -166,10 +180,10 @@ class SmishingEvaluatorParityTest {
 
   @Test
   fun reportsTheSameVersionAsTheTypeScriptRuleBundle() {
-    assertEquals("2026.10.24", SmishingEvaluator.RULE_VERSION)
+    assertEquals("2026.10.26", SmishingEvaluator.RULE_VERSION)
   }
 
-  /** Mirrors the rule set 2026.09.29 regressions in src/features/detection/__tests__/evaluator.test.ts. */
+  /** Mirrors high-risk phishing regressions, including authority impersonation and asset-freeze threats. */
   @Test
   fun philippineScamFamiliesWarnAndLookalikesStaySafe() {
     listOf(
@@ -226,14 +240,33 @@ class SmishingEvaluatorParityTest {
 
   @Test
   fun abusiveLanguageAndThreatIndicators() {
-    listOf("You are a damn idiot.", "Putang ina, gago ka.").forEach { message ->
+    listOf(
+      "You are a damn idiot.",
+      "Putang ina, gago ka.",
+      "Mamatay ka na.",
+      "Sana mamatay ka na.",
+      "Putang ina mo.",
+      "Walang kwenta ka.",
+      "Inutil ka.",
+      "Pakyu ka.",
+    ).forEach { message ->
       val result = SmishingEvaluator.evaluate(message)
       assertEquals(message, ThreatLevel.SUSPICIOUS, result.level)
       assertEquals(true, result.reasons.any { it.code == "abusive-language" })
     }
+    assertEquals(
+      ThreatLevel.SAFE,
+      SmishingEvaluator.evaluate("Maaaring mamatay ang halaman kapag walang tubig.").level,
+    )
+    val deathWish = SmishingEvaluator.evaluate("mamatay ka na")
+    assertEquals(ThreatLevel.SUSPICIOUS, deathWish.level)
+    assertEquals(30, deathWish.score)
     listOf(
       "I will hurt you if you come here." to "direct-threat",
       "Papatayin kita." to "direct-threat",
+      "Sasaksakin kita." to "direct-threat",
+      "Babarilin ka namin." to "direct-threat",
+      "Susunugin ka nila." to "direct-threat",
       "I will hack your account." to "cyber-threat",
       "Magbayad ka or ipapakalat ko ang private photos mo." to "cyber-threat",
     ).forEach { (message, code) ->

@@ -22,7 +22,6 @@ import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/featu
 import { localizeReason, type WarningCopy } from '@/src/features/translation';
 import {
   getMessageFeedbackRecord,
-  getMessageVirality,
   markMessageFeedback,
   reportAndBlockMessage,
   type PhishingVirality,
@@ -88,32 +87,27 @@ function Header() {
 function scoreDisplay(
   result: ThreatResult,
   virality: PhishingVirality | null,
-  viralityLoading: boolean,
   copy: WarningCopy,
 ) {
-  const reportBadge =
-    result.level === 'dangerous' && virality && virality.reportCount > 0
-      ? copy.reportBadge(virality.reportCount)
-      : null;
+  const reportBadge = virality && virality.reportCount > 0 ? copy.reportBadge(virality.reportCount) : null;
+  const communityLine =
+    virality && virality.reportCount > 0 ? copy.reportedBy(virality.reportCount) : copy.notReportedYet;
   if (result.level === 'safe') {
-    return { score: 0, badge: null as string | null, explanation: copy.safeScoreExplanation };
+    return { score: 0, badge: reportBadge, explanation: copy.safeScoreExplanation, communityLine };
   }
   if (result.level === 'suspicious') {
     return {
       score: result.score,
-      badge: null as string | null,
+      badge: reportBadge,
       explanation: copy.suspiciousScoreExplanation(result.score),
+      communityLine,
     };
   }
-  const community = viralityLoading
-    ? copy.checkingReports
-    : virality && virality.reportCount > 0
-      ? copy.reportedBy(virality.reportCount)
-      : copy.notReportedYet;
   return {
     score: result.score,
     badge: reportBadge,
-    explanation: `${copy.dangerousScoreExplanation(result.score)} ${community}`,
+    explanation: copy.dangerousScoreExplanation(result.score),
+    communityLine,
   };
 }
 
@@ -123,7 +117,6 @@ function ResultCard({
   feedbackState,
   feedbackKind,
   virality,
-  viralityLoading,
 }: {
   result: ThreatResult;
   onFeedback: (kind: 'safe' | 'dangerous') => void;
@@ -131,14 +124,13 @@ function ResultCard({
   /** The button tapped: Report uploads the message text at any level, Mark as safe never does. */
   feedbackKind: 'safe' | 'dangerous';
   virality: PhishingVirality | null;
-  viralityLoading: boolean;
 }) {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
   const copy = useWarningCopy();
   const display = { ...levelStyle[result.level], ...copy.levels[result.level] };
   const scanTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
-  const scored = scoreDisplay(result, virality, viralityLoading, copy);
+  const scored = scoreDisplay(result, virality, copy);
   return (
     <View style={[styles.resultCard, { borderColor: display.color }]} accessibilityLiveRegion="polite">
       <View style={[styles.resultHero, { backgroundColor: display.surface }]}>
@@ -157,6 +149,7 @@ function ResultCard({
       </View>
       <Text style={styles.resultExplanation}>{display.explanation}</Text>
       <Text style={styles.scoreExplanation}>{scored.explanation}</Text>
+      <Text style={styles.scoreExplanation}>{scored.communityLine}</Text>
       <Text style={styles.resultSectionTitle}>{copy.howScoreCalculated}</Text>
       <ScoreBreakdown
         reasons={result.reasons.map((reason) => localizeReason(reason, copy))}
@@ -244,7 +237,6 @@ export default function ScanScreen() {
   >('idle');
   const [feedbackKind, setFeedbackKind] = useState<'safe' | 'dangerous'>('safe');
   const [virality, setVirality] = useState<PhishingVirality | null>(null);
-  const [viralityLoading, setViralityLoading] = useState(false);
   const feedbackBusy = useRef(false);
   const scanVersion = useRef(0);
   const canReadPhotos = useMemo(() => isTextRecognitionAvailable(), []);
@@ -264,7 +256,6 @@ export default function ScanScreen() {
     setResult(null);
     setFeedbackState('idle');
     setVirality(null);
-    setViralityLoading(false);
   }, []);
 
   const applyImageText = useCallback((read: ImageTextResult) => {
@@ -276,7 +267,6 @@ export default function ScanScreen() {
         setResult(null);
         setFeedbackState('idle');
         setVirality(null);
-        setViralityLoading(false);
         return;
       case 'no-text':
         Alert.alert(
@@ -326,7 +316,6 @@ export default function ScanScreen() {
     setResult(null);
     setFeedbackState('idle');
     setVirality(null);
-    setViralityLoading(false);
   }, []);
 
   // Android can close the app while the camera is open; finish reading the photo on return.
@@ -348,7 +337,6 @@ export default function ScanScreen() {
     const version = ++scanVersion.current;
     setFeedbackState('idle');
     setVirality(null);
-    setViralityLoading(false);
     try {
       // In an Android development/release build this calls the same Kotlin
       // evaluator used by the notification listener. Expo Go falls back to the
@@ -367,18 +355,6 @@ export default function ScanScreen() {
           'Scan completed',
           'Your result is ready, but anonymous community metadata could not be saved right now. Your message was not uploaded.',
         );
-      }
-      // Only a Dangerous result's community score is looked up: it's the only
-      // level a report can ever raise, and Safe/Suspicious never carry one.
-      if (assessment.level === 'dangerous') {
-        setViralityLoading(true);
-        getMessageVirality(trimmed)
-          .then((found) => {
-            if (version === scanVersion.current) setVirality(found);
-          })
-          .finally(() => {
-            if (version === scanVersion.current) setViralityLoading(false);
-          });
       }
       // Re-scanning text you already gave feedback on shows that status
       // instead of the buttons again, so it can't look like a fresh result.
@@ -573,7 +549,6 @@ export default function ScanScreen() {
                 setResult(null);
                 setFeedbackState('idle');
                 setVirality(null);
-                setViralityLoading(false);
               }}
               placeholder={
                 canReadPhotos
@@ -619,7 +594,8 @@ export default function ScanScreen() {
             <Ionicons name="lock-closed-outline" size={13} color={colors.textMuted} />
             <Text style={styles.privacyText}>
               {canReadPhotos ? 'Photos and messages are' : 'Messages are'} checked on this phone and never uploaded.
-              Only a message you choose to Report is shared, to warn other NotiCare users.
+              Only a message you choose to Report is shared, to warn other NotiCare users. Manual Scan sees only
+              the text you provide, not the source app&apos;s spam/block label.
             </Text>
           </View>
         </View>
@@ -631,7 +607,6 @@ export default function ScanScreen() {
             feedbackState={feedbackState}
             feedbackKind={feedbackKind}
             virality={virality}
-            viralityLoading={viralityLoading}
           />
         ) : null}
         <Pressable onPress={() => router.push('/guide')} style={styles.guideLink} accessibilityRole="button">

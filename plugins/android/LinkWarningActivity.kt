@@ -22,10 +22,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * The risky-link warning, shown the moment a SUSPICIOUS or DANGEROUS link is tapped in any app
- * while NotiCare is the default browser. Native, like [ThreatWarningActivity], so it appears
- * instantly without starting React Native. Runs in its own task: "Go back" closes it and returns
- * to the app the link was tapped in.
+ * Shows the result of NotiCare's local URL check before forwarding a link. Native, like
+ * [ThreatWarningActivity], so it appears instantly without starting React Native. Runs in its own
+ * task: closing it returns to the app the link was tapped in.
  */
 class LinkWarningActivity : Activity() {
     private val urlChecker: UrlChecker = RuleBasedUrlChecker()
@@ -51,13 +50,14 @@ class LinkWarningActivity : Activity() {
             finishAndRemoveTask()
             return
         }
-        if (result.verdict == UrlVerdict.SAFE) {
-            forward()
-            return
-        }
+        val safe = result.verdict == UrlVerdict.SAFE
         val dangerous = result.verdict == UrlVerdict.DANGEROUS
-        val accent = if (dangerous) DANGER else CAUTION
-        setContentView(build(LinkWarningCopy.forContext(this), result, dangerous, accent))
+        val accent = when {
+            safe -> SAFE
+            dangerous -> DANGER
+            else -> CAUTION
+        }
+        setContentView(build(LinkWarningCopy.forContext(this), result, safe, dangerous, accent))
         // After setContentView: the window has no decor view (and no insets controller) before it.
         useDarkSystemBarIcons()
     }
@@ -81,22 +81,42 @@ class LinkWarningActivity : Activity() {
         finishAndRemoveTask()
     }
 
+    @Deprecated("Deprecated in Android, kept for the native chooser result callback.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == BROWSER_CHOOSER_REQUEST_CODE) finishAndRemoveTask()
+    }
+
     private fun confirmOpen(copy: LinkWarningCopy.Copy) {
         AlertDialog.Builder(this)
             .setTitle(copy.confirmTitle)
             .setMessage(copy.confirmBody)
             .setNegativeButton(copy.confirmCancel, null)
             .setPositiveButton(copy.openAnyway) { _, _ ->
-                forward()
+                forwardAnyway()
             }
             .show()
     }
 
-    private fun forward() {
-        LinkForwarder.showBrowserChooser(this, url) { finishAndRemoveTask() }
+    private fun forwardAnyway() {
+        LinkForwarder.openWithSystemChooser(this, url, BROWSER_CHOOSER_REQUEST_CODE)
     }
 
-    private fun build(copy: LinkWarningCopy.Copy, result: UrlCheckResult, dangerous: Boolean, accent: Int): ScrollView {
+    private fun openPreferredBrowser() {
+        if (LinkForwarder.openPreferredBrowser(this, url)) finishAndRemoveTask()
+    }
+
+    private fun chooseAnotherBrowser() {
+        LinkForwarder.openWithSystemChooser(this, url, BROWSER_CHOOSER_REQUEST_CODE)
+    }
+
+    private fun build(
+        copy: LinkWarningCopy.Copy,
+        result: UrlCheckResult,
+        safe: Boolean,
+        dangerous: Boolean,
+        accent: Int,
+    ): ScrollView {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(BACKGROUND)
             isFillViewport = true
@@ -108,16 +128,27 @@ class LinkWarningActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "!"
+            text = if (safe) "✓" else "!"
             textSize = 38f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
             background = rounded(accent, 40f)
         }, LinearLayout.LayoutParams(dp(80), dp(80)))
-        root.addView(label(if (dangerous) copy.badgeDangerous else copy.badgeSuspicious, 13f, accent, true), matchWidth(top = 20))
-        root.addView(label(if (dangerous) copy.titleDangerous else copy.titleSuspicious, 27f, INK, true), matchWidth(top = 6))
-        root.addView(label(copy.intro, 15f, MUTED, false), matchWidth(top = 8))
+        val badge = when {
+            safe -> copy.badgeSafe
+            dangerous -> copy.badgeDangerous
+            else -> copy.badgeSuspicious
+        }
+        val title = when {
+            safe -> copy.titleSafe
+            dangerous -> copy.titleDangerous
+            else -> copy.titleSuspicious
+        }
+        val intro = if (safe) copy.safeIntro else copy.intro
+        root.addView(label(badge, 13f, accent, true), matchWidth(top = 20))
+        root.addView(label(title, 27f, INK, true), matchWidth(top = 6))
+        root.addView(label(intro, 15f, MUTED, false), matchWidth(top = 8))
 
         val site = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -137,30 +168,64 @@ class LinkWarningActivity : Activity() {
         val why = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), dp(16))
-            background = rounded(if (dangerous) Color.rgb(255, 236, 235) else Color.rgb(255, 246, 225), 16f)
-            addView(label(copy.why, 14f, accent, true).apply { gravity = Gravity.START })
-            addView(label(copy.reason(result), 15f, INK, false).apply { gravity = Gravity.START }, matchWidth(top = 6))
+            val backgroundColor = when {
+                safe -> Color.rgb(230, 246, 237)
+                dangerous -> Color.rgb(255, 236, 235)
+                else -> Color.rgb(255, 246, 225)
+            }
+            background = rounded(backgroundColor, 16f)
+            if (!safe) addView(label(copy.why, 14f, accent, true).apply { gravity = Gravity.START })
+            addView(
+                label(if (safe) copy.safeCaveat else copy.reason(result), 15f, INK, false).apply {
+                    gravity = Gravity.START
+                },
+                matchWidth(top = if (safe) 0 else 6),
+            )
         }
         root.addView(why, matchWidth(top = 12))
-        root.addView(label(copy.advice, 13f, MUTED, false), matchWidth(top = 16))
-
-        root.addView(Button(this).apply {
-            text = copy.goBack
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            isAllCaps = false
-            background = rounded(accent, 14f)
-            setOnClickListener { finishAndRemoveTask() }
-        }, matchWidth(height = 56, top = 28))
-        root.addView(Button(this).apply {
-            text = copy.openAnyway
-            textSize = 15f
-            setTextColor(MUTED)
-            isAllCaps = false
-            background = rounded(Color.TRANSPARENT, 14f)
-            setOnClickListener { confirmOpen(copy) }
-        }, matchWidth(height = 52, top = 8))
+        if (safe) {
+            root.addView(Button(this).apply {
+                val targetLabel = BrowserResolver.resolveTarget(
+                    this@LinkWarningActivity,
+                    BrowserPreferences.preferredBrowserPackage(this@LinkWarningActivity),
+                )?.label
+                text = targetLabel?.let(copy::openInBrowser) ?: copy.noBrowser
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                isAllCaps = false
+                background = rounded(accent, 14f)
+                isEnabled = targetLabel != null
+                setOnClickListener { openPreferredBrowser() }
+            }, matchWidth(height = 56, top = 28))
+            root.addView(Button(this).apply {
+                text = copy.chooseAnotherBrowser
+                textSize = 15f
+                setTextColor(INK)
+                isAllCaps = false
+                background = rounded(Color.WHITE, 14f, accent)
+                setOnClickListener { chooseAnotherBrowser() }
+            }, matchWidth(height = 52, top = 8))
+        } else {
+            root.addView(label(copy.advice, 13f, MUTED, false), matchWidth(top = 16))
+            root.addView(Button(this).apply {
+                text = copy.goBack
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                isAllCaps = false
+                background = rounded(accent, 14f)
+                setOnClickListener { finishAndRemoveTask() }
+            }, matchWidth(height = 56, top = 28))
+            root.addView(Button(this).apply {
+                text = copy.openAnyway
+                textSize = 15f
+                setTextColor(MUTED)
+                isAllCaps = false
+                background = rounded(Color.TRANSPARENT, 14f)
+                setOnClickListener { confirmOpen(copy) }
+            }, matchWidth(height = 52, top = 8))
+        }
 
         scroll.addView(root)
         keepClearOfSystemBars(scroll)
@@ -220,9 +285,11 @@ class LinkWarningActivity : Activity() {
     companion object {
         const val EXTRA_URL = "url"
         private const val MAX_URL_CHARS = 300
+        private const val BROWSER_CHOOSER_REQUEST_CODE = 41
         // Same colors as the SMS warning (ThreatWarningView).
         private val DANGER = Color.rgb(190, 45, 42)
         private val CAUTION = Color.rgb(178, 103, 0)
+        private val SAFE = Color.rgb(35, 132, 76)
         private val INK = Color.rgb(25, 38, 57)
         private val MUTED = Color.rgb(82, 99, 122)
         private val BACKGROUND = Color.rgb(248, 249, 252)
