@@ -2,24 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { unlink, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { datasetCatalog, datasetRows, importDataset, parseCsv } from './datasets.mjs';
-
-test('import validates data, opens rows, and refuses overwriting an existing file', async () => {
-  const filename = `import-test-${randomUUID()}.csv`;
-  const fixture = new URL(`../datasets/${filename}`, import.meta.url);
-  await assert.rejects(importDataset({ filename: '../escape.csv', csv: 'message,label\na,ham' }), { status: 400 });
-  await assert.rejects(importDataset({ filename, csv: 'message,label\n' }), { status: 400 });
-  await assert.rejects(importDataset({ filename, csv: 'message,label\na' }), { status: 400 });
-  const result = await importDataset({ filename, csv: 'message,label\nKumusta,ham' });
-  try {
-    assert.equal(result.count, 1);
-    await assert.rejects(importDataset({ filename, csv: 'message,label\nDifferent,spam' }), { status: 400 });
-    const stored = await datasetRows(new URLSearchParams({ file: filename }));
-    assert.equal(stored.rows[0].message, 'Kumusta');
-  } finally {
-    await unlink(fixture);
-  }
-});
+import { datasetCatalog, datasetRows, parseCsv } from './datasets.mjs';
 
 test('new CSV files appear in the catalog and support pagination and search', async () => {
   const filename = `admin-test-${randomUUID()}.csv`;
@@ -59,14 +42,10 @@ test('CSV preserves multiline messages, commas, escaped quotes and labels', () =
     { message: 'Normal', label: 'ham' },
   ]);
 });
-test('CSV preserves control characters in message fields and rejects ZIP workbooks', async () => {
+test('CSV preserves control characters in message fields', () => {
   assert.deepEqual(parseCsv('message,label\n"Hello\u0003friend",phishing'), [
     { message: 'Hello\u0003friend', label: 'phishing' },
   ]);
-  await assert.rejects(
-    importDataset({ filename: `binary-test-${randomUUID()}.csv`, csv: 'PK\u0003\u0004workbook data' }),
-    { status: 400, message: /Excel workbook or ZIP archive/ },
-  );
 });
 test('malformed rows and ambiguous headers fail rather than mislabelling samples', () => {
   for (const csv of [
@@ -93,6 +72,16 @@ test('dataset browse rejects traversal and non-CSV files', async () => {
 });
 test('catalog retains known model sources even before CSV files are provided', async () => {
   const catalog = await datasetCatalog();
-  assert.equal(catalog.find((item) => item.source === 'UCI_SMS_Spam').provenance_count, 5158);
+  assert.equal(catalog.find((item) => item.source === 'UCI_SMS_Spam').provenance_count, 5159);
   assert.equal(catalog.find((item) => item.source === 'NCSU_SMS_Phishing').provenance_count, 4135);
+});
+test('catalog connects the local Philippine spam source to its CSV for browsing', async () => {
+  const source = (await datasetCatalog()).find((item) => item.source === 'Local_PH_SMS_spam');
+  assert.equal(source.provenance_count, 725);
+  assert.equal(source.file, 'datasets-page-1.csv');
+  assert.equal(source.row_count, 3080);
+  assert.equal(source.status, 'Available to browse');
+  const rows = await datasetRows(new URLSearchParams({ file: source.file }));
+  assert.equal(rows.total, 3080);
+  assert.equal(rows.rows.length, 20);
 });

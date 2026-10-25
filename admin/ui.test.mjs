@@ -19,6 +19,9 @@ function browser() {
     this.dispatchEvent(new dom.window.Event('close'));
   };
   runInContext(readFileSync(new URL('./public/app.js', import.meta.url), 'utf8'), dom.getInternalVMContext());
+  dom.window.requestAnimationFrame = (callback) => callback();
+  dom.window.cancelAnimationFrame = () => {};
+  runInContext(readFileSync(new URL('./public/dashboard.js', import.meta.url), 'utf8'), dom.getInternalVMContext());
   dom.window.eval(`
     $('#content').innerHTML = '<button id="export"></button><div id="records"></div>';
     rows = [{ score: 10, message: '<img src=x onerror=alert(1)>', nested: { label: 'dangerous' } }, { score: 2, message: 'Other message', nested: null }];
@@ -137,6 +140,134 @@ test('dataset library opens opted-in phishing messages as untrusted text', async
     assert.match(dom.window.document.querySelector('#page-table').textContent, /https:\/\/phish\.example\/path/);
     assert.equal(dom.window.document.querySelector('#page-table img'), null);
     assert.equal(dom.window.document.querySelector('#page-table a'), null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('dataset library shows all local CSV rows and separates them from model provenance', () => {
+  const dom = browser();
+  try {
+    dom.window.eval(
+      `renderDatasetLibrary([${JSON.stringify({
+        source: 'Local_PH_SMS_spam',
+        provenance_count: 725,
+        file: 'datasets-page-1.csv',
+        row_count: 3080,
+        status: 'Available to browse',
+      })}]);`,
+    );
+    const { document } = dom.window;
+    assert.doesNotMatch(document.querySelector('#content').textContent, /import dataset|import source csv/i);
+    assert.equal(document.querySelector('#import-dialog'), null);
+    assert.equal(document.querySelector('[data-import-index]'), null);
+    const card = [...document.querySelectorAll('.dataset-card')].find((item) =>
+      item.textContent.includes('Local PH SMS spam'),
+    );
+    assert.ok(card);
+    assert.match(card.textContent, /3,080/);
+    assert.match(card.textContent, /metadata separately lists 725 examples/i);
+    assert.equal(card.querySelector('[data-dataset-file]').dataset.datasetFile, 'datasets-page-1.csv');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('hosted dataset card distinguishes private browse rows from provenance and training', () => {
+  const dom = browser();
+  try {
+    dom.window.eval(
+      `renderDatasetLibrary([${JSON.stringify({
+        source: 'Local_PH_SMS_spam',
+        provenance_count: 725,
+        file: null,
+        row_count: 3080,
+        remote_rows: true,
+        remote_row_count: 3080,
+      })}]);`,
+    );
+    const card = [...dom.window.document.querySelectorAll('.dataset-card')].find((item) =>
+      item.textContent.includes('Local PH SMS spam'),
+    );
+    assert.match(card.textContent, /3,080/);
+    assert.match(card.textContent, /admin-only Supabase storage/i);
+    assert.match(card.textContent, /does not train or update the model/i);
+    assert.equal(card.querySelector('[data-dataset-source]').dataset.datasetSource, 'Local_PH_SMS_spam');
+    assert.equal(card.querySelector('[data-upload-source]'), null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('dataset library offers private browsing upload when source rows are not yet present', () => {
+  const dom = browser();
+  try {
+    dom.window.eval(
+      `renderDatasetLibrary([${JSON.stringify({
+        source: 'Local_PH_SMS_spam',
+        provenance_count: 725,
+        file: null,
+        row_count: 0,
+        remote_rows: false,
+        remote_row_count: 0,
+      })}]);`,
+    );
+    const card = [...dom.window.document.querySelectorAll('.dataset-card')].find((item) =>
+      item.textContent.includes('Local PH SMS spam'),
+    );
+    assert.equal(card.querySelector('[data-upload-source]').dataset.uploadSource, 'Local_PH_SMS_spam');
+    assert.match(card.textContent, /private admin storage for browsing only/i);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('dashboard presents separate Manual Scan and real-time scan totals', async () => {
+  const dom = browser();
+  try {
+    const stats = {
+      scans: 51,
+      safe: 32,
+      suspicious: 9,
+      dangerous: 10,
+      blocked: 6,
+      manual: { scans: 19, safe: 12, suspicious: 4, dangerous: 3, blocked: 0 },
+      realtime: { scans: 32, safe: 20, suspicious: 5, dangerous: 7, blocked: 6 },
+    };
+    const trend = {
+      range: '30d',
+      granularity: 'day',
+      buckets: Array.from({ length: 30 }, (_, index) => ({
+        start: new Date(Date.UTC(2026, 9, index + 1)).toISOString(),
+        safe: 1,
+        suspicious: 0,
+        dangerous: 0,
+        blocked: 0,
+      })),
+      previous: { safe: 0, suspicious: 0, dangerous: 0, blocked: 0 },
+    };
+    dom.window.eval(`var dashboardRequests = [];
+      api = async (path) => {
+      dashboardRequests.push(String(path));
+      if (path === '/api/overview') return ${JSON.stringify(stats)};
+      if (path.startsWith('/api/trend')) return ${JSON.stringify(trend)};
+      return { rows: [], count: 0, page: 0, pageSize: 20 };
+    };`);
+    await dom.window.eval('Dashboard.render(() => true)');
+
+    const section = dom.window.document.querySelector('#source-overviews');
+    assert.ok(section);
+    assert.match(section.textContent, /Manual Scan/);
+    assert.match(section.textContent, /Real-time scan/);
+    const cards = section.querySelectorAll('.source-overview-card');
+    assert.equal(cards.length, 2);
+    assert.match(cards[0].textContent, /19/);
+    assert.match(cards[0].textContent, /12/);
+    assert.match(cards[1].textContent, /32/);
+    assert.match(cards[1].textContent, /6/);
+    cards[1].querySelector('[data-source-records]').click();
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    assert.equal(dom.window.eval("dashboardRequests.some((path) => path.includes('source=realtime'))"), true);
   } finally {
     dom.window.close();
   }

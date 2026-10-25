@@ -1,36 +1,15 @@
-import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const directory = fileURLToPath(new URL('../datasets/', import.meta.url));
 const metadataFile = new URL('../assets/models/model_metadata.json', import.meta.url);
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
+const sourceFiles = {
+  Local_PH_SMS_spam: 'datasets-page-1.csv',
+};
 /** Rows per page in every admin table; the browser reads it from each response. */
 export const PAGE_SIZE = 20;
-
-export async function importDataset({ filename, csv }) {
-  if (
-    typeof filename !== 'string' ||
-    !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}\.csv$/.test(filename) ||
-    /^(con|prn|aux|nul|com[0-9]|lpt[0-9])\./i.test(filename)
-  )
-    throw invalid('Use a CSV filename containing letters, numbers, hyphens, and underscores only.');
-  if (typeof csv !== 'string' || Buffer.byteLength(csv, 'utf8') > 10 * 1024 * 1024)
-    throw invalid('Choose a UTF-8 CSV file no larger than 10 MB.');
-  if (/^PK(?:\u0003\u0004|\u0005\u0006|\u0007\u0008)/.test(csv))
-    throw invalid('This file appears to be an Excel workbook or ZIP archive. Save it as "CSV UTF-8" and import again.');
-
-  const rows = parseCsv(csv);
-  if (!rows.length) throw invalid('The CSV contains no data rows.');
-  try {
-    await writeFile(join(directory, filename), csv, { flag: 'wx' });
-  } catch (error) {
-    if (error.code === 'EEXIST')
-      throw invalid('This filename already exists. Use a different name to keep both datasets.');
-    throw error;
-  }
-  return { file: filename, count: rows.length };
-}
 
 // Supports quoted commas, escaped quotes, CRLF and multiline messages. Yields one row object at a
 // time instead of building the full array up front: parsing NCSU_SMS_Phishing.csv (68,029 rows)
@@ -113,19 +92,32 @@ export async function datasetCatalog() {
   const catalog = Object.entries(sources).map(([source, count]) => ({
     source,
     provenance_count: count,
-    file: names.find((name) => name.slice(0, -4) === source) || null,
+    file:
+      names.find((name) => name.slice(0, -4) === source) ||
+      (names.includes(sourceFiles[source]) ? sourceFiles[source] : null),
   }));
   for (const name of names)
     if (!catalog.some((item) => item.file === name))
       catalog.push({ source: name.slice(0, -4), provenance_count: null, file: name });
   return Promise.all(
-    catalog.map(async (item) => ({
-      ...item,
-      status: item.file ? 'Available to browse' : 'File not provided',
-      modified_at: item.file ? (await lstat(join(directory, item.file))).mtime.toISOString() : null,
-      training_use:
-        item.provenance_count === null ? 'Not established by model metadata' : 'Source listed in model metadata',
-    })),
+    catalog.map(async (item) => {
+      const row_count =
+        item.file && item.source === 'Local_PH_SMS_spam'
+          ? [...csvRows(await readFile(join(directory, item.file), 'utf8'))].length
+          : null;
+      return {
+        ...item,
+        row_count,
+        status: item.file
+          ? 'Available to browse'
+          : item.provenance_count === null
+            ? 'Additional dataset'
+            : 'Training provenance only',
+        modified_at: item.file ? (await lstat(join(directory, item.file))).mtime.toISOString() : null,
+        training_use:
+          item.provenance_count === null ? 'Not established by model metadata' : 'Source listed in model metadata',
+      };
+    }),
   );
 }
 

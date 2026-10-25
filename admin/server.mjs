@@ -2,7 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { PAGE_SIZE, datasetCatalog, datasetRows, importDataset } from './datasets.mjs';
+import { parseSourceRows, PH_SMS_SOURCE } from './dataset-source.mjs';
+import { PAGE_SIZE, datasetCatalog, datasetRows } from './datasets.mjs';
+import { buildOverview } from './overview.mjs';
 import { listReleases, publishRelease, withdrawRelease } from './releases.mjs';
 import { TREND_RANGES, loadTrend } from './trend.mjs';
 
@@ -197,16 +199,97 @@ export const server = createServer(async (req, res) => {
     const access = await db.rpc('is_admin');
     if (access.error || access.data !== true)
       throw fail('Session expired or admin access unavailable. Sign in again.', 403);
-    if (path.pathname === '/api/datasets/import' && req.method === 'POST')
-      return send(await importDataset(await body(req, 20 * 1024 * 1024)), 201);
     if (path.pathname === '/api/releases' && req.method === 'POST')
       return send(await publishRelease(db, await body(req, 16 * 1024)), 201);
     if (path.pathname === '/api/releases/withdraw' && req.method === 'POST')
       return send(await withdrawRelease(db, await body(req)));
+    if (path.pathname === '/api/datasets/source-rows' && req.method === 'POST') {
+      const input = await body(req, 16 * 1024 * 1024);
+      if (input.source !== PH_SMS_SOURCE) throw fail('Choose a supported dataset source.');
+      const rows = parseSourceRows(input.csv);
+      const existing = await db
+        .from('admin_dataset_rows')
+        .select('row_index', { count: 'exact', head: true })
+        .eq('source', PH_SMS_SOURCE);
+      if (existing.error)
+        throw fail('Could not check stored dataset rows. Apply the admin dataset migration and try again.', 502);
+      if (existing.count > 0) throw fail('This source already has stored rows. No rows were changed.', 409);
+      const { error } = await db.from('admin_dataset_rows').insert(rows);
+      if (error) {
+        if (error.code === '23505')
+          throw fail('This source was uploaded by another request. No rows were changed.', 409);
+        throw fail('Could not store the CSV rows. Check the admin dataset migration and try again.', 502);
+      }
+      return send({ source: PH_SMS_SOURCE, rows: rows.length }, 201);
+    }
     if (req.method !== 'GET') throw fail('Read-only endpoint', 405);
     if (path.pathname === '/api/releases') return send(await listReleases(db));
-    if (path.pathname === '/api/datasets') return send(await datasetCatalog());
-    if (path.pathname === '/api/dataset-rows') return send(await datasetRows(path.searchParams));
+    if (path.pathname === '/api/datasets') {
+      const catalog = await datasetCatalog();
+      const { count, error } = await db
+        .from('admin_dataset_rows')
+        .select('row_index', { count: 'exact', head: true })
+        .eq('source', PH_SMS_SOURCE);
+      if (error)
+        throw fail('Could not load stored dataset counts. Apply the admin dataset migration and try again.', 502);
+      return send(
+        catalog.map((item) =>
+          item.source === PH_SMS_SOURCE
+            ? {
+                ...item,
+                remote_row_count: count || 0,
+                row_count: item.row_count ?? count ?? 0,
+                remote_rows: (count || 0) > 0,
+                status: item.file || (count || 0) > 0 ? 'Available to browse' : item.status,
+              }
+            : item,
+        ),
+      );
+    }
+    if (path.pathname === '/api/dataset-rows') {
+      const source = path.searchParams.get('source');
+      if (!source) return send(await datasetRows(path.searchParams));
+      if (source !== PH_SMS_SOURCE) throw fail('Choose an available dataset source.');
+      const page = Number(path.searchParams.get('page') || 0);
+      if (!Number.isSafeInteger(page) || page < 0 || page > 1_000_000) throw fail('Invalid page');
+      const search = (path.searchParams.get('q') || '').trim();
+      if (search.length > 200) throw fail('Search must be 200 characters or fewer.');
+      let query = db
+        .from('admin_dataset_rows')
+        .select('row_index,message_text,label', { count: 'exact' })
+        .eq('source', source)
+        .order('row_index');
+      if (search) query = query.ilike('search_text', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      const { data, count, error } = await query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      if (error)
+        throw fail('Could not load stored dataset rows. Apply the admin dataset migration and try again.', 502);
+      const total =
+        search.length > 0
+          ? await db
+              .from('admin_dataset_rows')
+              .select('row_index', { count: 'exact', head: true })
+              .eq('source', source)
+              .then(({ count: totalCount, error: totalError }) => {
+                if (totalError)
+                  throw fail(
+                    'Could not load the stored dataset row count. Apply the admin dataset migration and try again.',
+                    502,
+                  );
+                return totalCount || 0;
+              })
+          : count || 0;
+      return send({
+        rows: data.map(({ row_index, message_text, label }) => ({
+          row: row_index,
+          text: message_text,
+          label,
+        })),
+        count: count || 0,
+        total,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+    }
     if (path.pathname === '/api/reported-messages') {
       const page = Number(path.searchParams.get('page') || 0);
       if (!Number.isSafeInteger(page) || page < 0 || page > 1000000) throw fail('Invalid page');
@@ -290,23 +373,24 @@ export const server = createServer(async (req, res) => {
       return send({ project: new URL(url).hostname, checks, latest: latest.data[0] || null });
     }
     if (path.pathname === '/api/overview') {
-      const definitions = {
-        scans: {},
-        safe: { threat_level: 'safe' },
-        suspicious: { threat_level: 'suspicious' },
-        dangerous: { threat_level: 'dangerous' },
-        blocked: { blocked: true },
-      };
+      const sources = ['manual', 'realtime'];
+      const definitions = ['safe', 'suspicious', 'dangerous', 'blocked'];
       const values = await Promise.all(
-        Object.entries(definitions).map(async ([name, filters]) => {
-          let q = db.from('threat_events').select('id', { count: 'exact', head: true }).eq('is_demo', false);
-          for (const [field, value] of Object.entries(filters)) q = q.eq(field, value);
-          const { count, error } = await q;
-          if (error) throw fail('Could not load overview. Check database migrations and connectivity.', 502);
-          return [name, count];
-        }),
+        sources.flatMap((source) =>
+          definitions.map(async (name) => {
+            let q = db.from('threat_events').select('id', { count: 'exact', head: true }).eq('is_demo', false);
+            q = q.eq('source', source);
+            q = name === 'blocked' ? q.eq('blocked', true) : q.eq('threat_level', name);
+            const { count, error } = await q;
+            if (error) throw fail('Could not load overview. Check database migrations and connectivity.', 502);
+            if (count === null) throw fail('Could not count scan events for the overview.', 502);
+            return [source, name, count];
+          }),
+        ),
       );
-      return send(Object.fromEntries(values));
+      const counts = Object.fromEntries(sources.map((source) => [source, {}]));
+      for (const [source, name, count] of values) counts[source][name] = count;
+      return send(buildOverview(counts));
     }
     if (path.pathname === '/api/trend') {
       const range = path.searchParams.get('range') || '30d';
@@ -337,6 +421,11 @@ export const server = createServer(async (req, res) => {
       if (level && ['threat_events', 'scan_feedback'].includes(table)) {
         if (!['safe', 'suspicious', 'dangerous'].includes(level)) throw fail('Invalid classification');
         q = q.eq(table === 'threat_events' ? 'threat_level' : 'expected_level', level);
+      }
+      const source = path.searchParams.get('source');
+      if (source) {
+        if (table !== 'threat_events' || !['manual', 'realtime'].includes(source)) throw fail('Invalid scan source');
+        q = q.eq('source', source);
       }
       if (table === 'threat_events' && path.searchParams.get('demo') !== 'true') q = q.eq('is_demo', false);
       for (const field of ['from', 'to']) {

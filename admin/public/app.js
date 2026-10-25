@@ -203,12 +203,13 @@ function table(data) {
   const keys = Object.keys(data[0]);
   return `<div class="table-wrap"><table><thead><tr>${keys.map((key) => `<th scope="col">${escape(label(key))}</th>`).join('')}</tr></thead><tbody>${data.map((row) => `<tr>${keys.map((key) => `<td>${cell(row[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
-/** Opens Scan records, optionally filtered by classification and a UTC date range. */
-function openRecords(level = '', { from = '', to = '' } = {}) {
+/** Opens Scan records, optionally filtered by classification, source, and a UTC date range. */
+function openRecords(level = '', { from = '', to = '', source = '' } = {}) {
   navigate('threat_events').then(() => {
     const form = $('#filters');
-    if (!form || (!level && !from && !to)) return;
+    if (!form || (!level && !from && !to && !source)) return;
     form.elements.level.value = level;
+    if (form.elements.source) form.elements.source.value = source;
     form.elements.from.value = from;
     form.elements.to.value = to;
     page = 0;
@@ -234,7 +235,7 @@ async function navigate(next) {
     section === 'model'
       ? 'The machine learning model currently bundled with the app.'
       : section === 'overview'
-        ? 'Scan results from every NotiCare user, updated as the app uploads them. Demo scans are excluded.'
+        ? 'Scan results from every NotiCare user, including separate Manual Scan and real-time totals. Demo scans are excluded.'
         : 'Browse stored metadata. Dates and date filters use UTC; exports include the current page.';
   $('#content').innerHTML = '<div class="empty" role="status">Loading…</div>';
   try {
@@ -246,7 +247,7 @@ async function navigate(next) {
         `<article class="panel"><h2>Shared Supabase project</h2><p>${escape(connection.project)}</p>${table(connection.checks)}<h2>Latest uploaded scan</h2><p>${connection.latest ? `${escape(connection.latest.received_at)} · ${escape(connection.latest.source)} · Rules ${escape(connection.latest.rule_version)}` : 'No non-demo scans have been received yet.'}</p><p>Sign in on the phone with a Supabase OTP, run a manual scan while online, then refresh this page. Foreground uploads retry every 30 seconds. A local development profile cannot upload data.</p><p>The installed mobile build must use this same project. A successful database check alone does not verify the installed app’s configuration.</p></article>`;
     } else if (section === 'datasets') {
       $('#subtitle').textContent =
-        'Browse provided training files and newly added datasets. Adding a file does not retrain the model.';
+        'Browse local CSVs and review the model’s recorded training provenance. This library does not train or update the model.';
       const catalog = await api('/api/datasets');
       if (current !== generation) return;
       renderDatasetLibrary(catalog);
@@ -271,7 +272,7 @@ async function navigate(next) {
       await Dashboard.render(() => current === generation);
     } else {
       $('#content').innerHTML =
-        `<form class="toolbar" id="filters"><label>From (UTC)<input type="date" name="from"></label><label>Through (UTC)<input type="date" name="to"></label>${['threat_events', 'scan_feedback'].includes(section) ? '<label>Classification<select name="level"><option value="">All classifications</option><option>safe</option><option>suspicious</option><option>dangerous</option></select></label>' : ''}${section === 'threat_events' ? '<label class="check"><input type="checkbox" name="demo" value="true"> Include demo events</label>' : ''}<button type="submit" class="primary">Apply filters</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div>`;
+        `<form class="toolbar" id="filters"><label>From (UTC)<input type="date" name="from"></label><label>Through (UTC)<input type="date" name="to"></label>${['threat_events', 'scan_feedback'].includes(section) ? '<label>Classification<select name="level"><option value="">All classifications</option><option>safe</option><option>suspicious</option><option>dangerous</option></select></label>' : ''}${section === 'threat_events' ? '<label>Scan source<select name="source"><option value="">All sources</option><option value="manual">Manual Scan</option><option value="realtime">Real-time scan</option></select></label><label class="check"><input type="checkbox" name="demo" value="true"> Include demo events</label>' : ''}<button type="submit" class="primary">Apply filters</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div>`;
       $('#filters').onsubmit = (event) => {
         event.preventDefault();
         page = 0;
@@ -326,80 +327,110 @@ async function navigate(next) {
   }
 }
 function renderDatasetLibrary(catalog) {
-  const available = catalog.filter((item) => item.file).length;
+  const available = catalog.filter((item) => item.file || item.remote_rows).length;
   $('#content').innerHTML =
-    `<section class="library-hero"><div><span class="library-kicker">RESEARCH COLLECTION</span><h2>Your data. Ready to explore.</h2><p>Connect your original datasets, inspect individual messages, and follow emerging threats.</p><button id="import-new" class="hero-button">＋ Import a dataset</button></div><div class="library-summary"><strong>${available}<span> / ${catalog.length}</span></strong><span>datasets ready to browse</span><small>${catalog.length - available} awaiting source files</small></div></section>
-    <div class="library-section-heading"><div><h2>Dataset collection</h2><p>Original sources and additional research files</p></div><button id="library-detections">Phishing detections ↗</button></div>
-    <div class="dataset-catalog"><article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">REPORT</span><span class="dataset-status ready">Opt-in submissions</span></div><h2>Reported phishing messages</h2><span class="dataset-type">Community reports</span><div class="dataset-count"><strong>SMS</strong><span>text and links included</span></div><p class="dataset-description">Messages explicitly shared through Report &amp; Block on a Dangerous result. Reports may contain personal information; links are displayed as text only.</p><div class="dataset-card-footer"><span>Admin access</span><button class="primary" id="open-reported-messages">Open collection</button></div></article><article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">LINK</span><span class="dataset-status ready">Extracted automatically</span></div><h2>Detected phishing links</h2><span class="dataset-type">From reported messages</span><div class="dataset-count"><strong>URL</strong><span>deduplicated across reports</span></div><p class="dataset-description">Links extracted from messages explicitly reported through Report &amp; Block — every source message was already an explicit Dangerous result. Best-effort extraction; links are displayed as text only and never opened.</p><div class="dataset-card-footer"><span>Admin access</span><button class="primary" id="open-phishing-links">Open collection</button></div></article>${catalog.map((item, index) => `<article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">${item.source.startsWith('UCI') ? 'UCI' : item.source.startsWith('NCSU') ? 'NC' : 'CSV'}</span><span class="dataset-status ${item.file ? 'ready' : 'pending'}">${item.file ? '● Ready to explore' : '○ Source file needed'}</span></div><h2>${escape(label(item.source))}</h2><span class="dataset-type">${item.provenance_count === null ? 'Additional research dataset' : 'Listed model source'}</span><div class="dataset-count"><strong>${item.provenance_count === null ? 'CSV' : number(item.provenance_count)}</strong><span>${item.provenance_count === null ? 'Imported research file' : 'reported provenance rows'}</span></div><p class="dataset-description">${item.file ? 'Search the provided messages and labels. Importing a file does not verify its contents or retrain the model.' : 'The model records this source, but its message rows are missing. Import the original CSV to unlock browsing.'}</p><div class="dataset-card-footer"><span>${item.file ? 'Available locally' : 'Metadata only'}</span><button class="primary" ${item.file ? `data-dataset="${escape(item.file)}"` : `data-import-index="${index}"`}>${item.file ? 'Browse rows →' : 'Import source CSV'}</button></div></article>`).join('')}</div>
-    <p class="library-footnote">Provenance counts can overlap. CSV row counts appear when a dataset is opened. Detections remain separate from training data.</p><div id="dataset-browser"></div>
-    <dialog id="import-dialog"><form id="import-form"><div class="import-heading"><h2>Import dataset</h2><button type="button" id="close-import" aria-label="Close import">✕</button></div><p>Add a CSV to your local dataset library. Existing files are preserved.</p><label>Dataset filename<input id="import-name" required pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}\\.csv" placeholder="my_research.csv"></label><label class="file-drop">Choose a CSV file<input id="import-file" type="file" accept=".csv,text/csv" required><small>UTF-8 · Header row required · Up to 10 MB</small></label><p id="import-status" role="status"></p><button id="submit-import" class="primary" type="submit">Import and browse</button></form></dialog>`;
-  const showImport = (name = '') => {
-    $('#import-form').reset();
-    $('#import-name').value = name;
-    $('#import-status').textContent = '';
-    $('#import-dialog').showModal();
-  };
-  $('#import-new').onclick = () => showImport();
+    `<section class="library-hero"><div><span class="library-kicker">RESEARCH COLLECTION</span><h2>Datasets and model provenance</h2><p>Browse local CSV files or the private dataset rows stored for this admin dashboard. Browsing does not train or update the model.</p></div><div class="library-summary"><strong>${available}<span> / ${catalog.length}</span></strong><span>datasets available to browse</span><small>${catalog.length - available} provenance-only sources</small></div></section>
+    <div class="library-section-heading"><div><h2>Dataset collection</h2><p>Browseable rows and model training provenance</p></div><button id="library-detections">Phishing detections ↗</button></div>
+    <div class="dataset-catalog"><article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">REPORT</span><span class="dataset-status ready">Opt-in submissions</span></div><h2>Reported phishing messages</h2><span class="dataset-type">Community reports</span><div class="dataset-count"><strong>SMS</strong><span>text and links included</span></div><p class="dataset-description">Messages explicitly shared through Report &amp; Block on a Dangerous result. Reports may contain personal information; links are displayed as text only.</p><div class="dataset-card-footer"><span>Admin access</span><button class="primary" id="open-reported-messages">Open collection</button></div></article><article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">LINK</span><span class="dataset-status ready">Extracted automatically</span></div><h2>Detected phishing links</h2><span class="dataset-type">From reported messages</span><div class="dataset-count"><strong>URL</strong><span>deduplicated across reports</span></div><p class="dataset-description">Links extracted from messages explicitly reported through Report &amp; Block — every source message was already an explicit Dangerous result. Best-effort extraction; links are displayed as text only and never opened.</p><div class="dataset-card-footer"><span>Admin access</span><button class="primary" id="open-phishing-links">Open collection</button></div></article>${catalog
+      .map((item) => {
+        const browseable = item.file || item.remote_rows;
+        const trainingOnly = item.provenance_count !== null && !browseable;
+        const rowCount =
+          item.row_count !== null && item.row_count !== undefined
+            ? number(item.row_count)
+            : item.provenance_count === null
+              ? 'Local CSV'
+              : number(item.provenance_count);
+        const rowLabel =
+          item.row_count !== null && item.row_count !== undefined
+            ? 'rows available to browse'
+            : item.provenance_count === null
+              ? 'not counted until browsed'
+              : 'model provenance rows';
+        const description =
+          browseable && item.remote_rows
+            ? `Browse all ${number(item.remote_row_count)} rows stored in admin-only Supabase storage. Model metadata separately lists ${number(item.provenance_count)} examples for this source; browsing does not train or update the model.`
+            : item.file
+              ? item.row_count !== null && item.row_count !== undefined
+                ? `Browse all ${number(item.row_count)} rows in this local CSV. Model metadata separately lists ${number(item.provenance_count)} examples for this source; browsing does not train or update the model.`
+                : 'Browse this local CSV for review. Browsing does not verify its labels or add it to model training.'
+              : 'The active model records this source, but its original rows are not yet available in the dashboard. Upload the original text,label CSV to private admin storage for browsing only. This does not add rows to model training.';
+        const browserButton = item.file
+          ? `<button class="primary" data-dataset-file="${escape(item.file)}">Browse rows →</button>`
+          : item.remote_rows
+            ? `<button class="primary" data-dataset-source="${escape(item.source)}">Browse rows →</button>`
+            : item.source === 'Local_PH_SMS_spam'
+              ? `<button class="primary" data-upload-source="${escape(item.source)}">Upload CSV for browsing</button>`
+              : '';
+        const footer = item.file
+          ? 'Local file'
+          : item.remote_rows
+            ? 'Private admin storage'
+            : trainingOnly
+              ? 'Source rows unavailable'
+              : 'No local CSV';
+        return `<article class="dataset-card"><div class="dataset-card-top"><span class="dataset-monogram" aria-hidden="true">${item.source.startsWith('UCI') ? 'UCI' : item.source.startsWith('NCSU') ? 'NC' : 'CSV'}</span><span class="dataset-status ${browseable ? 'ready' : trainingOnly ? 'training' : 'pending'}">${browseable ? '● Available to browse' : trainingOnly ? 'Training provenance' : 'Additional dataset'}</span></div><h2>${escape(label(item.source))}</h2><span class="dataset-type">${item.provenance_count === null ? 'Local research CSV' : 'Recorded model source'}</span><div class="dataset-count"><strong>${rowCount}</strong><span>${rowLabel}</span></div><p class="dataset-description">${description}</p><div class="dataset-card-footer"><span>${footer}</span>${browserButton}</div></article>`;
+      })
+      .join('')}</div>
+    <p class="library-footnote">Model provenance counts describe training inputs, not browseable CSV row totals. Uploaded source rows are stored in admin-only Supabase storage and are not training data. Detections remain separate from training data.</p><div id="dataset-browser"></div>`;
   $('#library-detections').onclick = () => navigate('discoveries');
   $('#open-reported-messages').onclick = openReportedMessages;
   $('#open-phishing-links').onclick = openPhishingLinks;
-  $('#close-import').onclick = () => $('#import-dialog').close();
   $('#content')
-    .querySelectorAll('[data-dataset]')
+    .querySelectorAll('[data-dataset-file]')
     .forEach((button) => {
-      button.onclick = () => openDataset(button.dataset.dataset);
+      button.onclick = () => openDataset({ file: button.dataset.datasetFile });
     });
   $('#content')
-    .querySelectorAll('[data-import-index]')
+    .querySelectorAll('[data-dataset-source]')
     .forEach((button) => {
-      button.onclick = () => showImport(`${catalog[Number(button.dataset.importIndex)].source}.csv`);
+      button.onclick = () => openDataset({ source: button.dataset.datasetSource });
     });
-  $('#import-file').onchange = () => {
-    const file = $('#import-file').files[0];
-    if (file && !$('#import-name').value)
-      $('#import-name').value =
-        file.name
-          .replace(/\.csv$/i, '')
-          .replace(/[^a-zA-Z0-9_-]/g, '_')
-          .slice(0, 100) + '.csv';
-  };
-  $('#import-form').onsubmit = async (event) => {
-    event.preventDefault();
-    const button = $('#submit-import'),
-      status = $('#import-status');
-    const file = $('#import-file').files[0],
-      filename = $('#import-name').value;
-    if (!file || file.size > 10 * 1024 * 1024) {
-      status.textContent = 'Choose a CSV no larger than 10 MB.';
+  $('#content')
+    .querySelectorAll('[data-upload-source]')
+    .forEach((button) => {
+      button.onclick = () => chooseDatasetCsv(button, button.dataset.uploadSource);
+    });
+}
+function chooseDatasetCsv(button, source) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,text/csv';
+  input.hidden = true;
+  input.onchange = async () => {
+    const file = input.files[0];
+    input.remove();
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      notice('CSV exceeds the 10 MB upload limit.');
       return;
     }
     button.disabled = true;
-    status.textContent = 'Validating and importing…';
-    const current = generation;
+    button.textContent = 'Uploading…';
+    let csv;
     try {
-      let csv;
-      try {
-        csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
-      } catch {
-        throw new Error('This file is not valid UTF-8. Re-save it as "CSV UTF-8" and try again.');
-      }
-      const imported = await api('/api/datasets/import', { method: 'POST', body: JSON.stringify({ filename, csv }) });
-      if (current !== generation) return;
-      $('#import-dialog').close();
-      await navigate('datasets');
-      if (section === 'datasets' && $('#dataset-browser')) {
-        openDataset(imported.file);
-        notice(`Imported ${number(imported.count)} rows. This file has not been added to model training.`);
-      }
-    } catch (error) {
-      status.textContent =
-        error instanceof TypeError
-          ? 'Unable to connect to the server. Check that the admin server is running.'
-          : error.message;
-    } finally {
+      csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+    } catch {
+      notice('CSV must be encoded as UTF-8.');
       button.disabled = false;
+      button.textContent = 'Upload CSV for browsing';
+      return;
+    }
+    try {
+      const result = await api('/api/datasets/source-rows', {
+        method: 'POST',
+        body: JSON.stringify({ source, csv }),
+      });
+      await navigate('datasets');
+      notice(`Stored ${number(result.rows)} rows for browsing. The model was not trained or changed.`);
+    } catch (error) {
+      notice(error.message);
+      button.disabled = false;
+      button.textContent = 'Upload CSV for browsing';
     }
   };
+  document.body.append(input);
+  input.click();
 }
 function openReportedMessages() {
   page = 0;
@@ -443,10 +474,13 @@ function openPhishingLinks() {
   $('#export').onclick = exportRows;
   loadRecords();
 }
-function openDataset(file) {
+function openDataset({ file, source }) {
   page = 0;
+  const sourceField = source
+    ? `<input type="hidden" name="source" value="${escape(source)}">`
+    : `<input type="hidden" name="file" value="${escape(file)}">`;
   $('#dataset-browser').innerHTML =
-    `<article class="panel"><h2>${escape(file)}</h2><form class="toolbar" id="filters"><input type="hidden" name="file" value="${escape(file)}"><label>Search all columns<input name="q" type="search" maxlength="200" placeholder="Message, label, or source"></label><button class="primary" type="submit">Search</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div></article>`;
+    `<article class="panel"><h2>${escape(file || label(source))}</h2><form class="toolbar" id="filters">${sourceField}<label>Search all columns<input name="q" type="search" maxlength="200" placeholder="Message, label, or source"></label><button class="primary" type="submit">Search</button><button type="button" id="export" disabled>Export page CSV</button></form><div id="records"></div><div class="pagination"><span id="count" role="status"></span><div><button id="previous">← Previous</button> <button id="next">Next →</button></div></div></article>`;
   $('#filters').onsubmit = (event) => {
     event.preventDefault();
     page = 0;

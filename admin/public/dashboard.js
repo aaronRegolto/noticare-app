@@ -1,4 +1,4 @@
-// Dashboard view: all-time hero, a range picker, KPI tiles, the stacked activity chart, and the
+// Dashboard view: all-time hero, source breakdowns, a range picker, KPI tiles, the stacked activity chart, and the
 // classification mix. Relies on app.js globals ($, api, number, openRecords, navigate). All text
 // that could vary is inserted with textContent; markup strings below contain only fixed labels
 // and numbers.
@@ -42,6 +42,14 @@ const Dashboard = (() => {
     } catch {
       // Remembering the range is a convenience only.
     }
+  }
+
+  function wireSourceOverviews() {
+    $('#source-overviews')
+      .querySelectorAll('[data-source-records]')
+      .forEach((button) => {
+        button.onclick = () => openRecords('', { source: button.dataset.sourceRecords });
+      });
   }
 
   const el = (tag, className, text) => {
@@ -104,6 +112,29 @@ const Dashboard = (() => {
     const risky = (Number(stats.suspicious) || 0) + (Number(stats.dangerous) || 0);
     const riskRate = scans ? (risky / scans) * 100 : 0;
     return `<section class="overview-hero"><div><span class="overview-kicker">ALL-TIME OVERVIEW</span><h2>${scans ? `${number(scans)} ${scans === 1 ? 'message' : 'messages'} scanned` : 'No scans yet'}</h2><p>${scans ? `${number(risky)} flagged as suspicious or dangerous, and ${number(Number(stats.blocked) || 0)} dangerous ${Number(stats.blocked) === 1 ? 'message' : 'messages'} blocked. Totals cover every NotiCare user and exclude demo scans.` : 'Totals will appear here once the NotiCare app starts uploading scan results.'}</p><div class="hero-actions"><button id="open-records" class="primary">View scan records</button><button id="open-discoveries">View flagged messages</button></div></div><div class="risk-orb" role="img" aria-label="${riskRate.toFixed(1)}% of all scans were flagged"><svg class="risk-gauge" viewBox="0 0 120 120" aria-hidden="true"><circle class="risk-track" cx="60" cy="60" r="52"></circle><circle class="risk-value" cx="60" cy="60" r="52" pathLength="100" data-rate="${riskRate.toFixed(2)}"></circle></svg><strong>${riskRate.toFixed(1)}%</strong><span>flagged</span></div></section>`;
+  }
+
+  function sourceOverviewMarkup(stats) {
+    const sources = [
+      {
+        key: 'manual',
+        title: 'Manual Scan',
+        note: 'Messages users chose to scan themselves.',
+      },
+      {
+        key: 'realtime',
+        title: 'Real-time scan',
+        note: 'Messages inspected automatically from enabled notifications.',
+      },
+    ];
+    const cards = sources
+      .map(({ key, title, note }) => {
+        const counts = stats[key];
+        if (!counts) throw new Error(`The overview response is missing ${title} totals.`);
+        return `<article class="panel source-overview-card"><span class="section-kicker">${title.toUpperCase()}</span><h2>${title}</h2><p class="source-scan-total"><strong>${number(counts.scans)}</strong><span>scans recorded</span></p><dl class="source-breakdown"><div><dt>Safe</dt><dd>${number(counts.safe)}</dd></div><div><dt>Suspicious</dt><dd>${number(counts.suspicious)}</dd></div><div><dt>Dangerous</dt><dd>${number(counts.dangerous)}</dd></div><div><dt>Blocked</dt><dd>${number(counts.blocked)}</dd></div></dl><p class="source-overview-note">${note}</p><button class="text-button" type="button" data-source-records="${key}">View ${title} records →</button></article>`;
+      })
+      .join('');
+    return `<section id="source-overviews" aria-labelledby="source-overview-title"><div class="source-overview-heading"><span class="section-kicker">ALL-TIME BY SOURCE</span><h2 id="source-overview-title">Manual and real-time scans</h2><p>Totals exclude demo scans. Older events recorded before source tracking default to Manual Scan.</p></div><div class="source-overview-grid">${cards}</div></section>`;
   }
 
   function layoutMarkup() {
@@ -549,7 +580,9 @@ const Dashboard = (() => {
       trend = data;
       const hero = $('#content .overview-hero');
       hero.outerHTML = heroMarkup(totals);
+      $('#source-overviews').outerHTML = sourceOverviewMarkup(totals);
       wireHero();
+      wireSourceOverviews();
       active = null;
       renderAll(animate);
     } finally {
@@ -579,8 +612,9 @@ const Dashboard = (() => {
     totals = stats;
     trend = data;
     active = null;
-    $('#content').innerHTML = heroMarkup(stats) + layoutMarkup();
+    $('#content').innerHTML = heroMarkup(stats) + sourceOverviewMarkup(stats) + layoutMarkup();
     wireHero();
+    wireSourceOverviews();
     $('#view-all-scans').onclick = () => openRecords();
     $('#open-connection').onclick = () => navigate('connection');
     $('#open-model').onclick = () => navigate('model');

@@ -71,6 +71,8 @@ test('rejects anonymous access to every live data endpoint', async () => {
     '/api/records?table=admin_users',
     '/api/datasets',
     '/api/dataset-rows?file=UCI_SMS_Spam.csv',
+    '/api/dataset-rows?source=Local_PH_SMS_spam',
+    '/api/datasets/source-rows',
     '/api/reported-messages',
     '/api/phishing-links',
     '/api/records?table=threat_events&discoveries=true',
@@ -90,16 +92,6 @@ test('rejects cross-origin login attempts before contacting auth provider', asyn
   });
   assert.equal(response.status, 403);
 });
-test('dataset imports require authentication and reject cross-origin requests', async () => {
-  const anonymous = await fetch(base + '/api/datasets/import', { method: 'POST', body: '{}' });
-  assert.ok([401, 503].includes(anonymous.status));
-  const crossOrigin = await fetch(base + '/api/datasets/import', {
-    method: 'POST',
-    headers: { Origin: 'https://untrusted.example' },
-    body: '{}',
-  });
-  assert.equal(crossOrigin.status, 403);
-});
 test('publishing or withdrawing a release requires an admin and the dashboard origin', async () => {
   for (const path of ['/api/releases', '/api/releases/withdraw']) {
     const anonymous = await fetch(base + path, { method: 'POST', body: '{}' });
@@ -112,6 +104,24 @@ test('publishing or withdrawing a release requires an admin and the dashboard or
     assert.equal(crossOrigin.status, 403, path);
   }
 });
+test('uploading dataset rows requires an admin and the dashboard origin', async () => {
+  const anonymous = await fetch(base + '/api/datasets/source-rows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'Local_PH_SMS_spam', csv: 'text,label\nmessage,0' }),
+  });
+  assert.ok([401, 503].includes(anonymous.status));
+  const crossOrigin = await fetch(base + '/api/datasets/source-rows', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://untrusted.example',
+      Authorization: 'Bearer invalid',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ source: 'Local_PH_SMS_spam', csv: 'text,label\nmessage,0' }),
+  });
+  assert.equal(crossOrigin.status, 403);
+});
 test('configuration endpoint exposes no credentials', async () => {
   const response = await fetch(base + '/api/config');
   const data = await response.json();
@@ -122,9 +132,7 @@ test('model documentation reads the existing metadata without fabricated samples
   const response = await fetch(base + '/api/model');
   const model = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(
-    model.final_training_set.total_rows,
-    model.final_training_set.base_rows + model.final_training_set.synthetic_rows,
-  );
-  assert.equal(model.model_provenance.version, '3.0.0-augmented');
+  const splits = model.final_training_set.splits;
+  assert.equal(model.final_training_set.total_rows, splits.train.total + splits.validation.total + splits.test.total);
+  assert.equal(model.model_provenance.version, '3.2.0');
 });
