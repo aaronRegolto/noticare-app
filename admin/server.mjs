@@ -215,7 +215,13 @@ export const server = createServer(async (req, res) => {
           label,
         })),
       });
-      if (error) throw fail('Could not store the CSV rows. Check the admin dataset migration and try again.', 502);
+      if (error) {
+        const detail = [error.code, error.message].filter(Boolean).join(': ');
+        throw fail(
+          `Could not store the CSV rows. Check the admin dataset migration and try again.${detail ? ` (${detail})` : ''}`,
+          502,
+        );
+      }
       return send({ source: PH_SMS_SOURCE, rows: data }, 201);
     }
     if (req.method !== 'GET') throw fail('Read-only endpoint', 405);
