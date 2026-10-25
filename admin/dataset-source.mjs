@@ -17,9 +17,8 @@ export function parseSourceRows(csv) {
     throw invalid('CSV must contain exactly these columns: text,label.');
 
   return parsed.map((row, index) => {
-    const text = row.text.trim();
+    const text = row.text;
     const label = row.label.trim();
-    if (!text) throw invalid(`CSV row ${index + 2} has empty message text.`);
     if (text.length > MAX_MESSAGE_LENGTH)
       throw invalid(`CSV row ${index + 2} exceeds the ${MAX_MESSAGE_LENGTH.toLocaleString()}-character message limit.`);
     if (label !== '0' && label !== '1') throw invalid(`CSV row ${index + 2} has an unsupported label. Use 0 or 1.`);

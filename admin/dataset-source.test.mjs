@@ -10,13 +10,19 @@ test('validates and maps source CSV rows without changing labels or message cont
   ]);
 });
 
+test('preserves blank and whitespace-only message rows from the source CSV', () => {
+  assert.deepEqual(parseSourceRows('text,label\n,0\n"   ",1'), [
+    { source: PH_SMS_SOURCE, row_index: 1, message_text: '', label: '0' },
+    { source: PH_SMS_SOURCE, row_index: 2, message_text: '   ', label: '1' },
+  ]);
+});
+
 test('rejects missing, unexpected, or unsafe CSV content instead of storing it', () => {
   for (const csv of [
     undefined,
     '',
     'message,label\nhello,0',
     'text,label,phone\nhello,0,123',
-    'text,label\n,0',
     'text,label\nhello,spam',
     'text,label\n"unfinished,0',
   ]) {
