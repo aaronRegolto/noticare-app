@@ -207,20 +207,11 @@ export const server = createServer(async (req, res) => {
       const input = await body(req, 16 * 1024 * 1024);
       if (input.source !== PH_SMS_SOURCE) throw fail('Choose a supported dataset source.');
       const rows = parseSourceRows(input.csv);
-      const existing = await db
-        .from('admin_dataset_rows')
-        .select('row_index', { count: 'exact', head: true })
-        .eq('source', PH_SMS_SOURCE);
-      if (existing.error)
-        throw fail('Could not check stored dataset rows. Apply the admin dataset migration and try again.', 502);
-      if (existing.count > 0) throw fail('This source already has stored rows. No rows were changed.', 409);
-      const { error } = await db.from('admin_dataset_rows').insert(rows);
-      if (error) {
-        if (error.code === '23505')
-          throw fail('This source was uploaded by another request. No rows were changed.', 409);
-        throw fail('Could not store the CSV rows. Check the admin dataset migration and try again.', 502);
-      }
-      return send({ source: PH_SMS_SOURCE, rows: rows.length }, 201);
+      const { data, error } = await db.rpc('replace_admin_dataset_rows', {
+        p_rows: rows.map(({ row_index, message_text, label }) => ({ row_index, message_text, label })),
+      });
+      if (error) throw fail('Could not store the CSV rows. Check the admin dataset migration and try again.', 502);
+      return send({ source: PH_SMS_SOURCE, rows: data }, 201);
     }
     if (req.method !== 'GET') throw fail('Read-only endpoint', 405);
     if (path.pathname === '/api/releases') return send(await listReleases(db));
