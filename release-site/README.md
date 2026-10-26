@@ -9,17 +9,17 @@ The Privacy section and footer link to the full policy at `https://admin.noticar
 
 ## Publish
 
-Upload `index.html`, `styles.css`, `script.js`, `assets/`, and `downloads/NotiCare-Android-v1.0.0.apk` to the static hosting provider. Keep the APK at that path so the download buttons work. The APK is excluded from Git because it is larger than GitHub's standard file-size limit.
+Upload `index.html`, `styles.css`, `script.js`, and `assets/` to the static hosting provider. The APK is hosted as a GitHub Release asset, and the download buttons link directly to that file.
 
-The APK is about 230 MiB. The download buttons use a same-site link with the HTML `download` attribute, which starts a direct file download in supported browsers.
+The linked APK is about 230 MiB. Its direct download URL is `https://github.com/aaronRegolto/noticare-app/releases/download/v1.0.0/application-e52e4006-81ed-488c-9933-b6c9e77e692b.apk`.
 
 ## Replace the APK for a later release
 
 1. Build and test a new installable Android APK.
 2. Keep the Android application ID and signing key consistent with the previous release so users can update without uninstalling.
-3. Replace `downloads/NotiCare-Android-v1.0.0.apk` with the new APK (rename it if the app version changes).
-4. Update the download filename and version labels in `index.html` and this README as needed.
-5. Upload the updated site, including the APK, and test the download link.
+3. Publish the new APK as an asset on a public GitHub Release.
+4. Update all three APK links and the version labels in `index.html` to match the new release asset.
+5. Upload the updated site and test the download link.
 
 The APK's current SHA-256 checksum is:
 

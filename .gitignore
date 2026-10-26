@@ -52,6 +52,7 @@ tmp-*.png
 app-example
 
 # Release APKs are hosted separately; do not add large binaries to Git.
+/release-site/*.apk
 /release-site/downloads/*.apk
 
 # generated native folders
