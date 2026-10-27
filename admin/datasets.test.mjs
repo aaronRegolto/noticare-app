@@ -74,6 +74,12 @@ test('catalog retains known model sources even before CSV files are provided', a
   const catalog = await datasetCatalog();
   assert.equal(catalog.find((item) => item.source === 'UCI_SMS_Spam').provenance_count, 5159);
   assert.equal(catalog.find((item) => item.source === 'NCSU_SMS_Phishing').provenance_count, 4135);
+  const phiusiil = catalog.find((item) => item.source === 'PhiUSIIL_Phishing_URL_Dataset');
+  assert.equal(phiusiil.provenance_count, 235370);
+  assert.equal(phiusiil.file, 'PhiUSIIL_Phishing_URL_Dataset.csv');
+  assert.equal(phiusiil.row_count, 235795);
+  assert.equal(phiusiil.dataset_type, 'URL dataset');
+  assert.equal(phiusiil.status, 'Available to browse');
 });
 test('catalog connects the local Philippine spam source to its CSV for browsing', async () => {
   const source = (await datasetCatalog()).find((item) => item.source === 'Local_PH_SMS_spam');

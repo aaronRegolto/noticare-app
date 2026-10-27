@@ -173,6 +173,31 @@ test('dataset library shows all local CSV rows and separates them from model pro
   }
 });
 
+test('dataset library shows the complete URL dataset as browseable', () => {
+  const dom = browser();
+  try {
+    dom.window.eval(
+      `renderDatasetLibrary([${JSON.stringify({
+        source: 'PhiUSIIL_Phishing_URL_Dataset',
+        provenance_count: 235370,
+        file: 'PhiUSIIL_Phishing_URL_Dataset.csv',
+        row_count: 235795,
+        dataset_type: 'URL dataset',
+        status: 'Available to browse',
+      })}]);`,
+    );
+    const card = [...dom.window.document.querySelectorAll('.dataset-card')].find((item) =>
+      item.textContent.includes('PhiUSIIL'),
+    );
+    assert.ok(card);
+    assert.match(card.textContent, /235,795/);
+    assert.match(card.textContent, /235,370/);
+    assert.match(card.textContent, /Browse rows/i);
+  } finally {
+    dom.window.close();
+  }
+});
+
 test('hosted dataset card distinguishes private browse rows from provenance and training', () => {
   const dom = browser();
   try {

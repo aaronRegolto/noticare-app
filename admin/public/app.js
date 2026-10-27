@@ -354,7 +354,9 @@ function renderDatasetLibrary(catalog) {
               ? item.row_count !== null && item.row_count !== undefined
                 ? `Browse all ${number(item.row_count)} rows in this local CSV. Model metadata separately lists ${number(item.provenance_count)} examples for this source; browsing does not train or update the model.`
                 : 'Browse this local CSV for review. Browsing does not verify its labels or add it to model training.'
-              : 'The active model records this source, but its original rows are not yet available in the dashboard. Upload the original text,label CSV to private admin storage for browsing only. This does not add rows to model training.';
+              : item.dataset_type === 'URL dataset'
+            ? 'The active URL-risk model records this dataset as its training source. Browse the full CSV, including URL feature columns, for research. Browsing does not retrain or update the model.'
+            : 'The active model records this source, but its original rows are not yet available in the dashboard. Upload the original text,label CSV to private admin storage for browsing only. This does not add rows to model training.';
         const browserButton = item.file
           ? `<button class="primary" data-dataset-file="${escape(item.file)}">Browse rows →</button>`
           : item.remote_rows

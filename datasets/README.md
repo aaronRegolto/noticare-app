@@ -7,6 +7,7 @@ The admin dashboard browses CSV files already present in this folder and support
 - `UCI_SMS_Spam.csv`: 5,574 records converted from `SMSSpamCollection` inside the supplied UCI ZIP. Tab-separated labels and message text were converted to CSV with a source column.
 - `NCSU_SMS_Phishing.csv`: 68,029 records from `phishing_messages.csv` inside the nested `sms-phishing-main.zip`. The original header omitted a field between message and time; it is labelled `unlabelled_source_field` in the prepared CSV. All seven values per row are preserved. Original archives remain unchanged.
 - `noticare_philippines.csv`: 100 supplied records, unchanged.
+- `PhiUSIIL_Phishing_URL_Dataset.csv`: 235,795 supplied URL records. The bundled URL model uses 235,370 deduplicated rows; the complete source file remains available for administrator browsing in the dataset library.
 
 These are source files, not a reconstructed final training split. The bundled model reports 5,158 UCI provenance rows and 4,135 NCSU provenance rows; the exact filtering and split cannot be established from these archives alone. The Philippine file's inclusion in training is not established by the bundled metadata.
 

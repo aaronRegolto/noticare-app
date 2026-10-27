@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const directory = fileURLToPath(new URL('../datasets/', import.meta.url));
 const metadataFile = new URL('../assets/models/model_metadata.json', import.meta.url);
+const urlMetadataFile = new URL('../assets/models/url_model_metadata.json', import.meta.url);
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
 const sourceFiles = {
   Local_PH_SMS_spam: 'datasets-page-1.csv',
@@ -34,7 +35,7 @@ function* csvRows(text) {
         headers = row.map((value) => value.trim());
         if (!headers.length || headers.some((value) => !value) || new Set(headers).size !== headers.length)
           throw invalid('CSV needs a header row with unique, non-empty column names.');
-        if (headers.length > 50) throw invalid('CSV may contain at most 50 columns.');
+        if (headers.length > 60) throw invalid('CSV may contain at most 60 columns.');
       } else {
         if (row.length !== headers.length)
           throw invalid('A CSV record has a different number of columns than the header.');
@@ -87,7 +88,11 @@ async function files() {
 }
 
 export async function datasetCatalog() {
-  const [names, model] = await Promise.all([files(), readFile(metadataFile, 'utf8').then(JSON.parse)]);
+  const [names, model, urlModel] = await Promise.all([
+    files(),
+    readFile(metadataFile, 'utf8').then(JSON.parse),
+    readFile(urlMetadataFile, 'utf8').then(JSON.parse),
+  ]);
   const sources = model.model_provenance.dataset_provenance_counts;
   const catalog = Object.entries(sources).map(([source, count]) => ({
     source,
@@ -96,15 +101,27 @@ export async function datasetCatalog() {
       names.find((name) => name.slice(0, -4) === source) ||
       (names.includes(sourceFiles[source]) ? sourceFiles[source] : null),
   }));
+  catalog.push({
+    source: urlModel.model_provenance.dataset_name,
+    provenance_count: urlModel.model_provenance.dataset_rows,
+    file: names.find((name) => name === 'PhiUSIIL_Phishing_URL_Dataset.csv') || null,
+    dataset_type: 'URL dataset',
+  });
   for (const name of names)
     if (!catalog.some((item) => item.file === name))
       catalog.push({ source: name.slice(0, -4), provenance_count: null, file: name });
   return Promise.all(
     catalog.map(async (item) => {
-      const row_count =
-        item.file && item.source === 'Local_PH_SMS_spam'
-          ? [...csvRows(await readFile(join(directory, item.file), 'utf8'))].length
-          : null;
+      let row_count = null;
+      if (
+        item.file &&
+        (item.source === 'Local_PH_SMS_spam' || item.source === 'PhiUSIIL_Phishing_URL_Dataset')
+      ) {
+        const text = await readFile(join(directory, item.file), 'utf8');
+        let count = 0;
+        for (const _row of csvRows(text)) count++;
+        row_count = count;
+      }
       return {
         ...item,
         row_count,
@@ -127,8 +144,8 @@ export async function datasetRows(params) {
   const file = join(directory, name);
   const info = await lstat(file);
   if (!info.isFile() || info.isSymbolicLink()) throw invalid('Dataset must be a regular CSV file.');
-  if (info.size > 25 * 1024 * 1024)
-    throw invalid('Dataset exceeds the 25 MB browsing limit. Split it into smaller CSV files.');
+  if (info.size > 60 * 1024 * 1024)
+    throw invalid('Dataset exceeds the 60 MB browsing limit. Split it into smaller CSV files.');
   const page = Number(params.get('page') || 0);
   if (!Number.isSafeInteger(page) || page < 0) throw invalid('Invalid page');
   const query = (params.get('q') || '').trim().toLowerCase();
