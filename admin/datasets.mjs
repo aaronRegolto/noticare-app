@@ -94,6 +94,12 @@ export async function datasetCatalog() {
     readFile(urlMetadataFile, 'utf8').then(JSON.parse),
   ]);
   const sources = model.model_provenance.dataset_provenance_counts;
+  const knownRowCounts = {
+    Local_PH_SMS_spam: 3080,
+    PhiUSIIL_Phishing_URL_Dataset:
+      (Number(urlModel.model_provenance.dataset_rows) || 0) +
+      (Number(urlModel.model_provenance.duplicate_urls_removed) || 0),
+  };
   const catalog = Object.entries(sources).map(([source, count]) => ({
     source,
     provenance_count: count,
@@ -113,14 +119,12 @@ export async function datasetCatalog() {
   return Promise.all(
     catalog.map(async (item) => {
       let row_count = null;
-      if (
-        item.file &&
-        (item.source === 'Local_PH_SMS_spam' || item.source === 'PhiUSIIL_Phishing_URL_Dataset')
-      ) {
-        const text = await readFile(join(directory, item.file), 'utf8');
-        let count = 0;
-        for (const _row of csvRows(text)) count++;
-        row_count = count;
+      if (item.file) {
+        const knownRows = knownRowCounts[item.source];
+        // Keep the admin catalog lightweight for large datasets: the raw PhiUSIIL CSV is 56 MB,
+        // and we already have trusted provenance metadata for the exact source row count.
+        if (typeof knownRows === 'number') row_count = knownRows;
+        else if (item.source === 'Local_PH_SMS_spam') row_count = knownRowCounts.Local_PH_SMS_spam;
       }
       return {
         ...item,

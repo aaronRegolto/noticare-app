@@ -25,13 +25,10 @@ import {
 } from '@/src/services/messageTranslation';
 import { deleteAccount, isSupabaseConfigured } from '@/src/services/supabase';
 import {
-  getInstalledBrowsers,
   isDefaultBrowser,
   isNativeLinkHandlerAvailable,
   openDefaultAppsSettings,
   requestDefaultBrowser,
-  setPreferredBrowser,
-  type InstalledBrowser,
 } from '@/src/services/linkHandler';
 import {
   clearHistory,
@@ -126,11 +123,9 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState<MonitoringStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [browsers, setBrowsers] = useState<InstalledBrowser[]>([]);
-  const [browsersError, setBrowsersError] = useState<string | null>(null);
   const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
   const translation = useMessageTranslationSettings();
-  const [sheet, setSheet] = useState<'browser' | 'alerts' | 'language' | 'appearance' | null>(null);
+  const [sheet, setSheet] = useState<'alerts' | 'language' | 'appearance' | null>(null);
 
   // Check the language pack (and finish a download that was waiting for Wi-Fi) when Settings opens.
   useEffect(() => {
@@ -153,34 +148,6 @@ export default function SettingsScreen() {
       );
     }
   }, []);
-
-  const refreshBrowsers = useCallback(async () => {
-    if (!isNativeLinkHandlerAvailable()) {
-      setBrowsers([]);
-      setBrowsersError('Browser protection is not available in this preview. Install the Android app to manage it.');
-      return;
-    }
-    try {
-      setBrowsers(await getInstalledBrowsers());
-      setBrowsersError(null);
-    } catch {
-      setBrowsers([]);
-      setBrowsersError('Unable to list installed browsers.');
-    }
-  }, []);
-
-  const choosePreferredBrowser = useCallback(
-    async (packageName: string) => {
-      try {
-        await setPreferredBrowser(packageName);
-        await refreshBrowsers();
-      } catch (error) {
-        logError('preferred-browser-failed', error);
-        Alert.alert('Unable to save', 'Please try again.');
-      }
-    },
-    [refreshBrowsers],
-  );
 
   const refreshDefaultBrowserStatus = useCallback(async () => {
     if (!isNativeLinkHandlerAvailable()) {
@@ -244,9 +211,8 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshStatus();
-      void refreshBrowsers();
       void refreshDefaultBrowserStatus();
-    }, [refreshStatus, refreshBrowsers, refreshDefaultBrowserStatus]),
+    }, [refreshStatus, refreshDefaultBrowserStatus]),
   );
 
   // useFocusEffect alone only re-checks when this screen regains navigation focus. Returning
@@ -510,12 +476,11 @@ export default function SettingsScreen() {
   const linkProtection = !isNativeLinkHandlerAvailable()
     ? { value: 'Unavailable', tone: 'muted' as const, subtitle: 'Install the Android app to use this.' }
     : defaultBrowserActive === null
-      ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links, then lets you choose a browser' }
+      ? { value: 'Checking…', tone: 'muted' as const, subtitle: 'Checks links, then opens them directly' }
       : defaultBrowserActive
-        ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links, then lets you choose a browser' }
+        ? { value: 'On', tone: 'positive' as const, subtitle: 'Checks links, then opens them directly' }
         : { value: 'Off', tone: 'warning' as const, subtitle: "Links aren't checked yet" };
   const primaryCarrier = session?.user.phone ? detectPhilippineCarrier(session.user.phone) : null;
-  const preferredBrowser = browsers.find((browser) => browser.isPreferred)?.label;
   const languageLabel = MESSAGE_LANGUAGE_OPTIONS.find((option) => option.value === translation.language)?.label;
   const appearanceLabel = `${THEME_MODE_LABELS[mode]} · ${ACCENTS.find((item) => item.id === accent)?.label ?? ''}`;
 
@@ -656,19 +621,9 @@ export default function SettingsScreen() {
           />
           {defaultBrowserActive === false ? (
             <SettingsAlert
-              message="Make NotiCare your default browser to check links Android sends to a browser, then choose where to open safe links. Facebook or Messenger may keep taps inside their built-in browser unless you enable an external-links option there."
+              message="Make NotiCare your default browser to check links Android sends to a browser. Checked links open directly without a browser-choice menu. Facebook or Messenger may keep taps inside their built-in browser unless you enable an external-links option there."
               actionLabel="Set as default browser"
               onAction={() => void enableLinkProtection()}
-              colors={colors}
-            />
-          ) : null}
-          {isNativeLinkHandlerAvailable() ? (
-            <SettingsItem
-              icon="globe-outline"
-              title="Open safe links in"
-              value={preferredBrowser ?? 'Choose'}
-              valueTone={preferredBrowser ? 'muted' : 'warning'}
-              onPress={() => setSheet('browser')}
               colors={colors}
             />
           ) : null}
@@ -799,32 +754,6 @@ export default function SettingsScreen() {
           ) : null}
         </SettingsSection>
       </ScrollView>
-
-      <OptionSheet
-        visible={sheet === 'browser'}
-        title="Open safe links in"
-        description="After NotiCare checks a link and finds it safe, it opens in this browser."
-        onClose={() => setSheet(null)}
-        colors={colors}
-      >
-        {browsersError ? (
-          <Text style={styles.sheetNote}>{browsersError}</Text>
-        ) : browsers.length === 0 ? (
-          <Text style={styles.sheetNote}>
-            No other browser is installed on this device. Install one, such as Chrome, to open safe links.
-          </Text>
-        ) : (
-          browsers.map((browser) => (
-            <SheetOption
-              key={browser.packageName}
-              label={browser.label}
-              selected={browser.isPreferred}
-              onPress={() => void choosePreferredBrowser(browser.packageName)}
-              colors={colors}
-            />
-          ))
-        )}
-      </OptionSheet>
 
       <OptionSheet
         visible={sheet === 'alerts'}

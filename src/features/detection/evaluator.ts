@@ -1,11 +1,12 @@
 import { normalizeMessage } from './normalize';
 import { DETECTION_RULE_BUNDLE } from './rules';
-import type { CombinationRule, TextRule, ThreatLevel, ThreatReason, ThreatResult, UrlIndicatorRule } from './types';
+import type { CombinationRule, EvidenceSpan, TextRule, ThreatLevel, ThreatReason, ThreatResult, UrlIndicatorRule } from './types';
 import { extractUrlEvidence } from './urls';
 
 type MatchedTextRule = {
   rule: TextRule;
   firstIndex: number;
+  matchedText: string;
 };
 
 const BAIT_SIGNALS = new Set([
@@ -49,6 +50,7 @@ export function evaluateRules(message: string): ThreatResult {
   const matches = collectTextRuleMatches(normalized.comparable);
   const urls = extractUrlEvidence(normalized.normalized);
   const reasons: ThreatReason[] = [];
+  const highlights: EvidenceSpan[] = [];
   const addedCodes = new Set<string>();
   const signals = new Set<string>();
 
@@ -61,6 +63,8 @@ export function evaluateRules(message: string): ThreatResult {
   for (const match of matches) {
     addReason(match.rule);
     for (const signal of match.rule.signals) signals.add(signal);
+    const range = locateOriginalText(normalized.original, match.matchedText);
+    if (range) highlights.push({ ...range, reasonCode: match.rule.code });
   }
 
   if (
@@ -73,6 +77,8 @@ export function evaluateRules(message: string): ThreatResult {
   }
 
   for (const url of urls) {
+    const range = locateOriginalText(normalized.original, url.display);
+    if (range) highlights.push({ ...range, reasonCode: 'url' });
     for (const indicator of url.indicators) {
       const rule = DETECTION_RULE_BUNDLE.urlRules.find((candidate) => candidate.code === indicator);
       if (rule) addReason(rule);
@@ -113,6 +119,7 @@ export function evaluateRules(message: string): ThreatResult {
     reasons,
     urls: urls.map(({ display, normalizedDomain, indicators }) => ({ display, normalizedDomain, indicators })),
     ruleVersion: DETECTION_RULE_BUNDLE.version,
+    highlights: mergeHighlights(highlights),
   };
 }
 
@@ -152,13 +159,68 @@ function collectTextRuleMatches(text: string): MatchedTextRule[] {
         const index = match.index ?? 0;
         if (rule.ignoreWhenPrecededBySafetyAdvice && hasSafetyAdviceBefore(text, index)) continue;
         firstIndex = index;
+        matches.push({ rule, firstIndex, matchedText: match[0] });
         break;
       }
       if (firstIndex >= 0) break;
     }
-    if (firstIndex >= 0) matches.push({ rule, firstIndex });
   }
   return matches.sort((left, right) => left.firstIndex - right.firstIndex);
+}
+
+function locateOriginalText(original: string, matchedText: string): Omit<EvidenceSpan, 'reasonCode'> | null {
+  const needle = matchedText.trim().toLowerCase();
+  if (!needle) return null;
+  const direct = original.toLowerCase().indexOf(needle);
+  if (direct >= 0) return { start: direct, end: direct + needle.length };
+
+  const normalized = normalizeForHighlight(original);
+  const normalizedIndex = normalized.text.indexOf(needle);
+  if (normalizedIndex < 0) return null;
+  return {
+    start: normalized.originalOffsets[normalizedIndex] ?? normalizedIndex,
+    end: normalized.originalOffsets[normalizedIndex + needle.length - 1] + 1,
+  };
+}
+
+function normalizeForHighlight(text: string) {
+  const originalOffsets: number[] = [];
+  let normalized = '';
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    const code = character.charCodeAt(0);
+    const hidden =
+      (code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127) ||
+      (code >= 0x200b && code <= 0x200f) ||
+      code === 0x2060 ||
+      (code >= 0x2066 && code <= 0x2069) ||
+      code === 0xfeff;
+    if (hidden) continue;
+    if (/\s/u.test(character)) {
+      if (!normalized || normalized.endsWith(' ')) continue;
+      normalized += ' ';
+      originalOffsets.push(index);
+      continue;
+    }
+    normalized += character.toLowerCase();
+    originalOffsets.push(index);
+  }
+  return { text: normalized.trim(), originalOffsets };
+}
+
+function mergeHighlights(highlights: EvidenceSpan[]): EvidenceSpan[] {
+  const sorted = [...highlights].sort((left, right) => left.start - right.start || left.end - right.end);
+  const merged: EvidenceSpan[] = [];
+  for (const span of sorted) {
+    const previous = merged[merged.length - 1];
+    if (previous && span.start <= previous.end) {
+      previous.end = Math.max(previous.end, span.end);
+      if (!previous.reasonCode.includes(span.reasonCode)) previous.reasonCode = `${previous.reasonCode},${span.reasonCode}`;
+    } else {
+      merged.push({ ...span });
+    }
+  }
+  return merged;
 }
 
 function hasSafetyAdviceBefore(text: string, matchIndex: number): boolean {

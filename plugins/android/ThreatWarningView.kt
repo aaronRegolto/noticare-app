@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import android.text.style.UnderlineSpan
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
@@ -63,6 +67,23 @@ object ThreatWarningView {
     }
     root.addView(context.label(title, 27f, Color.rgb(25, 38, 57), true).withTop(context, 22))
     root.addView(context.label(subtitle, 16f, Color.rgb(82, 99, 122), false).withTop(context, 10))
+
+    if (threat.result.highlights.isNotEmpty()) {
+      val highlighted = buildHighlightedMessage(threat.message, threat.result.highlights)
+      val messageCard = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(context.dp(16), context.dp(14), context.dp(16), context.dp(14))
+        background = context.rounded(Color.WHITE, 14f, Color.rgb(225, 230, 238))
+        addView(context.label(copy.highlightedMessage, 14f, Color.rgb(38, 59, 84), true))
+        addView(TextView(context).apply {
+          text = highlighted
+          textSize = 14f
+          setTextColor(Color.rgb(38, 59, 84))
+          setLineSpacing(context.dp(2).toFloat(), 1f)
+        }.withTop(context, 8))
+      }
+      root.addView(messageCard, context.matchWidth(top = 18))
+    }
 
     val risk = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
@@ -203,6 +224,18 @@ object ThreatWarningView {
     }, context.matchWidth(height = 56, top = 12))
     scroll.addView(root)
     return scroll
+  }
+
+  private fun buildHighlightedMessage(message: String, highlights: List<EvidenceSpan>): SpannableString {
+    val text = SpannableString(message)
+    highlights.forEach { span ->
+      val start = span.start.coerceIn(0, message.length)
+      val end = span.end.coerceIn(start, message.length)
+      if (start >= end) return@forEach
+      text.setSpan(UnderlineSpan(), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      text.setSpan(BackgroundColorSpan(Color.rgb(255, 240, 196)), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    return text
   }
 
   private fun Context.label(value: String, size: Float, color: Int, bold: Boolean) = TextView(this).apply {

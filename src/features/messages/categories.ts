@@ -14,7 +14,7 @@ const spamCodes = new Set([
   'advance-fee-request',
 ]);
 
-const threatCodes = new Set(['abusive-language', 'direct-threat', 'cyber-threat']);
+const threatCodes = new Set(['direct-threat', 'cyber-threat']);
 
 const phishingCodes = new Set([
   'credential-request',

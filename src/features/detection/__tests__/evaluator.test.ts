@@ -77,27 +77,7 @@ describe('credential wording regressions', () => {
     expect(evaluateThreat(message).level).toBe('suspicious');
   });
 
-  describe('abusive-language and threat indicators', () => {
-    it.each([
-      'You are a damn idiot.',
-      'Putang ina, gago ka.',
-      'Mamatay ka na.',
-      'Sana mamatay ka na.',
-      'Putang ina mo.',
-      'Walang kwenta ka.',
-      'Inutil ka.',
-      'Pakyu ka.',
-    ])('marks profanity as suspicious: %s', (message) => {
-      const result = evaluateThreat(message);
-      expect(result.level).toBe('suspicious');
-      expect(result.reasons.some((reason) => reason.code === 'abusive-language')).toBe(true);
-    });
-
-    it('scores "mamatay ka na" as suspicious, not safe', () => {
-      const result = evaluateThreat('mamatay ka na');
-      expect(result.level).toBe('suspicious');
-      expect(result.score).toBe(30);
-    });
+  describe('threat indicators', () => {
 
     it('does not treat a non-targeted mention of death as abusive language', () => {
       expect(evaluateThreat('Maaaring mamatay ang halaman kapag walang tubig.').level).toBe('safe');
@@ -119,6 +99,8 @@ describe('credential wording regressions', () => {
   });
   it.each([
     'hello love',
+    'You are a damn idiot.',
+    'Putang ina, gago ka.',
     'Never reply with your six-digit OTP.',
     'Do not enter your e-wallet password.',
     'Never confirm your username and password.',
@@ -152,6 +134,17 @@ const corpusMessage = (id: string) => {
   if (!testCase) throw new Error(`Missing corpus case ${id}`);
   return testCase.message;
 };
+
+describe('explainable warning highlights', () => {
+  it('returns original-text offsets for the detected phishing phrase', () => {
+    const message = 'Please verify your account now at https://example.com/login';
+    const result = evaluateThreat(message);
+    expect(result.highlights).toEqual([
+      { start: 7, end: 30, reasonCode: 'account-warning,urgency-pressure' },
+      { start: 34, end: 59, reasonCode: 'url' },
+    ]);
+  });
+});
 
 describe('Safe always scores 0', () => {
   // The neutral click/urgency rules retain context without scoring ordinary language.

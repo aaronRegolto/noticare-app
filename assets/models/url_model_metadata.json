@@ -1,0 +1,113 @@
+{
+  "model_provenance": {
+    "candidate_status": "proposed_url_risk_candidate",
+    "architecture": "URL feature dense neural network",
+    "training_script": "ml/train_url.py",
+    "dataset_name": "PhiUSIIL_Phishing_URL_Dataset",
+    "dataset_sha256": "a236549cd369cd80bd478ff8e1779cbf44c58d5c3f79f7a51a1adbed7d06d1c6",
+    "dataset_rows": 235370,
+    "dataset_unique_urls": 235370,
+    "duplicate_urls_removed": 425,
+    "label_meaning": "1 is phishing risk; source label 1 was converted from legitimate to 0.",
+    "feature_spec": "ml/url_features.json"
+  },
+  "technical_specifications": {
+    "input_shape": [
+      15
+    ],
+    "runtime_tensor_shape": [
+      1,
+      15
+    ],
+    "input_dtype": "float32",
+    "preprocessing": {
+      "mean": [
+        34.19313430786133,
+        21.45745849609375,
+        0.0,
+        1.1636807918548584,
+        0.0,
+        0.025576069951057434,
+        0.0,
+        19.129140853881836,
+        0.0,
+        1.8285915851593018,
+        0.0,
+        0.0577714703977108,
+        0.028553856536746025,
+        0.02376747690141201,
+        0.0
+      ],
+      "std": [
+        39.18357849121094,
+        9.183455467224121,
+        1.0,
+        0.6108412146568298,
+        1.0,
+        1.9807966947555542,
+        1.0,
+        27.403257369995117,
+        1.0,
+        11.60958480834961,
+        1.0,
+        0.8728086948394775,
+        0.19138772785663605,
+        0.8465979695320129,
+        1.0
+      ],
+      "features": [
+        "URLLength",
+        "DomainLength",
+        "IsDomainIP",
+        "NoOfSubDomain",
+        "HasObfuscation",
+        "NoOfObfuscatedChar",
+        "ObfuscationRatio",
+        "NoOfLettersInURL",
+        "LetterRatioInURL",
+        "NoOfDegitsInURL",
+        "DegitRatioInURL",
+        "NoOfEqualsInURL",
+        "NoOfQMarkInURL",
+        "NoOfAmpersandInURL",
+        "IsHTTPS"
+      ]
+    },
+    "locked_threshold": 0.05678362026810646
+  },
+  "training": {
+    "runtime": "TensorFlow 2.21.0",
+    "parameters": 3137,
+    "epochs_run": 14,
+    "batch_size": 1024,
+    "learning_rate": 0.001,
+    "seed": 42,
+    "class_weight": {
+      "0": 0.8725332879929439,
+      "1": 1.171080969292428
+    },
+    "validation_max_false_alarm_rate": 0.02
+  },
+  "split": {
+    "method": "Domain hash, 70/15/15",
+    "train": 164216,
+    "validation": 36147,
+    "test": 35007
+  },
+  "audit_performance_frozen_test": {
+    "sample_count": 35007,
+    "accuracy": 0.9962,
+    "false_positive_rate": 0.0198,
+    "false_negative_rate": 0.0043,
+    "predicted_phishing": 14927,
+    "actual_phishing": 14585,
+    "actual_legitimate": 20422,
+    "pr_auc": 0.9986,
+    "roc_auc": 0.9982
+  },
+  "known_limitations": [
+    "Evaluated on a domain-isolated split of the supplied public dataset, not live user URLs.",
+    "URL features alone cannot confirm whether a destination is malicious.",
+    "Dataset rows are historical and must not be treated as ground truth for future URLs."
+  ]
+}

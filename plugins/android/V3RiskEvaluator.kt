@@ -38,10 +38,22 @@ object V3RiskEvaluator {
     val probability = try {
       predict(context.applicationContext, message)
     } catch (error: Exception) {
-      Log.e("NotiCareModel", "On-device classification failed; using deterministic rule result.", error)
+      Log.e("NotiCareModel", "On-device text classification failed; using deterministic rule result.", error)
       return rules
     }
-    return combine(rules, probability, current.safeThreshold)
+    val urlProbability = try {
+      UrlRiskEvaluator.predict(context.applicationContext, rules.urls)
+    } catch (error: Exception) {
+      Log.e("NotiCareModel", "On-device URL classification failed; using text and rule result.", error)
+      return combine(rules, probability, current.safeThreshold)
+    }
+    val urlThreshold = try {
+      UrlRiskEvaluator.threshold(context.applicationContext)
+    } catch (error: Exception) {
+      Log.e("NotiCareModel", "Could not read URL model threshold; using text and rule result.", error)
+      return combine(rules, probability, current.safeThreshold)
+    }
+    return combine(rules, probability, current.safeThreshold, urlProbability, urlThreshold)
   }
 
   private fun hasSupportingEvidence(rules: ThreatResult): Boolean =
@@ -52,21 +64,31 @@ object V3RiskEvaluator {
     rules: ThreatResult,
     probability: Float,
     safeThreshold: Float,
-  ): ThreatResult {
-    if (!probability.isFinite() || probability !in 0f..1f) return rules
-    if (!hasSupportingEvidence(rules)) return rules
-    if (!safeThreshold.isFinite() || safeThreshold <= 0f || safeThreshold >= 1f || probability < safeThreshold) return rules
+  ): ThreatResult = combine(rules, probability, safeThreshold, 0f, 1f)
 
+  internal fun combine(
+    rules: ThreatResult,
+    textProbability: Float,
+    textThreshold: Float,
+    urlProbability: Float,
+    urlThreshold: Float,
+  ): ThreatResult {
+    if (!hasSupportingEvidence(rules)) return rules
+    val textModelHits = textProbability.isFinite() && textProbability in 0f..1f &&
+      textThreshold.isFinite() && textThreshold in 0f..1f && textProbability >= textThreshold
+    val urlModelHits = urlProbability.isFinite() && urlProbability in 0f..1f &&
+      urlThreshold.isFinite() && urlThreshold in 0f..1f && urlProbability >= urlThreshold
+    if (!textModelHits && !urlModelHits) return rules
+
+    val code = if (textModelHits) "v3-model-risk" else "url-model-risk"
     val reason = ThreatReason(
-      code = "v3-model-risk",
+      code = code,
       label = "AI check",
       description = "NotiCare's built-in AI agrees the warning signs above look like a scam. It only adds points when real warning signs are present.",
       weight = max(0, 30 - rules.score),
     )
-    // ruleVersion must stay exactly rules.ruleVersion: it's checked for an exact
-    // match against the server's seeded rule_sets.version, which never contains
-    // this model's version suffix. Appending it here (as this used to do) made
-    // every Suspicious result reinforced by the model fail that check outright.
+    // ruleVersion must stay exactly rules.ruleVersion: it is checked against the
+    // server's seeded rule set, which never contains a model version suffix.
     return rules.copy(
       level = ThreatLevel.SUSPICIOUS,
       score = max(rules.score, 30),

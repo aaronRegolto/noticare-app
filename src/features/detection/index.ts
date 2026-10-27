@@ -7,6 +7,7 @@ export type {
   CombinationRule,
   DetectedUrl,
   DetectionRuleBundle,
+  EvidenceSpan,
   NormalizedMessage,
   TextRule,
   ThreatLevel,

@@ -252,17 +252,6 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       ],
     },
     {
-      code: 'abusive-language',
-      label: 'Profanity or abusive language',
-      description:
-        'The message contains profanity, an insult, or targeted hostile language; context may affect interpretation.',
-      weight: 30,
-      signals: ['abusive-language'],
-      patterns: [
-        String.raw`\b(?:(?:sana\s+)?(?:mamatay|mamamatay)\s+(?:ka(?:\s+na)?|kana|kayo(?:\s+na)?)(?:\s+sana)?|fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina(?:\s+(?:mo|niyo|ninyo))?|putangina(?:mo|niyo|ninyo)?|tang\s+ina(?:\s+(?:mo|niyo|ninyo))?|tangina(?:mo|niyo|ninyo)?|anak\s+ng\s+puta|walang\s+(?:kwenta|silbi)|pakyu|pakyo|puta|gago|gaga|tanga|bobo|ulol|inutil|engot|siraulo|gunggong|leche|bwisit|buwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b`,
-      ],
-    },
-    {
       code: 'direct-threat',
       label: 'Direct threat of harm',
       description: 'The message threatens physical harm or an in-person attack.',
@@ -294,8 +283,8 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
   normalizationRules: {
     obfuscatedText: {
       code: 'obfuscated-text',
-      label: 'Obfuscated text',
-      description: 'The message contains hidden characters or look-alike character substitutions.',
+      label: 'Hidden or altered characters',
+      description: 'Hidden characters or look-alike characters were found in the message.',
       weight: 10,
     },
   },

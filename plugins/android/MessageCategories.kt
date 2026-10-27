@@ -15,7 +15,7 @@ object MessageCategories {
     "advance-fee-request",
   )
 
-  private val threatCodes = setOf("abusive-language", "direct-threat", "cyber-threat")
+  private val threatCodes = setOf("direct-threat", "cyber-threat")
 
   private val phishingCodes = setOf(
     "credential-request",

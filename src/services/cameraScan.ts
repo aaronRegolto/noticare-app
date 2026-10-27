@@ -15,10 +15,10 @@ export type ImageTextResult =
   | { status: 'unavailable' }
   | { status: 'error' };
 
-// The crop step lets the user frame just the message, leaving out names, times, and other bubbles.
+// A custom crop editor below gives users larger, predictable handles than the native picker crop.
 const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
-  allowsEditing: true,
+  allowsEditing: false,
   quality: 1,
   base64: false,
   exif: false,
@@ -29,7 +29,10 @@ const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
  * reads its text on this device for Manual Scan. The image never leaves the phone and is deleted
  * from the app's cache once read; the text is handled like pasted text.
  */
-export async function readMessageFromImage(source: ImageTextSource): Promise<ImageTextResult> {
+export async function readMessageFromImage(
+  source: ImageTextSource,
+  cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
+): Promise<ImageTextResult> {
   if (!isTextRecognitionAvailable()) return { status: 'unavailable' };
   try {
     if (source === 'camera') {
@@ -40,7 +43,7 @@ export async function readMessageFromImage(source: ImageTextSource): Promise<Ima
       source === 'camera'
         ? await ImagePicker.launchCameraAsync(PICKER_OPTIONS)
         : await ImagePicker.launchImageLibraryAsync(PICKER_OPTIONS);
-    return await readPickedImage(picked);
+    return await readPickedImage(picked, cropCapturedImage);
   } catch (error) {
     logError('image-text-capture-failed', error);
     return { status: 'error' };
@@ -51,30 +54,43 @@ export async function readMessageFromImage(source: ImageTextSource): Promise<Ima
  * Android can close NotiCare while the camera or photo picker is open. On return, this finishes
  * reading the image the user had picked; null when there is nothing to recover.
  */
-export async function readMessageFromPendingImage(): Promise<ImageTextResult | null> {
+export async function readMessageFromPendingImage(
+  cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
+): Promise<ImageTextResult | null> {
   if (!isTextRecognitionAvailable()) return null;
   try {
     const pending = await ImagePicker.getPendingResultAsync();
     if (!pending || !('canceled' in pending) || pending.canceled) return null;
-    return await readPickedImage(pending);
+    return await readPickedImage(pending, cropCapturedImage);
   } catch (error) {
     logError('image-text-pending-failed', error);
     return null;
   }
 }
 
-async function readPickedImage(picked: ImagePicker.ImagePickerResult): Promise<ImageTextResult> {
+async function readPickedImage(
+  picked: ImagePicker.ImagePickerResult,
+  cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
+): Promise<ImageTextResult> {
   if (picked.canceled) return { status: 'canceled' };
-  const uri = picked.assets[0]?.uri;
-  if (!uri) return { status: 'canceled' };
+  const image = picked.assets[0];
+  if (!image?.uri) return { status: 'canceled' };
+  const sourceUri = image.uri;
+  let scanUri = sourceUri;
   try {
-    const text = joinRecognizedText((await recognizeTextInImage(uri)).blocks);
+    if (cropCapturedImage) {
+      const croppedUri = await cropCapturedImage(image);
+      if (!croppedUri) return { status: 'canceled' };
+      scanUri = croppedUri;
+    }
+    const text = joinRecognizedText((await recognizeTextInImage(scanUri)).blocks);
     return text ? { status: 'ok', text } : { status: 'no-text' };
   } catch (error) {
     logError('image-text-recognition-failed', error);
     return { status: 'error' };
   } finally {
-    deleteCachedImage(uri);
+    deleteCachedImage(sourceUri);
+    if (scanUri !== sourceUri) deleteCachedImage(scanUri);
   }
 }
 

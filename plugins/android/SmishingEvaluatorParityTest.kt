@@ -229,38 +229,34 @@ class SmishingEvaluatorParityTest {
     }
   }
   @Test
+  fun detectedTextReturnsOriginalOffsets() {
+    val message = "Please verify your account now at https://example.com/login"
+    val result = SmishingEvaluator.evaluate(message)
+    assertEquals(
+      listOf(
+        EvidenceSpan(7, 30, "account-warning,urgency-pressure"),
+        EvidenceSpan(34, 59, "url"),
+      ),
+      result.highlights,
+    )
+  }
+
+  @Test
   fun credentialWordingAndSafetyAdvice() {
     listOf("Reply with your six-digit OTP to cancel the transfer.","Enter your e-wallet password to release the refund.","Confirm your username and password.","Update your card number and CVV.","Paki-reply ang OTP para ma-release ang pera.","Isumite ang inyong MPIN.").forEach { message ->
       assertEquals(message, ThreatLevel.SUSPICIOUS, SmishingEvaluator.evaluate(message).level)
     }
-    listOf("hello love","Never reply with your six-digit OTP.","Do not enter your e-wallet password.","Never confirm your username and password.","Huwag paki-reply ang OTP.","Huwag isumite ang inyong MPIN.","Your six-digit OTP is 123456. Never share it.","Payment received. Thank you.").forEach { message ->
+    listOf("hello love","You are a damn idiot.","Putang ina, gago ka.","Never reply with your six-digit OTP.","Do not enter your e-wallet password.","Never confirm your username and password.","Huwag paki-reply ang OTP.","Huwag isumite ang inyong MPIN.","Your six-digit OTP is 123456. Never share it.","Payment received. Thank you.").forEach { message ->
       assertEquals(message, ThreatLevel.SAFE, SmishingEvaluator.evaluate(message).level)
     }
   }
 
   @Test
-  fun abusiveLanguageAndThreatIndicators() {
-    listOf(
-      "You are a damn idiot.",
-      "Putang ina, gago ka.",
-      "Mamatay ka na.",
-      "Sana mamatay ka na.",
-      "Putang ina mo.",
-      "Walang kwenta ka.",
-      "Inutil ka.",
-      "Pakyu ka.",
-    ).forEach { message ->
-      val result = SmishingEvaluator.evaluate(message)
-      assertEquals(message, ThreatLevel.SUSPICIOUS, result.level)
-      assertEquals(true, result.reasons.any { it.code == "abusive-language" })
-    }
+  fun threatIndicators() {
     assertEquals(
       ThreatLevel.SAFE,
       SmishingEvaluator.evaluate("Maaaring mamatay ang halaman kapag walang tubig.").level,
     )
-    val deathWish = SmishingEvaluator.evaluate("mamatay ka na")
-    assertEquals(ThreatLevel.SUSPICIOUS, deathWish.level)
-    assertEquals(30, deathWish.score)
     listOf(
       "I will hurt you if you come here." to "direct-threat",
       "Papatayin kita." to "direct-threat",

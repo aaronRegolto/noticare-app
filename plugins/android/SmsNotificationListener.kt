@@ -116,7 +116,7 @@ class SmsNotificationListener : NotificationListenerService() {
     }
 
     // Extras are intentionally read only after the package guard above.
-    val text = runCatching { NotificationTextExtractor.extractText(notification) }.getOrNull()
+    val text = runCatching { NotificationTextExtractor.extractText(notification, sourceId) }.getOrNull()
     if (text.isNullOrBlank()) {
       Log.d(logTag, "drop: no readable text extras (hidden/redacted preview?)")
       RealtimeScanPreferences.setLastContentStatus(applicationContext, "content_unavailable")
@@ -331,7 +331,7 @@ class SmsNotificationListener : NotificationListenerService() {
 }
 
 private object NotificationTextExtractor {
-  fun extractText(notification: Notification): String? {
+  fun extractText(notification: Notification, sourceId: String? = null): String? {
     val extras = notification.extras ?: return null
     val messages = messagingStyleMessages(extras)
     return NotificationInput.select(
@@ -340,6 +340,7 @@ private object NotificationTextExtractor {
       bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
       text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
       lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.map(CharSequence::toString) ?: emptyList(),
+      sourceId = sourceId,
     )
   }
 

@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { ThreatLevel } from '@/src/features/detection';
+import type { EvidenceSpan, ThreatLevel } from '@/src/features/detection';
 import { ENGLISH_WARNING_COPY, type WarningCopy } from '@/src/features/translation';
 import type { ThemeColors } from '@/src/theme/palette';
 
@@ -20,6 +20,48 @@ const BANDS: { level: ThreatLevel; range: string }[] = [
  * signs' points, capped at 100 — the same rule both detectors use — except that a Safe message
  * always scores 0, so it lists no signs or points at all.
  */
+export function HighlightedMessage({
+  message,
+  highlights,
+  colors,
+}: {
+  message: string;
+  highlights: EvidenceSpan[];
+  colors: ThemeColors;
+}) {
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const segments = useMemo(() => {
+    const sorted = highlights
+      .filter((span) => span.start >= 0 && span.end <= message.length && span.end > span.start)
+      .sort((left, right) => left.start - right.start);
+    const pieces: { text: string; highlighted: boolean }[] = [];
+    let cursor = 0;
+    sorted.forEach((span) => {
+      const start = Math.max(cursor, span.start);
+      if (start >= span.end) return;
+      if (cursor < start) pieces.push({ text: message.slice(cursor, start), highlighted: false });
+      pieces.push({ text: message.slice(start, span.end), highlighted: true });
+      cursor = span.end;
+    });
+    if (cursor < message.length) pieces.push({ text: message.slice(cursor), highlighted: false });
+    return pieces;
+  }, [highlights, message]);
+
+  if (!segments.some((segment) => segment.highlighted)) return null;
+  return (
+    <View style={styles.highlightCard}>
+      <Text style={styles.highlightTitle}>Message text that triggered the warning</Text>
+      <Text selectable style={styles.highlightText}>
+        {segments.map((segment, index) => (
+          <Text key={`${index}-${segment.text}`} style={segment.highlighted ? styles.highlightedText : undefined}>
+            {segment.text}
+          </Text>
+        ))}
+      </Text>
+    </View>
+  );
+}
+
 export function ScoreBreakdown({
   reasons,
   score,
@@ -103,6 +145,23 @@ export function ScoreBreakdown({
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
+    highlightCard: {
+      marginTop: 12,
+      marginBottom: 14,
+      padding: 13,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    highlightTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 13, marginBottom: 7 },
+    highlightText: { color: colors.textPrimary, fontSize: 14, lineHeight: 22 },
+    highlightedText: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      textDecorationLine: 'underline',
+      backgroundColor: '#FFE8A3',
+    },
     row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 7 },
     copy: { flex: 1 },
     title: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },

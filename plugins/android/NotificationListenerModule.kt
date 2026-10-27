@@ -627,6 +627,15 @@ class NotificationListenerModule(
     })
     putArray("urls", urlsArray(result.urls))
     putString("ruleVersion", result.ruleVersion)
+    putArray("highlights", Arguments.createArray().apply {
+      result.highlights.forEach { span ->
+        pushMap(Arguments.createMap().apply {
+          putInt("start", span.start)
+          putInt("end", span.end)
+          putString("reasonCode", span.reasonCode)
+        })
+      }
+    })
   }
 
   private fun reasonsArray(reasons: List<ThreatReason>): WritableArray = Arguments.createArray().apply {

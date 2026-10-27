@@ -21,12 +21,19 @@ enum class ThreatLevel(val wireValue: String) {
 
 internal fun ThreatLevel.shouldRetainInHistory(): Boolean = this != ThreatLevel.SAFE
 
+data class EvidenceSpan(
+  val start: Int,
+  val end: Int,
+  val reasonCode: String,
+)
+
 data class ThreatResult(
   val level: ThreatLevel,
   val score: Int,
   val reasons: List<ThreatReason>,
   val urls: List<ExtractedUrl>,
   val ruleVersion: String,
+  val highlights: List<EvidenceSpan> = emptyList(),
 )
 
 /**

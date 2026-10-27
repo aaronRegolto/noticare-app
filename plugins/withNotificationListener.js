@@ -450,7 +450,12 @@ function writeGeneratedSources(androidRoot, packageName) {
 
   const projectRoot = path.dirname(androidRoot);
   const assetsRoot = path.join(androidRoot, 'app', 'src', 'main', 'assets');
-  for (const assetName of ['noticare_smishing_v3.tflite', 'model_metadata.json']) {
+  for (const assetName of [
+    'noticare_smishing_v3.tflite',
+    'model_metadata.json',
+    'noticare_url_risk.tflite',
+    'url_model_metadata.json',
+  ]) {
     const sourcePath = path.join(projectRoot, 'assets', 'models', assetName);
     const destinationPath = path.join(assetsRoot, assetName);
     if (!fs.existsSync(sourcePath)) throw new Error(`NotiCare model asset is missing: ${sourcePath}`);

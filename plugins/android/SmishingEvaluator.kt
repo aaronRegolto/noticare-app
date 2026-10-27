@@ -165,12 +165,6 @@ object SmishingEvaluator {
     "The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.",
     20,
   )
-  private val abusiveLanguage = Rule(
-    "abusive-language",
-    "Profanity or abusive language",
-    "The message contains profanity, an insult, or targeted hostile language; context may affect interpretation.",
-    30,
-  )
   private val directThreat = Rule(
     "direct-threat",
     "Direct threat of harm",
@@ -185,8 +179,8 @@ object SmishingEvaluator {
   )
   private val obfuscatedText = Rule(
     "obfuscated-text",
-    "Obfuscated text",
-    "The message contains hidden characters or look-alike character substitutions.",
+    "Hidden or altered characters",
+    "Hidden characters or look-alike characters were found in the message.",
     10,
   )
 
@@ -367,13 +361,6 @@ object SmishingEvaluator {
       true,
     ),
     TextRule(
-      abusiveLanguage,
-      listOf(
-        insensitive("""\b(?:(?:sana\s+)?(?:mamatay|mamamatay)\s+(?:ka(?:\s+na)?|kana|kayo(?:\s+na)?)(?:\s+sana)?|fuck(?:ing|ed|er)?|shit(?:ty)?|bullshit|bitch(?:es)?|bastard|asshole|arsehole|damn(?:ed)?|dammit|dick(?:head)?|motherfucker|cunt|piss\s+off|putang\s+ina(?:\s+(?:mo|niyo|ninyo))?|putangina(?:mo|niyo|ninyo)?|tang\s+ina(?:\s+(?:mo|niyo|ninyo))?|tangina(?:mo|niyo|ninyo)?|anak\s+ng\s+puta|walang\s+(?:kwenta|silbi)|pakyu|pakyo|puta|gago|gaga|tanga|bobo|ulol|inutil|engot|siraulo|gunggong|leche|bwisit|buwisit|lintik|tarantado|kupal|punyeta|pakshet|pakshit|yawa|hindot|pucha|peste|hayop)\b"""),
-      ),
-      listOf("abusive-language"),
-    ),
-    TextRule(
       directThreat,
       listOf(
         insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b"""),
@@ -462,6 +449,7 @@ object SmishingEvaluator {
   fun evaluate(message: String): ThreatResult {
     val normalized = normalizeInternal(message)
     val reasons = mutableListOf<ThreatReason>()
+    val highlights = mutableListOf<EvidenceSpan>()
     val reasonCodes = mutableSetOf<String>()
     val signals = mutableSetOf<String>()
 
@@ -471,11 +459,14 @@ object SmishingEvaluator {
     }
 
     val matchingTextRules = textRules.mapNotNull { rule ->
-      firstMatchIndex(rule, normalized.comparable)?.let { index -> Pair(rule, index) }
+      firstTextMatch(rule, normalized.comparable)?.let { match -> Triple(rule, match.first, match.second) }
     }.sortedBy { it.second }
-    for ((rule, _) in matchingTextRules) {
+    for ((rule, matchIndex, matchedText) in matchingTextRules) {
       add(rule.rule)
       signals += rule.signals
+      locateOriginalText(normalized.original, matchedText)?.let { range ->
+        highlights += EvidenceSpan(range.first, range.second, rule.rule.code)
+      }
     }
 
     if (normalized.hadZeroWidthCharacters || normalized.hadUnexpectedControlCharacters || normalized.hadCharacterSubstitutions) {
@@ -485,6 +476,9 @@ object SmishingEvaluator {
 
     val urls = extractUrls(normalized.normalized)
     for (url in urls) {
+      locateOriginalText(normalized.original, url.extracted.display)?.let { range ->
+        highlights += EvidenceSpan(range.first, range.second, "url")
+      }
       for (indicator in url.extracted.indicators) urlRulesByCode[indicator]?.let(::add)
     }
     if (urls.isNotEmpty()) signals += "url"
@@ -508,21 +502,52 @@ object SmishingEvaluator {
       score >= suspiciousThreshold -> ThreatLevel.SUSPICIOUS
       else -> ThreatLevel.SAFE
     }
-    return ThreatResult(level, score, reasons, urls.map(UrlEvidence::extracted), RULE_VERSION)
+    return ThreatResult(level, score, reasons, urls.map(UrlEvidence::extracted), RULE_VERSION, mergeHighlights(highlights))
   }
 
   /** Used only for deduplication; it never leaves the device. */
   fun normalize(text: String): String = normalizeInternal(text).comparable
 
-  private fun firstMatchIndex(rule: TextRule, text: String): Int? {
+  private fun firstTextMatch(rule: TextRule, text: String): Pair<Int, String>? {
     for (pattern in rule.patterns) {
       for (match in pattern.findAll(text)) {
         if (!rule.ignoreWhenPrecededBySafetyAdvice || !hasSafetyAdviceBefore(text, match.range.first)) {
-          return match.range.first
+          return match.range.first to match.value
         }
       }
     }
     return null
+  }
+
+  private fun locateOriginalText(original: String, matchedText: String): Pair<Int, Int>? {
+    val needle = matchedText.trim().lowercase(Locale.ROOT)
+    if (needle.isEmpty()) return null
+    val direct = original.lowercase(Locale.ROOT).indexOf(needle)
+    if (direct >= 0) return direct to direct + needle.length
+    val normalized = original.normalize(Normalizer.Form.NFKC)
+      .replace(zeroWidthPattern, "")
+      .replace(unexpectedControlPattern, " ")
+      .replace(javascriptWhitespacePattern, " ")
+      .lowercase(Locale.ROOT)
+      .trim()
+    val offset = normalized.indexOf(needle)
+    if (offset >= 0) return offset to offset + needle.length
+    return null
+  }
+
+  private fun mergeHighlights(highlights: List<EvidenceSpan>): List<EvidenceSpan> {
+    val merged = mutableListOf<EvidenceSpan>()
+    highlights.sortedWith(compareBy<EvidenceSpan>({ it.start }, { it.end })).forEach { span ->
+      val previous = merged.lastOrNull()
+      if (previous != null && span.start <= previous.end) {
+        merged[merged.lastIndex] = previous.copy(
+          end = maxOf(previous.end, span.end),
+          reasonCode = if (previous.reasonCode == span.reasonCode) previous.reasonCode else
+            "${previous.reasonCode},${span.reasonCode}",
+        )
+      } else merged += span
+    }
+    return merged
   }
 
   private fun hasSafetyAdviceBefore(text: String, matchIndex: Int): Boolean {

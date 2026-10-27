@@ -45,7 +45,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Turn on Safe Link Protection',
-    body: 'Open Settings & Privacy and tap Set as default browser under Safe Link Protection, then choose NotiCare when Android asks. Under "Open safe links in", pick the browser you normally use (for example Chrome); safe links will keep opening there. On a warning screen, tap Go back to stay safe, or Open anyway if you are sure the link is legitimate. To turn protection off, set a different default browser in Android settings.',
+    body: 'Open Settings & Privacy and tap Set as default browser under Safe Link Protection, then choose NotiCare when Android asks. Android sends links to NotiCare for checking, and approved links open directly without a browser-choice menu. On a warning screen, tap Go back to stay safe, or Open anyway if you are sure the link is legitimate. To turn protection off, set a different default browser in Android settings.',
   },
   {
     title: 'Most Reported Phishing Messages',

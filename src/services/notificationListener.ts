@@ -36,6 +36,7 @@ export type LocalThreatResult = {
   reasons: ThreatReason[];
   urls: ExtractedUrl[];
   ruleVersion: string;
+  highlights?: { start: number; end: number; reasonCode: string }[];
   categories?: MessageCategory[];
 };
 

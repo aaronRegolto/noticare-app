@@ -20,6 +20,13 @@ export type DetectedUrl = {
   indicators: string[];
 };
 
+export type EvidenceSpan = {
+  /** Character offsets in the original, unmodified message. */
+  start: number;
+  end: number;
+  reasonCode: string;
+};
+
 export type ThreatResult = {
   level: ThreatLevel;
   /** 0 whenever level is safe; Suspicious scores are 1–59 and Dangerous scores are 60–100. */
@@ -27,6 +34,8 @@ export type ThreatResult = {
   reasons: ThreatReason[];
   urls: DetectedUrl[];
   ruleVersion: string;
+  /** Local-only source ranges that explain why the result was raised. */
+  highlights?: EvidenceSpan[];
 };
 
 export type NormalizedMessage = {

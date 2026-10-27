@@ -47,6 +47,7 @@ object WarningCopy {
     open val adviceSafe = "Still, never share passwords, PINs, or OTP codes."
     open val adviceRisky = "Do not tap links or share passwords, PINs, or OTP codes."
     open val howScoreCalculated = "How the score was calculated"
+    open val highlightedMessage = "Message text that triggered the warning"
     open val noSignificantSigns = "No significant warning signs detected."
     open val total = "Total"
     open val riskScore = "Risk score"
@@ -121,6 +122,7 @@ object WarningCopy {
     override val adviceSafe = "Gayunpaman, huwag kailanman ibigay ang iyong password, PIN, o OTP code."
     override val adviceRisky = "Huwag pindutin ang mga link o ibigay ang iyong password, PIN, o OTP code."
     override val howScoreCalculated = "Paano nakuha ang score"
+    override val highlightedMessage = "Bahagi ng mensaheng nag-trigger ng babala"
     override val noSignificantSigns = "Walang nakitang malalaking babala."
     override val total = "Kabuuan"
     override val riskScore = "Risk score"
@@ -206,15 +208,13 @@ object WarningCopy {
         "Pinapapadala ka ng pera, gift card, o bayad sa isang personal na account o bagong numero — karaniwang modus ng mga nagpapanggap na kapamilya, boss, o kumpanya."),
       "advance-fee-request" to ("Pinapabayad muna bago makatanggap" to
         "Pinapabayad ka muna ng fee bago mo makuha ang premyo, loan, refund, trabaho, o padala."),
-      "abusive-language" to ("Mura o mapanakit na pananalita" to
-        "May nakilalang mura sa Ingles o Filipino; maaaring mag-iba ang kahulugan depende sa konteksto."),
       "direct-threat" to ("Tahasang banta ng pananakit" to
         "Nagbabanta ang mensahe ng pisikal na pananakit o pag-atake nang personal."),
       "cyber-threat" to ("Banta na mang-hack, maglantad, o gumamit ng pribadong impormasyon" to
         "Nagbabanta ang mensahe na pasukin o agawin ang account, ilantad ang pribadong impormasyon, o gamitin ito sa maling paraan."),
       "repeat-sender-escalation" to ("Paulit-ulit na kahina-hinalang nagpadala ng SMS" to
         "Nagpadala ulit ang taong ito ng SMS matapos matukoy dati ang spam o phishing sa Messages app."),
-      "obfuscated-text" to ("Itinagong teksto" to
+      "obfuscated-text" to ("Nakatago o binagong character" to
         "May nakatagong character o kahawig na letra ang mensahe."),
       "url-ip-address" to ("Link na IP address" to
         "Gumagamit ang link ng numerong IP address sa halip na karaniwang pangalan ng website."),

@@ -81,12 +81,6 @@ class LinkWarningActivity : Activity() {
         finishAndRemoveTask()
     }
 
-    @Deprecated("Deprecated in Android, kept for the native chooser result callback.")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == BROWSER_CHOOSER_REQUEST_CODE) finishAndRemoveTask()
-    }
-
     private fun confirmOpen(copy: LinkWarningCopy.Copy) {
         AlertDialog.Builder(this)
             .setTitle(copy.confirmTitle)
@@ -99,15 +93,11 @@ class LinkWarningActivity : Activity() {
     }
 
     private fun forwardAnyway() {
-        LinkForwarder.openWithSystemChooser(this, url, BROWSER_CHOOSER_REQUEST_CODE)
+        if (LinkForwarder.openPreferredBrowser(this, url)) finishAndRemoveTask()
     }
 
     private fun openPreferredBrowser() {
         if (LinkForwarder.openPreferredBrowser(this, url)) finishAndRemoveTask()
-    }
-
-    private fun chooseAnotherBrowser() {
-        LinkForwarder.openWithSystemChooser(this, url, BROWSER_CHOOSER_REQUEST_CODE)
     }
 
     private fun build(
@@ -198,14 +188,6 @@ class LinkWarningActivity : Activity() {
                 isEnabled = targetLabel != null
                 setOnClickListener { openPreferredBrowser() }
             }, matchWidth(height = 56, top = 28))
-            root.addView(Button(this).apply {
-                text = copy.chooseAnotherBrowser
-                textSize = 15f
-                setTextColor(INK)
-                isAllCaps = false
-                background = rounded(Color.WHITE, 14f, accent)
-                setOnClickListener { chooseAnotherBrowser() }
-            }, matchWidth(height = 52, top = 8))
         } else {
             root.addView(label(copy.advice, 13f, MUTED, false), matchWidth(top = 16))
             root.addView(Button(this).apply {
@@ -285,7 +267,6 @@ class LinkWarningActivity : Activity() {
     companion object {
         const val EXTRA_URL = "url"
         private const val MAX_URL_CHARS = 300
-        private const val BROWSER_CHOOSER_REQUEST_CODE = 41
         // Same colors as the SMS warning (ThreatWarningView).
         private val DANGER = Color.rgb(190, 45, 42)
         private val CAUTION = Color.rgb(178, 103, 0)

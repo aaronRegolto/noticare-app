@@ -32,6 +32,16 @@ class NotificationInputTest {
     assertEquals("hello", NotificationInput.select(false, null, null, "hello", emptyList()))
   }
 
+  @Test fun messengerContextNotificationsAreNotScannedAsMessages() {
+    assertNull(NotificationInput.select(true, "Ana reacted ❤️ to your message", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Ana mentioned you in a group", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Juan nag-react sa iyong mensahe", null, null, emptyList(), "messenger"))
+    assertEquals(
+      "Please send the OTP now",
+      NotificationInput.select(true, "Please send the OTP now", null, null, emptyList(), "messenger"),
+    )
+  }
+
   @Test fun newContentOnTheSameNotificationStillGetsScanned() {
     assertFalse(NotificationDeduplicator.isDuplicate("test-conversation", "greeting", 1000))
     assertTrue(NotificationDeduplicator.isDuplicate("test-conversation", "greeting", 1001))

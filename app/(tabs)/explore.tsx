@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
+import type * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,8 +17,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ScoreBreakdown } from '@/src/components/score-breakdown';
+import { HighlightedMessage, ScoreBreakdown } from '@/src/components/score-breakdown';
 import { BrandLogo } from '@/src/components/brand-logo';
+import { ImageCropModal } from '@/src/components/image-crop-modal';
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
 import { localizeReason, type WarningCopy } from '@/src/features/translation';
 import {
@@ -112,12 +114,14 @@ function scoreDisplay(
 }
 
 function ResultCard({
+  message,
   result,
   onFeedback,
   feedbackState,
   feedbackKind,
   virality,
 }: {
+  message: string;
   result: ThreatResult;
   onFeedback: (kind: 'safe' | 'dangerous') => void;
   feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported';
@@ -150,6 +154,9 @@ function ResultCard({
       <Text style={styles.resultExplanation}>{display.explanation}</Text>
       <Text style={styles.scoreExplanation}>{scored.explanation}</Text>
       <Text style={styles.scoreExplanation}>{scored.communityLine}</Text>
+      {result.level !== 'safe' ? (
+        <HighlightedMessage message={message} highlights={result.highlights ?? []} colors={colors} />
+      ) : null}
       <Text style={styles.resultSectionTitle}>{copy.howScoreCalculated}</Text>
       <ScoreBreakdown
         reasons={result.reasons.map((reason) => localizeReason(reason, copy))}
@@ -241,6 +248,21 @@ export default function ScanScreen() {
   const scanVersion = useRef(0);
   const canReadPhotos = useMemo(() => isTextRecognitionAvailable(), []);
   const [readingImage, setReadingImage] = useState(false);
+  const [cropImage, setCropImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const cropResolve = useRef<((uri: string | null) => void) | null>(null);
+  const cropCapturedImage = useCallback(
+    (image: ImagePicker.ImagePickerAsset) =>
+      new Promise<string | null>((resolve) => {
+        cropResolve.current = resolve;
+        setCropImage(image);
+      }),
+    [],
+  );
+  const finishCrop = useCallback((uri: string | null) => {
+    cropResolve.current?.(uri);
+    cropResolve.current = null;
+    setCropImage(null);
+  }, []);
   // Text read from a photo can contain misread characters, so the user is asked to check it.
   const [textFromPhoto, setTextFromPhoto] = useState(false);
 
@@ -301,12 +323,12 @@ export default function ScanScreen() {
     async (source: ImageTextSource) => {
       setReadingImage(true);
       try {
-        applyImageText(await readMessageFromImage(source));
+        applyImageText(await readMessageFromImage(source, cropCapturedImage));
       } finally {
         setReadingImage(false);
       }
     },
-    [applyImageText],
+    [applyImageText, cropCapturedImage],
   );
 
   const clearMessage = useCallback(() => {
@@ -322,13 +344,13 @@ export default function ScanScreen() {
   useEffect(() => {
     if (!canReadPhotos) return;
     let active = true;
-    void readMessageFromPendingImage().then((read) => {
+    void readMessageFromPendingImage(cropCapturedImage).then((read) => {
       if (active && read) applyImageText(read);
     });
     return () => {
       active = false;
     };
-  }, [applyImageText, canReadPhotos]);
+  }, [applyImageText, canReadPhotos, cropCapturedImage]);
 
   const handleScan = useCallback(async () => {
     const trimmed = message.trim();
@@ -602,6 +624,7 @@ export default function ScanScreen() {
 
         {result ? (
           <ResultCard
+            message={message}
             result={result}
             onFeedback={handleFeedback}
             feedbackState={feedbackState}
@@ -614,6 +637,16 @@ export default function ScanScreen() {
           <Text style={styles.guideLinkText}>Open the User Guide</Text>
         </Pressable>
       </ScrollView>
+      {cropImage ? (
+        <ImageCropModal
+          uri={cropImage.uri}
+          sourceWidth={cropImage.width}
+          sourceHeight={cropImage.height}
+          visible
+          onCancel={() => finishCrop(null)}
+          onConfirm={finishCrop}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

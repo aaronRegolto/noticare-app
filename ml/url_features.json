@@ -1,0 +1,24 @@
+{
+  "dataset": {
+    "name": "PhiUSIIL_Phishing_URL_Dataset",
+    "source_label": "Dataset label: 1 is legitimate and 0 is phishing.",
+    "model_output": "Phishing risk from 0 to 1"
+  },
+  "features": [
+    {"name": "URLLength", "transform": "standardize"},
+    {"name": "DomainLength", "transform": "standardize"},
+    {"name": "IsDomainIP", "transform": "none"},
+    {"name": "NoOfSubDomain", "transform": "standardize"},
+    {"name": "HasObfuscation", "transform": "none"},
+    {"name": "NoOfObfuscatedChar", "transform": "standardize"},
+    {"name": "ObfuscationRatio", "transform": "none"},
+    {"name": "NoOfLettersInURL", "transform": "standardize"},
+    {"name": "LetterRatioInURL", "transform": "none"},
+    {"name": "NoOfDegitsInURL", "transform": "standardize"},
+    {"name": "DegitRatioInURL", "transform": "none"},
+    {"name": "NoOfEqualsInURL", "transform": "standardize"},
+    {"name": "NoOfQMarkInURL", "transform": "standardize"},
+    {"name": "NoOfAmpersandInURL", "transform": "standardize"},
+    {"name": "IsHTTPS", "transform": "none"}
+  ]
+}

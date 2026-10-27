@@ -140,11 +140,16 @@ const BRIDGE_SOURCE_FILES = [
   'BrowserResolver.kt',
   'BrowserPreferences.kt',
   'LinkForwarder.kt',
+  'UrlRiskEvaluator.kt',
   'DefaultBrowserStatus.kt',
   'SharedLinkExtractor.kt',
 ];
 const ROOT_SOURCE_FILES = ['LinkHandlerModule.kt', 'LinkHandlerPackage.kt'];
-const TEST_SOURCE_FILES = ['RuleBasedUrlCheckerTest.kt', 'SharedLinkExtractorTest.kt'];
+const TEST_SOURCE_FILES = [
+  'RuleBasedUrlCheckerTest.kt',
+  'SharedLinkExtractorTest.kt',
+  'UrlRiskEvaluatorTest.kt',
+];
 
 function writeGeneratedSources(androidRoot, packageName) {
   const packageRoot = path.join(androidRoot, 'app', 'src', 'main', 'java', ...packageName.split('.'));
