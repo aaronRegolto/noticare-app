@@ -9,9 +9,9 @@ import type { CommunityRange } from '@/backend/supabase/types/database.types';
 import { BLOCKED_TREND_RANGES, BlockedTrendCard } from '@/src/components/blocked-trend-card';
 import { BrandLogo } from '@/src/components/brand-logo';
 import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
-import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { DASHBOARD_TOUR_KEY, useFirstVisitTour } from '@/src/hooks/use-first-visit-tour';
 import { messagesTabRef, setActiveTourTab } from '@/src/navigation/tabBarRefs';
+import { useSubscription } from '@/src/providers/SubscriptionProvider';
 import { getCommunityStats, summarizeCommunity, type CommunityPoint } from '@/src/services/community';
 import {
   flushNativeCommunityReports,
@@ -112,15 +112,6 @@ function ViralEntryRow({
           </>
         )}
       </View>
-    </View>
-  );
-}
-
-function ShieldMark({ size = 28, dark = false, colors }: { size?: number; dark?: boolean; colors: ThemeColors }) {
-  const styles = useThemedStyles(colors);
-  return (
-    <View style={[styles.shieldMark, { width: size + 14, height: size + 14 }, dark && styles.shieldMarkDark]}>
-      <Ionicons name="shield-checkmark-outline" size={size} color={dark ? '#fff' : colors.accent} />
     </View>
   );
 }
@@ -468,7 +459,6 @@ export default function DashboardScreen() {
           <BrandLogo size={44} />
           <View style={styles.brandCopy}>
             <Text style={styles.brand}>NotiCare</Text>
-            <Text style={styles.tagline}>Smishing Shield</Text>
           </View>
           <Pressable
             ref={settingsButtonRef}
@@ -494,10 +484,9 @@ export default function DashboardScreen() {
           <View style={styles.statusCard}>
             <View style={styles.statusHeading}>
               <View style={styles.statusHeadingCopy}>
-                <Text style={styles.statusTitle}>NotiCare Smishing Shield</Text>
+                <Text style={styles.statusTitle}>NotiCare</Text>
                 <Text style={styles.statusDate}>Your Android SMS protection</Text>
               </View>
-              <ShieldMark size={25} dark colors={colors} />
             </View>
             <View style={styles.monitorPanel}>
               <View style={styles.monitorTop}>
@@ -777,13 +766,6 @@ function createStyles(colors: ThemeColors) {
       zIndex: 10,
       elevation: 10,
     },
-    shieldMark: {
-      borderRadius: 10,
-      backgroundColor: colors.headerSurface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    shieldMarkDark: { backgroundColor: colors.accent },
     brandCopy: { marginLeft: 10 },
     brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
     tagline: { color: colors.headerTextMuted, fontSize: 12, marginTop: 1 },

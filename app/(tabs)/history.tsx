@@ -74,7 +74,6 @@ function Header() {
       <BrandLogo size={44} />
       <View style={styles.brandCopy}>
         <Text style={styles.brand}>NotiCare</Text>
-        <Text style={styles.tagline}>Smishing Shield</Text>
       </View>
       <Pressable
         onPress={() => router.push('/settings')}
@@ -735,14 +734,6 @@ function createStyles(colors: ThemeColors) {
       shadowRadius: 4,
       zIndex: 10,
       elevation: 10,
-    },
-    shieldMark: {
-      width: 39,
-      height: 39,
-      borderRadius: 10,
-      backgroundColor: colors.headerSurface,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     brandCopy: { marginLeft: 10 },
     brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },

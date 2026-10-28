@@ -135,7 +135,6 @@ export default function LoginScreen() {
         <View style={styles.brandArea}>
           <BrandLogo size={84} />
           <Text style={styles.brand}>NotiCare</Text>
-          <Text style={styles.tagline}>Smishing Shield</Text>
         </View>
         <View style={styles.card}>
           {!configured ? (

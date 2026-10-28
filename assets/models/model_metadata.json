@@ -3,7 +3,7 @@
     "candidate_status": "retrained_candidate",
     "version": "3.2.0",
     "architecture": "Byte-level CNN text classifier",
-    "keras_file": "noticare_smishing_v3.keras",
+    "keras_file": "noticare__v3.keras",
     "training_script": "ml/train.py",
     "dataset_provenance_counts": {
       "Local_PH_SMS_spam": 725,

@@ -51,35 +51,45 @@ test('a photo is read on the device, joined into message text, then deleted from
     text: 'Your GCash account is suspended.',
   });
   expect(picker.launchCameraAsync).toHaveBeenCalledWith(
-    expect.objectContaining({ mediaTypes: ['images'], allowsEditing: false, base64: false, exif: false }),
+    expect.objectContaining({ mediaTypes: ['images'], allowsEditing: true, base64: false, exif: false }),
   );
   expect(recognize).toHaveBeenCalledWith(`${CACHE}ImagePicker/a.jpeg`);
   expect(deleted).toEqual([`${CACHE}ImagePicker/a.jpeg`]);
 });
 
-test('a custom crop callback controls OCR and both cached images are deleted', async () => {
-  picker.launchImageLibraryAsync.mockResolvedValue(picked(`${CACHE}ImagePicker/crop-source.png`));
-  recognize.mockResolvedValue({ blocks: [{ lines: ['Only the cropped message'] }] });
-  const crop = jest.fn().mockResolvedValue(`${CACHE}ImagePicker/crop-result.jpeg`);
+test('camera falls back to the plain capture flow when the crop editor fails on Android', async () => {
+  picker.requestCameraPermissionsAsync.mockResolvedValue(granted(true));
+  picker.launchCameraAsync
+    .mockRejectedValueOnce(Object.assign(new Error('crop editor unsupported'), { code: 'E_CROP_UNSUPPORTED' }))
+    .mockResolvedValueOnce(picked(`${CACHE}ImagePicker/fallback.jpeg`));
+  recognize.mockResolvedValue({ blocks: [{ lines: ['Verify your account'] }] });
 
-  expect(await readMessageFromImage('library', crop)).toEqual({
-    status: 'ok',
-    text: 'Only the cropped message',
-  });
-  expect(crop).toHaveBeenCalledWith(expect.objectContaining({ uri: `${CACHE}ImagePicker/crop-source.png` }));
-  expect(recognize).toHaveBeenCalledWith(`${CACHE}ImagePicker/crop-result.jpeg`);
-  expect(deleted).toEqual([
-    `${CACHE}ImagePicker/crop-source.png`,
-    `${CACHE}ImagePicker/crop-result.jpeg`,
-  ]);
+  expect(await readMessageFromImage('camera')).toEqual({ status: 'ok', text: 'Verify your account' });
+  expect(picker.launchCameraAsync).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ mediaTypes: ['images'], allowsEditing: true, base64: false, exif: false }),
+  );
+  expect(picker.launchCameraAsync).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({ mediaTypes: ['images'], allowsEditing: false, base64: false, exif: false }),
+  );
+  expect(recognize).toHaveBeenCalledWith(`${CACHE}ImagePicker/fallback.jpeg`);
+  expect(deleted).toEqual([`${CACHE}ImagePicker/fallback.jpeg`]);
 });
 
-test('canceling the custom crop stops OCR and cleans the source image', async () => {
-  picker.launchImageLibraryAsync.mockResolvedValue(picked(`${CACHE}ImagePicker/crop-canceled.png`));
+test('the native picker crop editor is used for screenshots and the source image is deleted', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked(`${CACHE}ImagePicker/crop-source.png`));
+  recognize.mockResolvedValue({ blocks: [{ lines: ['Only the message in the crop'] }] });
 
-  expect(await readMessageFromImage('library', jest.fn().mockResolvedValue(null))).toEqual({ status: 'canceled' });
-  expect(recognize).not.toHaveBeenCalled();
-  expect(deleted).toEqual([`${CACHE}ImagePicker/crop-canceled.png`]);
+  expect(await readMessageFromImage('library')).toEqual({
+    status: 'ok',
+    text: 'Only the message in the crop',
+  });
+  expect(picker.launchImageLibraryAsync).toHaveBeenCalledWith(
+    expect.objectContaining({ mediaTypes: ['images'], allowsEditing: true, base64: false, exif: false }),
+  );
+  expect(recognize).toHaveBeenCalledWith(`${CACHE}ImagePicker/crop-source.png`);
+  expect(deleted).toEqual([`${CACHE}ImagePicker/crop-source.png`]);
 });
 
 test('a screenshot from the photo picker needs no camera permission', async () => {

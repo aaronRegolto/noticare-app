@@ -108,10 +108,29 @@ describe('credential wording regressions', () => {
     'Huwag isumite ang inyong MPIN.',
     'Your six-digit OTP is 123456. Never share it.',
     'Payment received. Thank you.',
+    'Ana mentioned you in a group chat.',
+    'You were mentioned in the group.',
+    'Someone tagged you in a story.',
+    'Lia reacted to your message.',
+    'Rico mentioned Maria in a group chat.',
+    'Someone tagged Alex in the group.',
+    'Nina reacted to Mark\'s message in the chat.',
   ])('safe: %s', (message) => {
     const result = evaluateThreat(message);
     expect(result.level).toBe('safe');
     expect(result.score).toBe(0);
+  });
+
+  it('keeps Filipino swears as low-priority context, not a phishing score by itself', () => {
+    const swears = evaluateThreat('Putang ina, gago ka.');
+    expect(swears.level).toBe('safe');
+    expect(swears.score).toBe(0);
+    expect(swears.reasons.some((reason) => reason.code === 'abusive-language')).toBe(true);
+
+    const phishingWithSwear = evaluateThreat('Putang ina, bakit mo tinanggap ang link? Verify your account now https://example.com/reset');
+    expect(phishingWithSwear.level).toBe('suspicious');
+    expect(phishingWithSwear.reasons.some((reason) => reason.code === 'abusive-language')).toBe(true);
+    expect((phishingWithSwear.highlights ?? []).some((span) => span.reasonCode.includes('abusive-language'))).toBe(true);
   });
 });
 

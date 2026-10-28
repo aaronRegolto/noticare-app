@@ -85,9 +85,9 @@ object WarningCopy {
     open val historySaved = "The original SMS was not deleted. A protected local copy is available in NotiCare Messages."
     open val historyNotSaved = "The original SMS was not deleted. No protected local message copy was saved."
     open val reportQueued = " Saved to report to other NotiCare users once you're online."
-    open fun blockedTitle(dangerous: Boolean) = "NotiCare blocked a ${if (dangerous) "likely smishing" else "suspicious SMS"}"
+    open fun blockedTitle(dangerous: Boolean) = "NotiCare blocked a ${if (dangerous) "likely phishing" else "suspicious SMS"}"
     open fun blockedBody(dangerous: Boolean, score: Int) =
-      "A ${if (dangerous) "likely smishing" else "suspicious SMS"} notification was suppressed (risk score $score/100)."
+      "A ${if (dangerous) "likely phishing" else "suspicious SMS"} notification was suppressed (risk score $score/100)."
     open val reportSharedTitle = "Phishing report shared"
     open val reportNew = "Your reported message was new — thanks for helping warn other NotiCare users."
     open fun reportExisting(count: Int) =
@@ -162,9 +162,9 @@ object WarningCopy {
       "Hindi binura ang orihinal na SMS. Walang protektadong kopya ng mensahe ang na-save."
     override val reportQueued = " Naka-save para i-report sa ibang gumagamit ng NotiCare kapag online ka na."
     override fun blockedTitle(dangerous: Boolean) =
-      "Na-block ng NotiCare ang ${if (dangerous) "posibleng smishing" else "kahina-hinalang SMS"}"
+      "Na-block ng NotiCare ang ${if (dangerous) "posibleng phishing" else "kahina-hinalang SMS"}"
     override fun blockedBody(dangerous: Boolean, score: Int) =
-      "Itinago ang notification ng ${if (dangerous) "posibleng smishing" else "kahina-hinalang SMS"} (risk score $score/100)."
+      "Itinago ang notification ng ${if (dangerous) "posibleng phishing" else "kahina-hinalang SMS"} (risk score $score/100)."
     override val reportSharedTitle = "Naibahagi ang phishing report"
     override val reportNew = "Bago ang mensaheng ni-report mo — salamat sa pagtulong na babalaan ang ibang gumagamit ng NotiCare."
     override fun reportExisting(count: Int) =
@@ -208,6 +208,8 @@ object WarningCopy {
         "Pinapapadala ka ng pera, gift card, o bayad sa isang personal na account o bagong numero — karaniwang modus ng mga nagpapanggap na kapamilya, boss, o kumpanya."),
       "advance-fee-request" to ("Pinapabayad muna bago makatanggap" to
         "Pinapabayad ka muna ng fee bago mo makuha ang premyo, loan, refund, trabaho, o padala."),
+      "abusive-language" to ("Bastos o nakakasakit na salita" to
+        "Gumagamit ang mensahe ng bastos o mapang-abusong salita sa Filipino o English. Isang low-priority na konteksto lang ito at hindi sapat na magtayo ng phishing score nang mag-isa."),
       "direct-threat" to ("Tahasang banta ng pananakit" to
         "Nagbabanta ang mensahe ng pisikal na pananakit o pag-atake nang personal."),
       "cyber-threat" to ("Banta na mang-hack, maglantad, o gumamit ng pribadong impormasyon" to

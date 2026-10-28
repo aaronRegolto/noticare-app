@@ -15,10 +15,25 @@ export type ImageTextResult =
   | { status: 'unavailable' }
   | { status: 'error' };
 
-// A custom crop editor below gives users larger, predictable handles than the native picker crop.
-const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
+const CAMERA_OPTIONS: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  allowsEditing: true,
+  quality: 1,
+  base64: false,
+  exif: false,
+};
+
+const CAMERA_FALLBACK_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
   allowsEditing: false,
+  quality: 1,
+  base64: false,
+  exif: false,
+};
+
+const LIBRARY_OPTIONS: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  allowsEditing: true,
   quality: 1,
   base64: false,
   exif: false,
@@ -31,7 +46,7 @@ const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
  */
 export async function readMessageFromImage(
   source: ImageTextSource,
-  cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
+  _cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
 ): Promise<ImageTextResult> {
   if (!isTextRecognitionAvailable()) return { status: 'unavailable' };
   try {
@@ -41,12 +56,21 @@ export async function readMessageFromImage(
     }
     const picked =
       source === 'camera'
-        ? await ImagePicker.launchCameraAsync(PICKER_OPTIONS)
-        : await ImagePicker.launchImageLibraryAsync(PICKER_OPTIONS);
-    return await readPickedImage(picked, cropCapturedImage);
+        ? await pickCameraImageWithFallback()
+        : await ImagePicker.launchImageLibraryAsync(LIBRARY_OPTIONS);
+    return await readPickedImage(picked);
   } catch (error) {
     logError('image-text-capture-failed', error);
     return { status: 'error' };
+  }
+}
+
+async function pickCameraImageWithFallback(): Promise<ImagePicker.ImagePickerResult> {
+  try {
+    return await ImagePicker.launchCameraAsync(CAMERA_OPTIONS);
+  } catch (error) {
+    logError('camera-crop-editor-failed', error);
+    return await ImagePicker.launchCameraAsync(CAMERA_FALLBACK_OPTIONS);
   }
 }
 
@@ -55,13 +79,13 @@ export async function readMessageFromImage(
  * reading the image the user had picked; null when there is nothing to recover.
  */
 export async function readMessageFromPendingImage(
-  cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
+  _cropCapturedImage?: (image: ImagePicker.ImagePickerAsset) => Promise<string | null>,
 ): Promise<ImageTextResult | null> {
   if (!isTextRecognitionAvailable()) return null;
   try {
     const pending = await ImagePicker.getPendingResultAsync();
     if (!pending || !('canceled' in pending) || pending.canceled) return null;
-    return await readPickedImage(pending, cropCapturedImage);
+    return await readPickedImage(pending);
   } catch (error) {
     logError('image-text-pending-failed', error);
     return null;

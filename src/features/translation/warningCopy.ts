@@ -236,6 +236,10 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
       'Pinapabayad muna bago makatanggap',
       'Pinapabayad ka muna ng fee bago mo makuha ang premyo, loan, refund, trabaho, o padala.',
     ],
+    'abusive-language': [
+      'Bastos o nakakasakit na salita',
+      'Gumagamit ang mensahe ng bastos o mapang-abusong salita sa Filipino o English. Isang low-priority na konteksto lang ito at hindi sapat na magtayo ng phishing score nang mag-isa.',
+    ],
     'direct-threat': [
       'Tahasang banta ng pananakit',
       'Nagbabanta ang mensahe ng pisikal na pananakit o pag-atake nang personal.',

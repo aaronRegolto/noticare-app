@@ -35,7 +35,13 @@ class NotificationInputTest {
   @Test fun messengerContextNotificationsAreNotScannedAsMessages() {
     assertNull(NotificationInput.select(true, "Ana reacted ❤️ to your message", null, null, emptyList(), "messenger"))
     assertNull(NotificationInput.select(true, "Ana mentioned you in a group", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "You were mentioned in a group chat", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Marianne tagged you in the group", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Rico mentioned Maria in a group chat", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Someone tagged Alex in the group", null, null, emptyList(), "messenger"))
     assertNull(NotificationInput.select(true, "Juan nag-react sa iyong mensahe", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Lia commented on your photo", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Someone tagged you in a story", null, null, emptyList(), "messenger"))
     assertEquals(
       "Please send the OTP now",
       NotificationInput.select(true, "Please send the OTP now", null, null, emptyList(), "messenger"),

@@ -6,7 +6,6 @@ export function AppSplash() {
     <View style={styles.page}>
       <BrandLogo size={112} />
       <Text style={styles.name}>NotiCare</Text>
-      <Text style={styles.copy}>Smishing Shield</Text>
     </View>
   );
 }

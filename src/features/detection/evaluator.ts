@@ -9,6 +9,15 @@ type MatchedTextRule = {
   matchedText: string;
 };
 
+const MENTION_ONLY_PATTERNS = [
+  /(?:you|u|[A-Z][a-z]+|@\w+)\s+(?:were|have been|ve been|was|are)\s+mentioned\b/i,
+  /(?:mentioned|tagged)\s+(?:you|u|[A-Z][a-z]+|@\w+)\b/i,
+  /(?:reacted|commented|shared|tagged|mentioned)\s+(?:to|on|in)\s+(?:your|yours?|the|[A-Z][a-z]+|@\w+)\s+(?:message|story|photo|video|post|group)/i,
+  /(?:in|the)\s+(?:group|chat|story)\s+(?:and|with|where)?\s*(?:you|u|[A-Z][a-z]+|@\w+)\s+(?:were|was|have been|has been|is)\s+(?:mentioned|tagged)/i,
+  /(?:group|chat|story|post|photo|video)\s+(?:mention|tag)/i,
+  /\b(?:mentioned|tagged)\s+[A-Z][a-z]+\s+(?:in|on)\s+(?:the\s+)?(?:group|chat|story)\b/i,
+];
+
 const BAIT_SIGNALS = new Set([
   'prize-or-reward-bait',
   'refund-bait',
@@ -37,7 +46,24 @@ const URL_CONTEXT_SIGNALS = new Set([
  * a network request. The returned reason codes can be safely aggregated without raw text.
  * This is the public result: a Safe message always scores 0 (see finalizeThreatResult).
  */
+function isMentionOnlySocialNotification(message: string): boolean {
+  const lower = message.toLowerCase();
+  const isSocialEvent =
+    /(?:reacted|reaction|reactions|mentioned|mention|tagged|commented|shared|nag-react|nag react)/i.test(message) ||
+    /@\w+/.test(message) ||
+    /(?:group|chat|story|message|post|photo|video)/i.test(message);
+  if (!isSocialEvent || !MENTION_ONLY_PATTERNS.some((pattern) => pattern.test(message))) return false;
+  const hasThreatSignal =
+    /otp|password|pin|verify|account(?:\s+is|\s+was|\s+has been)|suspended|locked|click\s+here|https?:\/\/|bit\.ly|\blink\b|reward|prize|refund|cash|bonus|payment|bank|wallet|urgent/i.test(
+      lower,
+    );
+  return !hasThreatSignal;
+}
+
 export function evaluateThreat(message: string): ThreatResult {
+  if (isMentionOnlySocialNotification(message)) {
+    return { level: 'safe', score: 0, reasons: [], urls: [], ruleVersion: DETECTION_RULE_BUNDLE.version, highlights: [] };
+  }
   return finalizeThreatResult(evaluateRules(message));
 }
 

@@ -37,6 +37,7 @@ object SmishingEvaluator {
   )
 
   private data class NormalizedText(
+    val original: String,
     val normalized: String,
     val comparable: String,
     val hadZeroWidthCharacters: Boolean,
@@ -164,6 +165,12 @@ object SmishingEvaluator {
     "Upfront fee to receive money",
     "The message asks you to pay a fee first before you can receive a prize, loan, refund, job, or parcel.",
     20,
+  )
+  private val abusiveLanguage = Rule(
+    "abusive-language",
+    "Abusive or offensive language",
+    "The message uses offensive Filipino or English profanity. This is kept as a low-priority context signal rather than a phishing score by itself.",
+    0,
   )
   private val directThreat = Rule(
     "direct-threat",
@@ -361,6 +368,15 @@ object SmishingEvaluator {
       true,
     ),
     TextRule(
+      abusiveLanguage,
+      listOf(
+        insensitive("""\b(?:putang\s+ina|puta(?:\s+ka)?|pakyu|paks(?:het|a)|bwisit|gago|tanga|bobo|inutil|ulol|hayop|bastos)\b"""),
+        insensitive("""\b(?:putang\s+ina\s+mo|gago\s+ka|tanga\s+ka|bobo\s+ka|bwisit\s+ka|pakyu\s+ka)\b"""),
+        insensitive("""\b(?:fuck|fucking|shit|bitch|idiot|dumbass|moron|asshole|stupid)\b"""),
+      ),
+      listOf("abusive-language"),
+    ),
+    TextRule(
       directThreat,
       listOf(
         insensitive("""\b(?:i(?:'ll| will)|we(?:'ll| will))\s+(?:kill|hurt|beat|attack|shoot|stab|burn|come\s+after)\s+(?:you|your\s+family)\b"""),
@@ -524,7 +540,7 @@ object SmishingEvaluator {
     if (needle.isEmpty()) return null
     val direct = original.lowercase(Locale.ROOT).indexOf(needle)
     if (direct >= 0) return direct to direct + needle.length
-    val normalized = original.normalize(Normalizer.Form.NFKC)
+    val normalized = Normalizer.normalize(original, Normalizer.Form.NFKC)
       .replace(zeroWidthPattern, "")
       .replace(unexpectedControlPattern, " ")
       .replace(javascriptWhitespacePattern, " ")
@@ -568,7 +584,7 @@ object SmishingEvaluator {
       .trim(' ')
       .lowercase(Locale.ROOT)
     val comparable = normalizeCharacterSubstitutions(normalized)
-    return NormalizedText(normalized, comparable, hadZeroWidth, hadUnexpectedControl, comparable != normalized)
+    return NormalizedText(input, normalized, comparable, hadZeroWidth, hadUnexpectedControl, comparable != normalized)
   }
 
   private fun normalizeCharacterSubstitutions(value: String): String = substitutionTokenPattern.replace(value) { match ->

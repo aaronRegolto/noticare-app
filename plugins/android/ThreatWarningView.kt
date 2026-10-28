@@ -6,7 +6,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spannable
 import android.text.SpannableString
-import android.text.style.BackgroundColorSpan
 import android.text.style.UnderlineSpan
 import android.view.Gravity
 import android.widget.Button
@@ -233,7 +232,6 @@ object ThreatWarningView {
       val end = span.end.coerceIn(start, message.length)
       if (start >= end) return@forEach
       text.setSpan(UnderlineSpan(), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-      text.setSpan(BackgroundColorSpan(Color.rgb(255, 240, 196)), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
     return text
   }

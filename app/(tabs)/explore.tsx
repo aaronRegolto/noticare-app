@@ -19,7 +19,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HighlightedMessage, ScoreBreakdown } from '@/src/components/score-breakdown';
 import { BrandLogo } from '@/src/components/brand-logo';
-import { ImageCropModal } from '@/src/components/image-crop-modal';
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
 import { localizeReason, type WarningCopy } from '@/src/features/translation';
 import {
@@ -65,7 +64,6 @@ function Header() {
       <BrandLogo size={44} />
       <View style={styles.brandCopy}>
         <Text style={styles.brand}>NotiCare</Text>
-        <Text style={styles.tagline}>Smishing Shield</Text>
       </View>
       <Pressable
         onPress={() => router.push('/settings')}
@@ -248,21 +246,6 @@ export default function ScanScreen() {
   const scanVersion = useRef(0);
   const canReadPhotos = useMemo(() => isTextRecognitionAvailable(), []);
   const [readingImage, setReadingImage] = useState(false);
-  const [cropImage, setCropImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const cropResolve = useRef<((uri: string | null) => void) | null>(null);
-  const cropCapturedImage = useCallback(
-    (image: ImagePicker.ImagePickerAsset) =>
-      new Promise<string | null>((resolve) => {
-        cropResolve.current = resolve;
-        setCropImage(image);
-      }),
-    [],
-  );
-  const finishCrop = useCallback((uri: string | null) => {
-    cropResolve.current?.(uri);
-    cropResolve.current = null;
-    setCropImage(null);
-  }, []);
   // Text read from a photo can contain misread characters, so the user is asked to check it.
   const [textFromPhoto, setTextFromPhoto] = useState(false);
 
@@ -323,12 +306,12 @@ export default function ScanScreen() {
     async (source: ImageTextSource) => {
       setReadingImage(true);
       try {
-        applyImageText(await readMessageFromImage(source, cropCapturedImage));
+        applyImageText(await readMessageFromImage(source));
       } finally {
         setReadingImage(false);
       }
     },
-    [applyImageText, cropCapturedImage],
+    [applyImageText],
   );
 
   const clearMessage = useCallback(() => {
@@ -344,13 +327,13 @@ export default function ScanScreen() {
   useEffect(() => {
     if (!canReadPhotos) return;
     let active = true;
-    void readMessageFromPendingImage(cropCapturedImage).then((read) => {
+    void readMessageFromPendingImage().then((read) => {
       if (active && read) applyImageText(read);
     });
     return () => {
       active = false;
     };
-  }, [applyImageText, canReadPhotos, cropCapturedImage]);
+  }, [applyImageText, canReadPhotos]);
 
   const handleScan = useCallback(async () => {
     const trimmed = message.trim();
@@ -508,7 +491,7 @@ export default function ScanScreen() {
                   accessibilityState={{ disabled: readingImage }}
                 >
                   <Ionicons name="image-outline" size={18} color={colors.link} />
-                  <Text style={styles.secondaryText}>Upload screenshot</Text>
+                  <Text style={styles.secondaryText}>Use screenshot</Text>
                 </Pressable>
                 <Pressable
                   onPress={onPaste}
@@ -637,16 +620,6 @@ export default function ScanScreen() {
           <Text style={styles.guideLinkText}>Open the User Guide</Text>
         </Pressable>
       </ScrollView>
-      {cropImage ? (
-        <ImageCropModal
-          uri={cropImage.uri}
-          sourceWidth={cropImage.width}
-          sourceHeight={cropImage.height}
-          visible
-          onCancel={() => finishCrop(null)}
-          onConfirm={finishCrop}
-        />
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -671,14 +644,6 @@ function createStyles(colors: ThemeColors) {
       shadowRadius: 4,
       zIndex: 10,
       elevation: 10,
-    },
-    shieldMark: {
-      width: 39,
-      height: 39,
-      borderRadius: 10,
-      backgroundColor: colors.headerSurface,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     brandCopy: { marginLeft: 10 },
     brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },

@@ -22,12 +22,12 @@ export default function AboutScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <BrandLogo size={96} />
         <Text style={styles.name}>NotiCare</Text>
-        <Text style={styles.tagline}>Smishing Shield · Version {version}</Text>
+        <Text style={styles.tagline}>Version {version}</Text>
         <View style={styles.card}>
           <Text style={styles.title}>SMS protection for Android</Text>
           <Text style={styles.copy}>
             NotiCare checks available notifications from your current default Messages app. It uses offline rules to
-            identify common smishing patterns and never becomes your default SMS app.
+            identify common phishing patterns and never becomes your default SMS app.
           </Text>
         </View>
         <View style={styles.card}>

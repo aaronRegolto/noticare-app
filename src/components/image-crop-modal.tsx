@@ -38,42 +38,56 @@ export function ImageCropModal({
   const imageHeight = sourceHeight * scale;
   const [crop, setCrop] = useState<Rect>(() => initialCrop(imageWidth, imageHeight));
   const cropRef = useRef(crop);
+  const interactionRef = useRef<{ handle: Handle; startRect: Rect } | null>(null);
 
   useEffect(() => {
     const next = initialCrop(imageWidth, imageHeight);
     cropRef.current = next;
+    interactionRef.current = null;
     setCrop(next);
   }, [uri, imageWidth, imageHeight]);
 
   const responder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2,
         onPanResponderGrant: (event) => {
-          const state = responder as unknown as {
-            handle?: Handle;
-            gestureStart?: { x: number; y: number };
-          };
           const point = event.nativeEvent;
           const current = cropRef.current;
-          const near = 34;
-          const onLeft = Math.abs(point.locationX - current.x) <= near;
-          const onRight = Math.abs(point.locationX - (current.x + current.width)) <= near;
-          const onTop = Math.abs(point.locationY - current.y) <= near;
-          const onBottom = Math.abs(point.locationY - (current.y + current.height)) <= near;
-          state.handle = onTop && onLeft ? 'tl' : onTop && onRight ? 'tr' : onBottom && onLeft ? 'bl' : onBottom && onRight ? 'br' : 'move';
-          state.gestureStart = { x: 0, y: 0 };
+          const handlePadding = 42;
+
+          const nearTopLeft = Math.abs(point.locationX - current.x) <= handlePadding && Math.abs(point.locationY - current.y) <= handlePadding;
+          const nearTopRight = Math.abs(point.locationX - (current.x + current.width)) <= handlePadding && Math.abs(point.locationY - current.y) <= handlePadding;
+          const nearBottomLeft = Math.abs(point.locationX - current.x) <= handlePadding && Math.abs(point.locationY - (current.y + current.height)) <= handlePadding;
+          const nearBottomRight = Math.abs(point.locationX - (current.x + current.width)) <= handlePadding && Math.abs(point.locationY - (current.y + current.height)) <= handlePadding;
+
+          if (nearTopLeft || nearTopRight || nearBottomLeft || nearBottomRight) {
+            const handle = nearTopLeft ? 'tl' : nearTopRight ? 'tr' : nearBottomLeft ? 'bl' : 'br';
+            interactionRef.current = { handle, startRect: current };
+            return;
+          }
+
+          const insideX = point.locationX > current.x + 12 && point.locationX < current.x + current.width - 12;
+          const insideY = point.locationY > current.y + 12 && point.locationY < current.y + current.height - 12;
+          interactionRef.current = {
+            handle: insideX && insideY ? 'move' : 'move',
+            startRect: current,
+          };
         },
         onPanResponderMove: (_event, gesture) => {
-          const state = responder as unknown as { handle?: Handle; gestureStart?: { x: number; y: number } };
-          const handle = state.handle ?? 'move';
-          const startPoint = state.gestureStart ?? { x: 0, y: 0 };
-          const next = clampCrop(cropRef.current, handle, gesture.dx - startPoint.x, gesture.dy - startPoint.y, imageWidth, imageHeight);
+          const interaction = interactionRef.current;
+          if (!interaction) return;
+          const next = clampCrop(interaction.startRect, interaction.handle, gesture.dx, gesture.dy, imageWidth, imageHeight);
           cropRef.current = next;
-          state.gestureStart = { x: gesture.dx, y: gesture.dy };
           setCrop(next);
         },
-        onPanResponderRelease: () => undefined,
+        onPanResponderRelease: () => {
+          interactionRef.current = null;
+        },
+        onPanResponderTerminate: () => {
+          interactionRef.current = null;
+        },
       }),
     [imageWidth, imageHeight],
   );
@@ -101,7 +115,14 @@ export function ImageCropModal({
             <View style={[styles.shade, { left: 0, top: crop.y, width: crop.x, height: crop.height }]} />
             <View style={[styles.shade, { left: crop.x + crop.width, top: crop.y, right: 0, height: crop.height }]} />
             <View style={[styles.shade, { left: 0, top: crop.y + crop.height, right: 0, bottom: 0 }]} />
-            <View style={[styles.cropBox, { left: crop.x, top: crop.y, width: crop.width, height: crop.height }]}> 
+            <View style={[styles.cropBox, { left: crop.x, top: crop.y, width: crop.width, height: crop.height }]}>
+              <View style={styles.gridOverlay} pointerEvents="none">
+                <View style={[styles.gridLineVertical, { left: '33.33%' }]} />
+                <View style={[styles.gridLineVertical, { left: '66.66%' }]} />
+                <View style={[styles.gridLineHorizontal, { top: '33.33%' }]} />
+                <View style={[styles.gridLineHorizontal, { top: '66.66%' }]} />
+              </View>
+
               <View style={[styles.handle, styles.tl]} />
               <View style={[styles.handle, styles.tr]} />
               <View style={[styles.handle, styles.bl]} />
@@ -119,8 +140,11 @@ export function ImageCropModal({
 }
 
 function initialCrop(width: number, height: number): Rect {
-  const inset = Math.min(width, height) * 0.08;
-  return { x: inset, y: inset, width: width - inset * 2, height: height - inset * 2 };
+  const cropWidth = Math.min(width * 0.18, 150);
+  const cropHeight = Math.min(height * 0.12, 100);
+  const x = (width - cropWidth) / 2;
+  const y = (height - cropHeight) / 2;
+  return { x, y, width: cropWidth, height: cropHeight };
 }
 
 function clampCrop(current: Rect, handle: Handle, dx: number, dy: number, maxWidth: number, maxHeight: number): Rect {
@@ -157,9 +181,54 @@ const styles = StyleSheet.create({
   imageFrame: { position: 'relative', overflow: 'hidden', backgroundColor: '#111827' },
   image: { position: 'absolute', width: '100%', height: '100%' },
   shade: { position: 'absolute', backgroundColor: 'rgba(15,23,42,0.62)' },
-  cropBox: { position: 'absolute', borderWidth: 2, borderColor: '#fff' },
-  handle: { position: 'absolute', width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', borderWidth: 3, borderColor: '#1E2D43' },
-  tl: { left: -14, top: -14 }, tr: { right: -14, top: -14 }, bl: { left: -14, bottom: -14 }, br: { right: -14, bottom: -14 },
+  cropBox: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  gridOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gridLineVertical: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    width: 1,
+    height: '100%',
+    top: 0,
+    bottom: 0,
+  },
+  gridLineHorizontal: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  handle: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: '#1f8dff',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  tl: { left: -15, top: -15 }, tr: { right: -15, top: -15 }, bl: { left: -15, bottom: -15 }, br: { right: -15, bottom: -15 },
   actions: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 },
   secondary: { flex: 1, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', paddingVertical: 14 },
   secondaryText: { color: '#1E2D43', fontWeight: '700' },

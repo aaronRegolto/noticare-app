@@ -252,6 +252,18 @@ export const DETECTION_RULE_BUNDLE: DetectionRuleBundle = {
       ],
     },
     {
+      code: 'abusive-language',
+      label: 'Abusive or offensive language',
+      description: 'The message uses offensive Filipino or English profanity. This is kept as a low-priority context signal rather than a phishing score by itself.',
+      weight: 0,
+      signals: ['abusive-language'],
+      patterns: [
+        String.raw`\b(?:putang\s+ina|puta(?:\s+ka)?|pakyu|paks(?:het|a)|bwisit|gago|tanga|bobo|inutil|ulol|hayop|bastos|bastos)\b`,
+        String.raw`\b(?:putang\s+ina\s+mo|gago\s+ka|tanga\s+ka|bobo\s+ka|bwisit\s+ka|pakyu\s+ka)\b`,
+        String.raw`\b(?:fuck|fucking|shit|bitch|idiot|dumbass|moron|asshole|stupid)\b`,
+      ],
+    },
+    {
       code: 'direct-threat',
       label: 'Direct threat of harm',
       description: 'The message threatens physical harm or an in-person attack.',
