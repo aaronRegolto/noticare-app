@@ -40,8 +40,16 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'This payment does not belong to the current user.' }, 403);
     }
     const days = intervalDays[metadata?.interval ?? ''] ?? 30;
+    const reservationId = (metadata as { launch_reservation_id?: string } | undefined)?.launch_reservation_id;
 
     const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    if (reservationId) {
+      await service
+        .from('launch_subscription_reservations')
+        .update({ payment_intent_id: intent.data.id, purchased_at: new Date().toISOString() })
+        .eq('reservation_id', reservationId)
+        .eq('user_id', userId);
+    }
     const { data: proExpiresAt, error } = await service.rpc('grant_pro_for_payment', {
       p_payment_intent_id: intent.data.id,
       p_user_id: userId,

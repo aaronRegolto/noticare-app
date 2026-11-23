@@ -32,6 +32,7 @@ function RootNavigator() {
         <Stack.Screen name="about" options={{ presentation: 'card' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="community" options={{ presentation: 'card' }} />
       </Stack.Protected>
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="guide" options={{ presentation: 'card' }} />

@@ -258,6 +258,19 @@ function enableReleaseShrinking(properties) {
     }
   }
 
+  const architectureProperty = properties.find(
+    (property) => property.type === 'property' && property.key === 'reactNativeArchitectures',
+  );
+  if (architectureProperty) {
+    architectureProperty.value = 'armeabi-v7a,arm64-v8a,x86_64';
+  } else {
+    properties.push({
+      type: 'property',
+      key: 'reactNativeArchitectures',
+      value: 'armeabi-v7a,arm64-v8a,x86_64',
+    });
+  }
+
   return properties;
 }
 
@@ -419,6 +432,7 @@ function writeGeneratedSources(androidRoot, packageName) {
     ['ThreatWarningView.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningView.kt')],
     ['ThreatWarningOverlay.kt', path.join(sourceRoot, 'bridge', 'ThreatWarningOverlay.kt')],
     ['BlockedMessageStore.kt', path.join(sourceRoot, 'bridge', 'BlockedMessageStore.kt')],
+    ['BlockedSenderStore.kt', path.join(sourceRoot, 'bridge', 'BlockedSenderStore.kt')],
     ['ThreatModels.kt', path.join(sourceRoot, 'bridge', 'ThreatModels.kt')],
     ['MessageCategories.kt', path.join(sourceRoot, 'bridge', 'MessageCategories.kt')],
     ['NotificationSource.kt', path.join(sourceRoot, 'bridge', 'NotificationSource.kt')],

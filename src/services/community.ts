@@ -79,3 +79,21 @@ export function summarizeCommunity(points: CommunityPoint[]) {
     { safe: 0, suspicious: 0, dangerous: 0, blocked: 0 },
   );
 }
+
+export function normalizedCommunityPercentages(values: number[]) {
+  const counts = values.map((value) => Math.max(0, Math.floor(value)));
+  const total = counts.reduce((sum, value) => sum + value, 0);
+  if (!total) return counts.map(() => 0);
+
+  const exact = counts.map((value) => (value / total) * 100);
+  const percentages = exact.map(Math.floor);
+  let remaining = 100 - percentages.reduce((sum, value) => sum + value, 0);
+  const ranked = exact
+    .map((value, index) => ({ index, remainder: value - percentages[index] }))
+    .sort((a, b) => b.remainder - a.remainder);
+  for (let position = 0; remaining > 0 && position < ranked.length; position += 1) {
+    percentages[ranked[position].index] += 1;
+    remaining -= 1;
+  }
+  return percentages;
+}

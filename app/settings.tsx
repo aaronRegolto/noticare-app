@@ -32,6 +32,9 @@ import {
 } from '@/src/services/linkHandler';
 import {
   clearHistory,
+  getBlockedSenders,
+  unblockSender,
+  type BlockedSender,
   getMonitoringStatus,
   isNativeMonitoringAvailable,
   openAppNotificationSettings,
@@ -126,11 +129,17 @@ export default function SettingsScreen() {
   const [defaultBrowserActive, setDefaultBrowserActive] = useState<boolean | null>(null);
   const translation = useMessageTranslationSettings();
   const [sheet, setSheet] = useState<'alerts' | 'language' | 'appearance' | null>(null);
+  const [blockedSenders, setBlockedSenders] = useState<BlockedSender[]>([]);
 
   // Check the language pack (and finish a download that was waiting for Wi-Fi) when Settings opens.
   useEffect(() => {
     if (translation.available && translation.language !== 'default') void ensureLanguagePack();
   }, [translation.available, translation.language]);
+
+  useEffect(() => {
+    if (!isNativeMonitoringAvailable()) return;
+    void getBlockedSenders().then(setBlockedSenders).catch(() => setBlockedSenders([]));
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     if (!isNativeMonitoringAvailable()) {
@@ -255,6 +264,23 @@ export default function SettingsScreen() {
                     Alert.alert('Settings unavailable', 'Android Notification Access settings could not be opened.'),
                   );
               },
+            },
+          ],
+        );
+        return;
+      }
+      if (!enabled) {
+        Alert.alert(
+          'Turn off Real-Time Scanning?',
+          'Incoming SMS and Messenger notifications will no longer be checked automatically. You could miss phishing or scam warnings, especially if you forget to use Manual Scan.',
+          [
+            { text: 'Keep it on', style: 'cancel' },
+            {
+              text: 'Turn off',
+              style: 'destructive',
+              onPress: () => void setScanningEnabled(false).then(setStatus).catch(() =>
+                Alert.alert('Unable to update scanning', 'Check Android’s notification settings and try again.')
+              ),
             },
           ],
         );
@@ -578,6 +604,34 @@ export default function SettingsScreen() {
               Choose the apps to monitor. Turn on Real-Time Scanning above to start checking their notifications.
             </Text>
           )}
+          <SettingsSection title="Blocked senders" colors={colors}>
+            {blockedSenders.length ? blockedSenders.map((sender) => (
+              <SettingsItem
+                key={sender.hash}
+                icon="ban-outline"
+                title={sender.sender}
+                subtitle="Future matching messages are suppressed"
+                accessory={
+                  <Pressable
+                    onPress={() => {
+                      Alert.alert('Unblock this sender?', `${sender.sender} will be allowed to show NotiCare alerts again.`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Unblock', onPress: () => void unblockSender(sender.hash).then(async () => setBlockedSenders(await getBlockedSenders())).catch(() => Alert.alert('Unable to unblock', 'Please try again.')) },
+                      ]);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unblock ${sender.sender}`}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.sourceHelp}>Unblock</Text>
+                  </Pressable>
+                }
+                colors={colors}
+              />
+            )) : (
+              <Text style={styles.sourceHelp}>No senders are blocked. Block a sender from a Messages alert.</Text>
+            )}
+          </SettingsSection>
           {statusError ? (
             <SettingsAlert
               message={statusError}

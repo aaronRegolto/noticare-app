@@ -43,6 +43,7 @@ import {
   getHistoryRecord,
   isNativeMonitoringAvailable,
   markHistoryRead,
+  blockSender,
   supportsMessageInbox,
   type HistoryRecord,
   type HistorySummary,
@@ -198,10 +199,12 @@ function DetailModal({
   record,
   onClose,
   onDelete,
+  onBlockSender,
 }: {
   record: HistoryRecord | null;
   onClose: () => void;
   onDelete: (id: string) => void;
+  onBlockSender: (record: HistoryRecord) => void;
 }) {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
@@ -325,6 +328,15 @@ function DetailModal({
             <Text style={styles.tableLabel}>Rule version</Text>
             <Text style={styles.tableValue}>{record.ruleVersion}</Text>
           </View>
+          <Pressable
+            onPress={() => onBlockSender(record)}
+            style={styles.blockSenderButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Block ${messageSender(record)} and future messages from this sender`}
+          >
+            <Ionicons name="ban-outline" size={18} color="#B42318" />
+            <Text style={styles.blockSenderText}>Block this sender</Text>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -709,6 +721,28 @@ export default function HistoryScreen() {
           setSelected(null);
         }}
         onDelete={removeRecord}
+        onBlockSender={(detail) => {
+          const sender = messageSender(detail);
+          Alert.alert(
+            'Block this sender?',
+            `Future notifications from ${sender} will be suppressed across NotiCare. This does not delete existing messages from your phone.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Block sender',
+                style: 'destructive',
+                onPress: () => {
+                  void blockSender(sender, detail.sourcePackage)
+                    .then(() => {
+                      setSelected(null);
+                      Alert.alert('Sender blocked', `${sender} will no longer show NotiCare alerts.`);
+                    })
+                    .catch(() => Alert.alert('Unable to block sender', 'Please try again.'));
+                },
+              },
+            ],
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -1005,6 +1039,19 @@ function createStyles(colors: ThemeColors) {
       marginBottom: 7,
     },
     detailValue: { color: colors.textPrimary, fontWeight: '700' },
+    blockSenderButton: {
+      marginTop: 16,
+      minHeight: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#B4231833',
+      backgroundColor: '#FFF0F0',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    blockSenderText: { color: '#B42318', fontWeight: '800' },
     messageBox: {
       backgroundColor: colors.surface,
       borderRadius: 20,

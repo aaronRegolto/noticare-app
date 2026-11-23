@@ -91,10 +91,18 @@ Deno.serve(async (req) => {
   const payment = event.data.attributes.data.attributes;
   const paymentIntentId = payment.payment_intent_id;
   const userId = payment.metadata?.user_id;
+  const reservationId = (payment.metadata as { launch_reservation_id?: string } | undefined)?.launch_reservation_id;
   const days = intervalDays[payment.metadata?.interval ?? ''];
   if (!paymentIntentId || !userId || !days) return new Response('OK', { status: 200 });
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  if (reservationId) {
+    await supabase
+      .from('launch_subscription_reservations')
+      .update({ payment_intent_id: paymentIntentId, purchased_at: new Date().toISOString() })
+      .eq('reservation_id', reservationId)
+      .eq('user_id', userId);
+  }
   const { error } = await supabase.rpc('grant_pro_for_payment', {
     p_payment_intent_id: paymentIntentId,
     p_user_id: userId,

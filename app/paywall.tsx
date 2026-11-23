@@ -91,6 +91,8 @@ const tierCopy = {
 const priceDisplay = {
   monthly: process.env.EXPO_PUBLIC_PAYMONGO_PRICE_MONTHLY ?? '—',
   annual: process.env.EXPO_PUBLIC_PAYMONGO_PRICE_ANNUAL ?? '—',
+  launchMonthly: process.env.EXPO_PUBLIC_LAUNCH_PRICE_MONTHLY ?? '₱49',
+  launchAnnual: process.env.EXPO_PUBLIC_LAUNCH_PRICE_ANNUAL ?? '₱249.75',
 };
 
 export default function PaywallScreen() {
@@ -189,7 +191,10 @@ export default function PaywallScreen() {
                         Monthly
                       </Text>
                       <Text style={[styles.intervalPrice, billingInterval === 'monthly' && styles.intervalTextActive]}>
-                        {priceDisplay.monthly}/mo
+                        {priceDisplay.launchMonthly}/mo
+                      </Text>
+                      <Text style={[styles.intervalText, billingInterval === 'monthly' && styles.intervalTextActive]}>
+                        67% off · first 20 users
                       </Text>
                     </Pressable>
                     <Pressable
@@ -203,7 +208,10 @@ export default function PaywallScreen() {
                         Yearly
                       </Text>
                       <Text style={[styles.intervalPrice, billingInterval === 'annual' && styles.intervalTextActive]}>
-                        {priceDisplay.annual}/yr
+                        {priceDisplay.launchAnnual}/yr
+                      </Text>
+                      <Text style={[styles.intervalText, billingInterval === 'annual' && styles.intervalTextActive]}>
+                        75% off · first 20 users
                       </Text>
                     </Pressable>
                   </View>
@@ -241,7 +249,7 @@ export default function PaywallScreen() {
                       <Text style={styles.buyButtonText}>
                         {generating
                           ? 'Generating QR…'
-                          : `Pay with QR Ph · ${billingInterval === 'annual' ? priceDisplay.annual + '/yr' : priceDisplay.monthly + '/mo'}`}
+                          : `Pay with QR Ph · ${billingInterval === 'annual' ? priceDisplay.launchAnnual + '/yr' : priceDisplay.launchMonthly + '/mo'}`}
                       </Text>
                     </Pressable>
                   )}

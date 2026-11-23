@@ -71,6 +71,7 @@ export async function markMessageFeedback(messageText: string, kind: ManualFeedb
 
 /** Where a report came from: Manual Scan's Report & Block, or a real-time warning's Block & Report. */
 export type ReportSource = 'manual' | 'realtime';
+export type CommunityReportSource = ReportSource | 'all';
 
 export type PhishingVirality = { viralScore: number; reportCount: number; isFirstReporter: boolean };
 
@@ -367,14 +368,17 @@ async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntr
  * score bands are normalized to Safe 0 before they're shown under the current 1–59 Suspicious band.
  */
 export async function getViralPhishingRanking(
-  reportSource: ReportSource,
+  reportSource: CommunityReportSource,
   limit = 20,
 ): Promise<{ entries: ViralPhishingEntry[]; source: 'network' | 'cache' }> {
   if (!isSupabaseConfigured) {
-    return { entries: await fillMissingRiskScores(await readRankingCache(reportSource)), source: 'cache' };
+    const cacheSource = reportSource === 'all' ? 'manual' : reportSource;
+    return { entries: await fillMissingRiskScores(await readRankingCache(cacheSource)), source: 'cache' };
   }
   try {
-    let { data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit, p_source: reportSource });
+    let { data, error } = reportSource === 'all'
+      ? await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit })
+      : await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit, p_source: reportSource });
     if (isMissingSourceParameter(error)) {
       // Older database: reports have no source yet, so its combined ranking is the Manual list.
       if (reportSource === 'realtime') {
@@ -395,11 +399,11 @@ export async function getViralPhishingRanking(
       riskScore: publicRiskScore(row.risk_score),
     }));
     const scored = await fillMissingRiskScores(entries);
-    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource}`, JSON.stringify(scored));
+    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource === 'all' ? 'manual' : reportSource}`, JSON.stringify(scored));
     return { entries: scored, source: 'network' };
   } catch (error) {
     logError('viral-phishing-ranking-load-failed', error);
-    const cached = await readRankingCache(reportSource);
+    const cached = await readRankingCache(reportSource === 'all' ? 'manual' : reportSource);
     // Without a saved copy, surface the failure instead of an empty list that looks like no data.
     if (!cached.length) throw error;
     return { entries: await fillMissingRiskScores(cached), source: 'cache' };

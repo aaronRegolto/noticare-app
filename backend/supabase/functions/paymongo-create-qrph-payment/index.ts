@@ -11,6 +11,7 @@
 // PRICE_MONTHLY_CENTAVOS, PRICE_ANNUAL_CENTAVOS.
 
 import { jsonResponse, paymongoRequest, requireUserId } from '../_shared/paymongo.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 type CreateQrphPaymentBody = { interval: 'monthly' | 'annual' };
 type PaymentIntentResponse = { data: { id: string } };
@@ -31,12 +32,16 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'interval must be "monthly" or "annual"' }, 400);
     }
 
-    const amount = Number(
-      Deno.env.get(body.interval === 'annual' ? 'PRICE_ANNUAL_CENTAVOS' : 'PRICE_MONTHLY_CENTAVOS'),
-    );
-    if (!amount || amount < 100) {
-      return jsonResponse({ error: `${body.interval} price is not configured` }, 500);
-    }
+    const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const reservationId = crypto.randomUUID();
+    const { data: amountRows, error: reservationError } = await service.rpc('reserve_launch_subscription', {
+      p_reservation_id: reservationId,
+      p_user_id: userId,
+      p_interval: body.interval,
+    });
+    if (reservationError) throw reservationError;
+    const amount = typeof amountRows === 'number' ? amountRows : Number(amountRows);
+    if (!amount || amount < 100) throw new Error('Unable to determine the subscription price.');
 
     const intent = await paymongoRequest<PaymentIntentResponse>('POST', '/payment_intents', {
       amount,
@@ -44,7 +49,7 @@ Deno.serve(async (req) => {
       payment_method_allowed: ['qrph'],
       capture_type: 'automatic',
       description: `NotiCare Pro (${body.interval})`,
-      metadata: { user_id: userId, interval: body.interval },
+      metadata: { user_id: userId, interval: body.interval, launch_reservation_id: reservationId },
     });
 
     const paymentMethod = await paymongoRequest<{ data: { id: string } }>('POST', '/payment_methods', {

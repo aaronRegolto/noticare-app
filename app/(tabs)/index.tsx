@@ -12,7 +12,12 @@ import { SpotlightTour, type TourStep } from '@/src/components/spotlight-tour';
 import { DASHBOARD_TOUR_KEY, useFirstVisitTour } from '@/src/hooks/use-first-visit-tour';
 import { messagesTabRef, setActiveTourTab } from '@/src/navigation/tabBarRefs';
 import { useSubscription } from '@/src/providers/SubscriptionProvider';
-import { getCommunityStats, summarizeCommunity, type CommunityPoint } from '@/src/services/community';
+import {
+  getCommunityStats,
+  normalizedCommunityPercentages,
+  summarizeCommunity,
+  type CommunityPoint,
+} from '@/src/services/community';
 import {
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
@@ -161,10 +166,6 @@ function statusDetails(status: MonitoringStatus | null, colors: ThemeColors) {
         active: false,
       };
   }
-}
-
-function percentage(value: number, total: number) {
-  return total ? `${Math.round((value / total) * 100)}%` : '0%';
 }
 
 function Metric({
@@ -344,6 +345,24 @@ export default function DashboardScreen() {
     }, [refreshDashboard]),
   );
 
+  const changeScanningConfirmed = useCallback(
+    async (enabled: boolean) => {
+      setSavingSwitch(true);
+      try {
+        const next = await setScanningEnabled(enabled);
+        setMonitoring(next);
+        if (enabled && next.status !== 'active')
+          Alert.alert('Scanning could not turn on', statusDetails(next, colors).description);
+      } catch (error) {
+        logError('scan-switch-failed', error);
+        Alert.alert('Unable to change scanning', 'Check Android’s notification settings and try again.');
+      } finally {
+        setSavingSwitch(false);
+      }
+    },
+    [colors],
+  );
+
   const changeScanning = useCallback(
     async (enabled: boolean) => {
       if (!isNativeMonitoringAvailable()) {
@@ -377,24 +396,28 @@ export default function DashboardScreen() {
         );
         return;
       }
-      setSavingSwitch(true);
-      try {
-        const next = await setScanningEnabled(enabled);
-        setMonitoring(next);
-        if (enabled && next.status !== 'active')
-          Alert.alert('Scanning could not turn on', statusDetails(next, colors).description);
-      } catch (error) {
-        logError('scan-switch-failed', error);
-        Alert.alert('Unable to change scanning', 'Check Android’s notification settings and try again.');
-      } finally {
-        setSavingSwitch(false);
+      if (!enabled) {
+        Alert.alert(
+          'Turn off Real-Time Scanning?',
+          'With Real-Time Scanning off, NotiCare will no longer check new SMS or Messenger notifications and you may miss phishing, scam, or spam warnings. Existing Messages history stays on this device.',
+          [
+            { text: 'Keep it on', style: 'cancel' },
+            {
+              text: 'Turn off',
+              style: 'destructive',
+              onPress: () => void changeScanningConfirmed(false),
+            },
+          ],
+        );
+        return;
       }
+      await changeScanningConfirmed(true);
     },
-    [monitoring, colors],
+    [monitoring?.notificationAccessGranted, changeScanningConfirmed],
   );
 
   const summary = useMemo(() => summarizeCommunity(community.points), [community.points]);
-  const total = summary.safe + summary.suspicious + summary.dangerous;
+  const percentages = normalizedCommunityPercentages([summary.safe, summary.suspicious, summary.dangerous]);
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -460,6 +483,15 @@ export default function DashboardScreen() {
           <View style={styles.brandCopy}>
             <Text style={styles.brand}>NotiCare</Text>
           </View>
+          <Pressable
+            onPress={() => router.push('/community' as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Open community notifications"
+            style={styles.menuButton}
+            hitSlop={10}
+          >
+            <Ionicons name="notifications-outline" color="#fff" size={25} />
+          </Pressable>
           <Pressable
             ref={settingsButtonRef}
             onPress={() => router.push('/settings')}
@@ -562,19 +594,19 @@ export default function DashboardScreen() {
                       <Ionicons name="shield-outline" size={18} color={colors.danger} />
                       <Text style={styles.summaryName}>Dangerous</Text>
                       <Text style={[styles.summaryValue, { color: colors.danger }]}>{summary.dangerous}</Text>
-                      <Text style={styles.summaryPercent}>{percentage(summary.dangerous, total)}</Text>
+                      <Text style={styles.summaryPercent}>{percentages[2]}%</Text>
                     </View>
                     <View style={[styles.summaryCard, styles.warningSummary]}>
                       <Ionicons name="warning-outline" size={18} color={colors.warning} />
                       <Text style={styles.summaryName}>Suspicious</Text>
                       <Text style={[styles.summaryValue, { color: colors.warning }]}>{summary.suspicious}</Text>
-                      <Text style={styles.summaryPercent}>{percentage(summary.suspicious, total)}</Text>
+                      <Text style={styles.summaryPercent}>{percentages[1]}%</Text>
                     </View>
                     <View style={[styles.summaryCard, styles.safeSummary]}>
                       <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
                       <Text style={styles.summaryName}>Safe</Text>
                       <Text style={[styles.summaryValue, { color: colors.success }]}>{summary.safe}</Text>
-                      <Text style={styles.summaryPercent}>{percentage(summary.safe, total)}</Text>
+                      <Text style={styles.summaryPercent}>{percentages[0]}%</Text>
                     </View>
                   </View>
                 </>

@@ -29,6 +29,7 @@ import __NOTICARE_PACKAGE__.bridge.NotificationSource
 import __NOTICARE_PACKAGE__.bridge.WarningCopy
 import __NOTICARE_PACKAGE__.bridge.NotiCareNotifications
 import __NOTICARE_PACKAGE__.bridge.RealtimeScanPreferences
+import __NOTICARE_PACKAGE__.bridge.BlockedSenderStore
 import __NOTICARE_PACKAGE__.bridge.ScanRuntime
 import __NOTICARE_PACKAGE__.bridge.SmishingEvaluator
 import __NOTICARE_PACKAGE__.bridge.SmsNotificationListener
@@ -213,6 +214,50 @@ class NotificationListenerModule(
         .onFailure { error ->
           promise.reject("notification_source_preference_failed", "Unable to save this app's scanning preference.", error)
         }
+    }
+  }
+
+  @ReactMethod
+  fun blockSender(sender: String, sourcePackage: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val ownerScope = RealtimeScanPreferences.historyOwnerScope(appContext) ?: return@runCatching false
+        BlockedSenderStore.block(appContext, ownerScope, sender, sourcePackage)
+        true
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("block_sender_failed", "Unable to block this sender.", error) }
+    }
+  }
+
+  @ReactMethod
+  fun unblockSender(senderHash: String, promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val ownerScope = RealtimeScanPreferences.historyOwnerScope(appContext) ?: return@runCatching false
+        BlockedSenderStore.unblock(appContext, ownerScope, senderHash)
+        true
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("unblock_sender_failed", "Unable to unblock this sender.", error) }
+    }
+  }
+
+  @ReactMethod
+  fun getBlockedSenders(promise: Promise) {
+    bridgeScope.launch {
+      runCatching {
+        val ownerScope = RealtimeScanPreferences.historyOwnerScope(appContext)
+        val entries = ownerScope?.let { BlockedSenderStore.list(appContext, it) } ?: emptyList()
+        Arguments.createArray().apply {
+          entries.forEach { entry ->
+            val parts = entry.split('|', limit = 2)
+            if (parts.size == 2) pushMap(Arguments.createMap().apply {
+              putString("hash", parts[0])
+              putString("sender", parts[1])
+            })
+          }
+        }
+      }.onSuccess(promise::resolve)
+        .onFailure { error -> promise.reject("blocked_senders_failed", "Unable to read the block list.", error) }
     }
   }
 

@@ -132,6 +132,12 @@ class SmsNotificationListener : NotificationListenerService() {
       Log.d(logTag, "drop: no sender extracted (likely a non-message status notification)")
       return
     }
+    if (BlockedSenderStore.contains(applicationContext, ownerScope, sender, sourcePackage)) {
+      cancelNotification(sbn.key)
+      RealtimeScanPreferences.setLastContentStatus(applicationContext, "processed")
+      Log.d(logTag, "drop: sender is blocked")
+      return
+    }
     // A repeat of a message the user already blocked: hide it and show a quiet banner instead of
     // a second full-screen warning. It isn't counted against the free quota, uploaded, reported,
     // or saved again, so it never shows up twice anywhere. It is re-scored on the phone only, so

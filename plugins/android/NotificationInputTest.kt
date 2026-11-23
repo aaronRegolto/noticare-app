@@ -42,9 +42,23 @@ class NotificationInputTest {
     assertNull(NotificationInput.select(true, "Juan nag-react sa iyong mensahe", null, null, emptyList(), "messenger"))
     assertNull(NotificationInput.select(true, "Lia commented on your photo", null, null, emptyList(), "messenger"))
     assertNull(NotificationInput.select(true, "Someone tagged you in a story", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Rico mentioned Cash in the group chat", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Ana mentioned Pin in a group chat", null, null, emptyList(), "messenger"))
+    assertNull(NotificationInput.select(true, "Click here to see the group photo", null, null, emptyList(), "messenger"))
     assertEquals(
-      "Please send the OTP now",
-      NotificationInput.select(true, "Please send the OTP now", null, null, emptyList(), "messenger"),
+      "Ana mentioned you: $phishing",
+      NotificationInput.select(true, "Ana mentioned you: $phishing", null, null, emptyList(), "messenger"),
+    )
+    assertEquals(
+      "Your account is suspended. Verify now at https://bit.ly/check",
+      NotificationInput.select(
+        true,
+        "Your account is suspended. Verify now at https://bit.ly/check",
+        null,
+        null,
+        emptyList(),
+        "messenger",
+      ),
     )
   }
 

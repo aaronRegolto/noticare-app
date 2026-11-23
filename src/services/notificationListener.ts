@@ -15,6 +15,7 @@ export type MonitoredApp = {
   installed: boolean;
   enabled: boolean;
 };
+export type BlockedSender = { hash: string; sender: string };
 
 export type ThreatReason = {
   code: string;
@@ -148,6 +149,9 @@ type NotificationListenerNativeModule = {
   getMonitoringStatus(): Promise<MonitoringStatus>;
   setScanningEnabled(enabled: boolean): Promise<MonitoringStatus>;
   setMonitoredAppEnabled?(sourceId: MonitoredAppId, enabled: boolean): Promise<MonitoringStatus>;
+  blockSender?(sender: string, sourcePackage: string): Promise<boolean>;
+  unblockSender?(senderHash: string): Promise<boolean>;
+  getBlockedSenders?(): Promise<BlockedSender[]>;
   setFullScreenWarnings(enabled: boolean): Promise<MonitoringStatus>;
   setHistoryOwner(ownerId: string | null): Promise<MonitoringStatus>;
   setSubscriptionTier(tier: SubscriptionTier): Promise<MonitoringStatus>;
@@ -260,6 +264,24 @@ export function setMonitoredAppEnabled(sourceId: MonitoredAppId, enabled: boolea
     return Promise.reject(new Error('Per-app notification scanning requires a newer Android build.'));
   }
   return module.setMonitoredAppEnabled(sourceId, enabled);
+}
+
+export async function blockSender(sender: string, sourcePackage: string): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  if (!module.blockSender) throw new Error('Sender blocking requires a newer Android build.');
+  return module.blockSender(sender, sourcePackage);
+}
+
+export async function unblockSender(senderHash: string): Promise<boolean> {
+  const module = requireAndroidNativeModule();
+  if (!module.unblockSender) throw new Error('Sender blocking requires a newer Android build.');
+  return module.unblockSender(senderHash);
+}
+
+export async function getBlockedSenders(): Promise<BlockedSender[]> {
+  const module = requireAndroidNativeModule();
+  if (!module.getBlockedSenders) return [];
+  return module.getBlockedSenders();
 }
 
 /** Chooses an immersive warning when possible; Android may still use a banner as a platform fallback. */

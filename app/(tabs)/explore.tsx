@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
-import type * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -204,6 +203,17 @@ function ResultCard({
         </View>
       ) : (
         <View style={styles.feedbackRow}>
+          {result.level === 'safe' ? (
+            <Pressable
+              disabled={feedbackState === 'sending'}
+              onPress={() => onFeedback('safe')}
+              style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Label this message as spam"
+            >
+              <Text style={styles.feedbackText}>Label as spam</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             disabled={feedbackState === 'sending'}
             onPress={() => onFeedback('safe')}
