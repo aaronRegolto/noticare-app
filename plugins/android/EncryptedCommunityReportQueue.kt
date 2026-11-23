@@ -35,6 +35,8 @@ object EncryptedCommunityReportQueue {
     val id: String,
     val messageText: String,
     val sampleSender: String?,
+    val messageReceivedAt: Long?,
+    val detectedIn: String,
     val indicatorCodes: List<String>,
     val ruleVersion: String,
     /** The detector's 0-100 risk score for this message; null for reports queued before it was stored. */
@@ -49,6 +51,8 @@ object EncryptedCommunityReportQueue {
     context: Context,
     messageText: String,
     sampleSender: String?,
+    messageReceivedAt: Long?,
+    detectedIn: String,
     indicatorCodes: List<String>,
     ruleVersion: String,
     riskScore: Int,
@@ -60,6 +64,8 @@ object EncryptedCommunityReportQueue {
           id = UUID.randomUUID().toString(),
           messageText = messageText.take(4000),
           sampleSender = sampleSender?.take(120),
+          messageReceivedAt = messageReceivedAt,
+          detectedIn = detectedIn.takeIf { it == "messages" || it == "messenger" } ?: "unknown",
           indicatorCodes = indicatorCodes.distinct().take(32),
           ruleVersion = ruleVersion,
           riskScore = riskScore.coerceIn(0, 100),
@@ -185,6 +191,8 @@ object EncryptedCommunityReportQueue {
     put("id", report.id)
     put("messageText", report.messageText)
     put("sampleSender", report.sampleSender)
+    report.messageReceivedAt?.let { put("messageReceivedAt", it) } ?: put("messageReceivedAt", JSONObject.NULL)
+    put("detectedIn", report.detectedIn)
     put("indicatorCodes", JSONArray(report.indicatorCodes))
     put("ruleVersion", report.ruleVersion)
     report.riskScore?.let { put("riskScore", it) }
@@ -205,6 +213,12 @@ object EncryptedCommunityReportQueue {
       id = id,
       messageText = messageText,
       sampleSender = json.optString("sampleSender").takeIf { it.isNotBlank() },
+      messageReceivedAt = if (json.has("messageReceivedAt") && !json.isNull("messageReceivedAt")) {
+        json.optLong("messageReceivedAt")
+      } else {
+        null
+      },
+      detectedIn = json.optString("detectedIn").takeIf { it == "messages" || it == "messenger" } ?: "unknown",
       indicatorCodes = codes,
       ruleVersion = json.optString("ruleVersion"),
       riskScore = if (json.has("riskScore")) json.optInt("riskScore").coerceIn(0, 100) else null,

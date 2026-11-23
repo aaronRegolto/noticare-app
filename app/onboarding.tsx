@@ -36,7 +36,7 @@ const pages = [
   {
     icon: 'lock-closed-outline' as const,
     title: 'Your privacy comes first',
-    body: 'Your messages, senders, and links stay on this phone. NotiCare only shares anonymous counts, like how many messages were flagged. The one exception is when you tap Block & Report: that message’s text is shared so other NotiCare users can be warned.',
+    body: 'Messages are checked on this phone. When you tap Block & Report, the reported text and detecting app are shared; real-time alerts may also include sender and received-time details for report handling. Other users see a redacted message preview and the detecting app, never sender details. Push notifications never contain message text.',
     note: 'You can turn scanning off, delete your saved History, or read the User Guide anytime from Settings.',
   },
 ];

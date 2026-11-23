@@ -7,3 +7,6 @@ project_id = "noticare"
 # verifies the Paymongo-Signature header itself instead.
 [functions.paymongo-webhook]
 verify_jwt = false
+
+[functions.send-community-report-alert]
+verify_jwt = true

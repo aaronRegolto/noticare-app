@@ -24,6 +24,7 @@ import {
   type LanguagePackStatus,
 } from '@/src/services/messageTranslation';
 import { deleteAccount, isSupabaseConfigured } from '@/src/services/supabase';
+import { disableCommunityNotifications } from '@/src/services/communityPushNotifications';
 import {
   isDefaultBrowser,
   isNativeLinkHandlerAvailable,
@@ -138,7 +139,9 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     if (!isNativeMonitoringAvailable()) return;
-    void getBlockedSenders().then(setBlockedSenders).catch(() => setBlockedSenders([]));
+    void getBlockedSenders()
+      .then(setBlockedSenders)
+      .catch(() => setBlockedSenders([]));
   }, []);
 
   const refreshStatus = useCallback(async () => {
@@ -278,9 +281,12 @@ export default function SettingsScreen() {
             {
               text: 'Turn off',
               style: 'destructive',
-              onPress: () => void setScanningEnabled(false).then(setStatus).catch(() =>
-                Alert.alert('Unable to update scanning', 'Check Android’s notification settings and try again.')
-              ),
+              onPress: () =>
+                void setScanningEnabled(false)
+                  .then(setStatus)
+                  .catch(() =>
+                    Alert.alert('Unable to update scanning', 'Check Android’s notification settings and try again.'),
+                  ),
             },
           ],
         );
@@ -460,6 +466,7 @@ export default function SettingsScreen() {
   const deleteAccountNow = useCallback(async () => {
     setDeleting(true);
     try {
+      await disableCommunityNotifications();
       await deleteAccount();
     } catch (error) {
       setDeleting(false);
@@ -605,30 +612,42 @@ export default function SettingsScreen() {
             </Text>
           )}
           <SettingsSection title="Blocked senders" colors={colors}>
-            {blockedSenders.length ? blockedSenders.map((sender) => (
-              <SettingsItem
-                key={sender.hash}
-                icon="ban-outline"
-                title={sender.sender}
-                subtitle="Future matching messages are suppressed"
-                accessory={
-                  <Pressable
-                    onPress={() => {
-                      Alert.alert('Unblock this sender?', `${sender.sender} will be allowed to show NotiCare alerts again.`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Unblock', onPress: () => void unblockSender(sender.hash).then(async () => setBlockedSenders(await getBlockedSenders())).catch(() => Alert.alert('Unable to unblock', 'Please try again.')) },
-                      ]);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Unblock ${sender.sender}`}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.sourceHelp}>Unblock</Text>
-                  </Pressable>
-                }
-                colors={colors}
-              />
-            )) : (
+            {blockedSenders.length ? (
+              blockedSenders.map((sender) => (
+                <SettingsItem
+                  key={sender.hash}
+                  icon="ban-outline"
+                  title={sender.sender}
+                  subtitle="Future matching messages are suppressed"
+                  accessory={
+                    <Pressable
+                      onPress={() => {
+                        Alert.alert(
+                          'Unblock this sender?',
+                          `${sender.sender} will be allowed to show NotiCare alerts again.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Unblock',
+                              onPress: () =>
+                                void unblockSender(sender.hash)
+                                  .then(async () => setBlockedSenders(await getBlockedSenders()))
+                                  .catch(() => Alert.alert('Unable to unblock', 'Please try again.')),
+                            },
+                          ],
+                        );
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Unblock ${sender.sender}`}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.sourceHelp}>Unblock</Text>
+                    </Pressable>
+                  }
+                  colors={colors}
+                />
+              ))
+            ) : (
               <Text style={styles.sourceHelp}>No senders are blocked. Block a sender from a Messages alert.</Text>
             )}
           </SettingsSection>

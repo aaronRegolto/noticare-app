@@ -522,6 +522,9 @@ class NotificationListenerModule(
               putString("id", report.id)
               putString("messageText", report.messageText)
               putNullableString("sampleSender", report.sampleSender)
+              report.messageReceivedAt?.let { putDouble("messageReceivedAt", it.toDouble()) }
+                ?: putNull("messageReceivedAt")
+              putString("detectedIn", report.detectedIn)
               putArray("indicatorCodes", Arguments.createArray().apply { report.indicatorCodes.forEach(::pushString) })
               putString("ruleVersion", report.ruleVersion)
               report.riskScore?.let { putInt("riskScore", it) } ?: putNull("riskScore")

@@ -10,6 +10,7 @@ import {
   verifyOtp,
 } from '@/src/services/supabase';
 import { clearCurrentDeviceRegistration } from '@/src/services/eventSync';
+import { disableCommunityNotifications } from '@/src/services/communityPushNotifications';
 import { isNativeMonitoringAvailable, setHistoryOwner } from '@/src/services/notificationListener';
 import { logError } from '@/src/services/logger';
 import {
@@ -129,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPendingPhone('');
       return;
     }
+    await disableCommunityNotifications();
     // Device registrations are user-scoped. Remove this cached mapping before
     // ending the session so another account on the same install re-registers.
     await clearCurrentDeviceRegistration().catch(() => undefined);

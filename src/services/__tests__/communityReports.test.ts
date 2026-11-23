@@ -1,10 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ThreatResult } from '@/src/features/detection';
 import { evaluateRules } from '@/src/features/detection/evaluator';
 import {
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
+  getCommunityReportFeed,
   getViralPhishingRanking,
+  getMessageFeedbackRecord,
+  markMessageFeedback,
   reportAndBlockMessage,
+  ViralPhishingRankingUnavailableError,
 } from '@/src/services/communityReports';
 import {
   ackCommunityReports,
@@ -24,7 +29,7 @@ jest.mock('expo-crypto', () => ({
 }));
 jest.mock('@/src/services/supabase', () => ({
   isSupabaseConfigured: true,
-  supabase: { auth: { getSession: jest.fn() }, rpc: jest.fn() },
+  supabase: { auth: { getSession: jest.fn() }, rpc: jest.fn(), functions: { invoke: jest.fn() } },
 }));
 jest.mock('@/src/services/eventSync', () => ({
   activeUserId: jest.fn(async () => 'user-a'),
@@ -41,9 +46,17 @@ jest.mock('@/src/services/logger', () => ({ logError: jest.fn(), logDiagnostic: 
 
 // A Safe corpus message whose raw rule score is 12 (see evaluator.test.ts).
 const SAFE_TEXT = 'Click here to read your neighborhood bulletin.';
+const DANGEROUS_RESULT: ThreatResult = {
+  level: 'dangerous',
+  score: 85,
+  reasons: [{ code: 'urgency-pressure', label: 'Urgency', description: 'Urgent request', weight: 30 }],
+  urls: [],
+  ruleVersion: 'test',
+};
 const QUEUE_KEY = 'noticare.phishing-report-queue.v1.user-a';
 const storage = new Map<string, string>();
 const rpc = supabase.rpc as jest.Mock;
+const invoke = supabase.functions.invoke as jest.Mock;
 
 const reportRow = { viral_score: 1, report_count: 1, is_first_reporter: true };
 const sentRiskScores = () =>
@@ -52,6 +65,7 @@ const sentRiskScores = () =>
 beforeEach(() => {
   storage.clear();
   rpc.mockReset();
+  invoke.mockReset().mockResolvedValue({ data: { sent: true }, error: null });
   rpc.mockResolvedValue({ data: [reportRow], error: null });
   (supabase.auth.getSession as jest.Mock).mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
   (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key) => storage.get(key) ?? null);
@@ -61,17 +75,101 @@ beforeEach(() => {
   (isNativeMonitoringAvailable as jest.Mock).mockReturnValue(false);
 });
 
-test('reporting a Safe result stores and sends risk score 0, even from an unfinalized result', async () => {
-  const raw = evaluateRules(SAFE_TEXT);
-  expect(raw.score).toBe(0);
-  rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
-  await reportAndBlockMessage(SAFE_TEXT, null, raw);
-  expect(sentRiskScores()).toEqual([0]);
-  const queued = JSON.parse(storage.get(QUEUE_KEY) ?? '[]');
-  expect(queued.map((report: { riskScore: number }) => report.riskScore)).toEqual([0]);
+test('a spam label is stored distinctly from safe feedback and remains local', async () => {
+  await markMessageFeedback(SAFE_TEXT, 'spam');
+  expect(await getMessageFeedbackRecord(SAFE_TEXT)).toBe('spam');
+  expect(rpc).not.toHaveBeenCalled();
 });
 
-test('reports queued by an older rule set with a Safe 1–29 score are sent and re-queued as 0', async () => {
+test('community feed returns only redacted message previews and detection source', async () => {
+  rpc.mockResolvedValueOnce({
+    data: [
+      {
+        report_event_id: 'event-1',
+        message_preview: 'Your account needs verification at [link].',
+        detected_in: 'messages',
+        sample_sender: 'Sender',
+        message_received_at: '2026-11-24T10:00:00.000Z',
+      },
+    ],
+    error: null,
+  });
+  expect(await getCommunityReportFeed()).toEqual([
+    {
+      reportEventId: 'event-1',
+      messagePreview: 'Your account needs verification at [link].',
+      detectedIn: 'messages',
+    },
+  ]);
+  expect(rpc).toHaveBeenCalledWith('get_community_report_message_feed', { p_limit: 100, p_offset: 0 });
+});
+
+test('viral phishing ranking returns message previews and detection sources without sender metadata', async () => {
+  rpc.mockResolvedValueOnce({
+    data: [
+      {
+        report_id: 'report-1',
+        message_preview: 'Your account needs verification at [link].',
+        detected_in: ['messages', 'messenger'],
+        report_count: 4,
+        sample_sender: 'Sender',
+        message_received_at: '2026-11-24T10:00:00.000Z',
+        message_text: 'private phishing text',
+      },
+    ],
+    error: null,
+  });
+  expect(await getViralPhishingRanking('realtime')).toEqual([
+    {
+      reportId: 'report-1',
+      messagePreview: 'Your account needs verification at [link].',
+      detectedIn: ['messages', 'messenger'],
+      reportCount: 4,
+    },
+  ]);
+  expect(rpc).toHaveBeenCalledWith('get_viral_phishing_message_ranking', { p_limit: 10, p_source: 'realtime' });
+});
+
+test('viral phishing ranking does not fall back to an older RPC that exposes sender metadata', async () => {
+  rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
+  await expect(getViralPhishingRanking('manual')).rejects.toBeInstanceOf(ViralPhishingRankingUnavailableError);
+  expect(rpc).toHaveBeenCalledTimes(1);
+  expect(rpc).toHaveBeenCalledWith('get_viral_phishing_message_ranking', { p_limit: 10, p_source: 'manual' });
+});
+
+test('a synced report dispatches a push using its event ID, not message content', async () => {
+  rpc.mockResolvedValueOnce({
+    data: [{ ...reportRow, notification_event_id: 'event-1' }],
+    error: null,
+  });
+  await reportAndBlockMessage('private reported text', null, DANGEROUS_RESULT);
+  expect(invoke).toHaveBeenCalledWith('send-community-report-alert', { body: { eventId: 'event-1' } });
+  expect(JSON.stringify(invoke.mock.calls)).not.toContain('private reported text');
+  expect(rpc.mock.calls[0][1].p_message_received_at).toBeNull();
+  expect(rpc.mock.calls[0][1].p_detected_in).toBe('manual');
+});
+
+test('report sync retries without the detected-app argument on older databases', async () => {
+  rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
+  rpc.mockResolvedValueOnce({ data: [reportRow], error: null });
+  await reportAndBlockMessage('private reported text', null, DANGEROUS_RESULT);
+  expect(rpc).toHaveBeenCalledTimes(2);
+  expect(rpc.mock.calls[0][1].p_detected_in).toBe('manual');
+  expect(rpc.mock.calls[1][1]).not.toHaveProperty('p_detected_in');
+  expect(rpc.mock.calls[1][1].p_message_received_at).toBeNull();
+});
+
+test('Safe results cannot be uploaded through the community report path', async () => {
+  const raw = evaluateRules(SAFE_TEXT);
+  expect(raw.score).toBe(0);
+  await expect(reportAndBlockMessage(SAFE_TEXT, null, raw)).rejects.toThrow(
+    'Safe messages cannot be submitted as community reports.',
+  );
+  expect(rpc).not.toHaveBeenCalled();
+  expect(storage.has(QUEUE_KEY)).toBe(false);
+});
+
+test('legacy Safe reports are discarded while non-Safe queued reports still retry', async () => {
   const queued = (id: string, riskScore: number | null | undefined) => ({
     id,
     messageText: `message ${id}`,
@@ -87,18 +185,20 @@ test('reports queued by an older rule set with a Safe 1–29 score are sent and 
     JSON.stringify([queued('a', 18), queued('b', 29), queued('c', 45), queued('d', null), queued('e', undefined)]),
   );
   rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
-  expect(await flushQueuedPhishingReports()).toEqual({ synced: 4, pending: 1 });
-  expect(sentRiskScores()).toEqual([0, 0, 45, null, null]);
+  expect(await flushQueuedPhishingReports()).toEqual({ synced: 2, pending: 1 });
+  expect(sentRiskScores()).toEqual([45, null, null]);
   const requeued = JSON.parse(storage.get(QUEUE_KEY) ?? '[]');
-  expect(requeued).toEqual([{ ...queued('a', 0), attempts: 1 }]);
+  expect(requeued).toEqual([{ ...queued('c', 45), attempts: 1 }]);
 });
 
-test('native Block & Report taps from an older rule set with a Safe 1–29 score are sent as 0', async () => {
+test('legacy Safe native reports are discarded while Dangerous alerts retain receive time', async () => {
   (isNativeMonitoringAvailable as jest.Mock).mockReturnValue(true);
   const pending = (id: string, riskScore: number | null) => ({
     id,
     messageText: `native ${id}`,
     sampleSender: null,
+    messageReceivedAt: 1795521600000,
+    detectedIn: 'messages',
     indicatorCodes: [],
     ruleVersion: '2026.10.25',
     riskScore,
@@ -106,50 +206,8 @@ test('native Block & Report taps from an older rule set with a Safe 1–29 score
   });
   (getPendingCommunityReports as jest.Mock).mockResolvedValue([pending('safe', 12), pending('danger', 85)]);
   (ackCommunityReports as jest.Mock).mockResolvedValue(2);
-  expect(await flushNativeCommunityReports()).toEqual({ synced: 2, pending: 0 });
-  expect(sentRiskScores()).toEqual([0, 85]);
-});
-
-const rankingRow = (id: string, messageText: string, riskScore: number | null) => ({
-  report_id: id,
-  message_text: messageText,
-  sample_sender: null,
-  viral_score: 10,
-  report_count: 2,
-  first_reported_at: '2026-10-01T00:00:00.000Z',
-  last_reported_at: '2026-10-02T00:00:00.000Z',
-  risk_score: riskScore,
-});
-
-test('ranking rows preserve Suspicious 1–59 scores and cache them unchanged', async () => {
-  rpc.mockResolvedValueOnce({
-    data: [rankingRow('a', 'old safe report', 12), rankingRow('b', 'scam', 75), rankingRow('c', SAFE_TEXT, null)],
-    error: null,
-  });
-  const { entries, source } = await getViralPhishingRanking('manual');
-  expect(source).toBe('network');
-  expect(entries.map((entry) => entry.riskScore)).toEqual([12, 75, 0]);
-  const cached = JSON.parse(storage.get('noticare.viral-phishing-ranking.v3.manual') ?? '[]');
-  expect(cached.map((entry: { riskScore: number }) => entry.riskScore)).toEqual([12, 75, 0]);
-});
-
-test('a cached ranking saved by an older build reads legacy Safe 1–29 scores as 0', async () => {
-  const cachedEntry = (reportId: string, riskScore: number | null) => ({
-    reportId,
-    messageText: `cached ${reportId}`,
-    sampleSender: null,
-    viralScore: 10,
-    reportCount: 2,
-    firstReportedAt: '2026-10-01T00:00:00.000Z',
-    lastReportedAt: '2026-10-02T00:00:00.000Z',
-    riskScore,
-  });
-  storage.set(
-    'noticare.viral-phishing-ranking.v1',
-    JSON.stringify([cachedEntry('a', 20), cachedEntry('b', 70), cachedEntry('c', 0)]),
-  );
-  rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
-  const { entries, source } = await getViralPhishingRanking('manual');
-  expect(source).toBe('cache');
-  expect(entries.map((entry) => entry.riskScore)).toEqual([0, 70, 0]);
+  expect(await flushNativeCommunityReports()).toEqual({ synced: 1, pending: 0 });
+  expect(sentRiskScores()).toEqual([85]);
+  expect(rpc.mock.calls[0][1].p_message_received_at).toBe(new Date(1795521600000).toISOString());
+  expect(rpc.mock.calls[0][1].p_detected_in).toBe('messages');
 });

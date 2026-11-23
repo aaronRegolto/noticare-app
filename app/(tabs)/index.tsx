@@ -19,12 +19,14 @@ import {
   type CommunityPoint,
 } from '@/src/services/community';
 import {
+  flushPendingCommunityNotifications,
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
   getViralPhishingRanking,
-  RankingUnavailableError,
+  type CommunityDetectedIn,
   type ReportSource,
   type ViralPhishingEntry,
+  ViralPhishingRankingUnavailableError,
 } from '@/src/services/communityReports';
 import { flushNativeTelemetry, flushQueuedThreatEvents } from '@/src/services/eventSync';
 import { logError } from '@/src/services/logger';
@@ -49,76 +51,21 @@ type CommunityState = {
 
 type ViralState = {
   entries: ViralPhishingEntry[];
-  source: 'network' | 'cache' | null;
   loading: boolean;
   error: string | null;
-  /** An expected, non-retryable state (for example, the database update isn't applied yet). */
-  notice?: string | null;
 };
 
-function timeAgo(iso: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
-function ViralEntryRow({
-  entry,
-  rank,
-  first = false,
-  colors,
-}: {
-  entry: ViralPhishingEntry;
-  rank: number;
-  first?: boolean;
-  colors: ThemeColors;
-}) {
-  const styles = useThemedStyles(colors);
-  return (
-    <View style={[styles.viralRow, first && styles.viralRowFirst]}>
-      <View style={styles.viralRank}>
-        <Text style={styles.viralRankText}>#{rank}</Text>
-      </View>
-      <View style={styles.flex}>
-        <Text numberOfLines={2} style={styles.viralMessage}>
-          {entry.messageText}
-        </Text>
-        <View style={styles.viralMetaRow}>
-          <Text style={styles.viralMeta}>
-            {entry.reportCount} {entry.reportCount === 1 ? 'report' : 'reports'} · {timeAgo(entry.lastReportedAt)}
-          </Text>
-        </View>
-      </View>
-      <View
-        style={styles.viralScoreBox}
-        accessibilityLabel={
-          entry.riskScore === null ? 'Risk score not recorded' : `Risk score ${entry.riskScore} out of 100`
-        }
-      >
-        {entry.riskScore === null ? (
-          <Text style={styles.viralScoreMissing}>—</Text>
-        ) : (
-          <>
-            <Text
-              style={[
-                styles.viralScoreValue,
-                {
-                  color:
-                    entry.riskScore >= 60 ? colors.danger : entry.riskScore >= 1 ? colors.warning : colors.success,
-                },
-              ]}
-            >
-              {entry.riskScore}
-            </Text>
-            <Text style={styles.viralScoreMax}>/100</Text>
-          </>
-        )}
-      </View>
-    </View>
-  );
+function detectedInLabel(source: CommunityDetectedIn) {
+  switch (source) {
+    case 'manual':
+      return 'Manual Scan';
+    case 'messages':
+      return 'Messages';
+    case 'messenger':
+      return 'Messenger';
+    case 'unknown':
+      return 'Unknown app';
+  }
 }
 
 function statusDetails(status: MonitoringStatus | null, colors: ThemeColors) {
@@ -211,9 +158,10 @@ export default function DashboardScreen() {
   const communityCache = useRef(new Map<CommunityRange, Pick<CommunityState, 'points' | 'source'>>());
   const communityRequest = useRef(0);
   const [community, setCommunity] = useState<CommunityState>({ points: [], source: null, loading: true, error: null });
-  const [viral, setViral] = useState<ViralState>({ entries: [], source: null, loading: true, error: null });
+  const [viral, setViral] = useState<ViralState>({ entries: [], loading: true, error: null });
   const [viralSource, setViralSource] = useState<ReportSource>('manual');
   const viralSourceRef = useRef<ReportSource>('manual');
+  const viralRequest = useRef(0);
   const tour = useFirstVisitTour(DASHBOARD_TOUR_KEY);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -288,48 +236,40 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  const refreshViralRanking = useCallback(async (reportSource: ReportSource = viralSourceRef.current) => {
+  const refreshViralRanking = useCallback(async (source: ReportSource) => {
+    const request = ++viralRequest.current;
     setViral((current) => ({ ...current, loading: true, error: null }));
     try {
-      const { entries, source } = await getViralPhishingRanking(reportSource, 10);
-      // Ignore a slower response for a tab the user has already switched away from.
-      if (reportSource !== viralSourceRef.current) return;
-      setViral({ entries, source, loading: false, error: null });
+      const entries = await getViralPhishingRanking(source, 10);
+      if (request !== viralRequest.current) return;
+      setViral({ entries, loading: false, error: null });
     } catch (error) {
-      logError('viral-ranking-load-failed', error);
-      if (reportSource !== viralSourceRef.current) return;
-      if (error instanceof RankingUnavailableError) {
-        setViral({ entries: [], source: null, loading: false, error: null, notice: error.message });
-        return;
-      }
+      logError('viral-phishing-ranking-load-failed', error);
+      if (request !== viralRequest.current) return;
       setViral((current) => ({
         ...current,
         loading: false,
-        error: 'Unable to load the most-reported phishing messages.',
+        error:
+          error instanceof ViralPhishingRankingUnavailableError
+            ? error.message
+            : 'Unable to load the most-reported phishing reports.',
       }));
     }
   }, []);
-
-  /**
-   * Uploads queued reports first (real-time Block & Report taps wait in the native queue until the
-   * app runs), then loads the ranking, so a fresh report is in the list right away. The ranking
-   * RPC is Pro-gated server-side, so Free skips it instead of erroring on every visit.
-   */
-  const syncReportsAndRanking = useCallback(
-    (reportSource?: ReportSource) =>
-      Promise.allSettled([flushQueuedPhishingReports(), flushNativeCommunityReports()]).then(() => {
-        if (subscriptionTier === 'pro') void refreshViralRanking(reportSource);
-      }),
-    [refreshViralRanking, subscriptionTier],
-  );
 
   const refreshDashboard = useCallback(() => {
     void refreshMonitoringAndHistory().catch((error) => logError('dashboard-native-status-failed', error));
     void refreshCommunity(rangeRef.current);
     void flushQueuedThreatEvents();
     void flushNativeTelemetry();
-    void syncReportsAndRanking();
-  }, [refreshCommunity, refreshMonitoringAndHistory, syncReportsAndRanking]);
+    void Promise.allSettled([
+      flushQueuedPhishingReports(),
+      flushNativeCommunityReports(),
+      flushPendingCommunityNotifications(),
+    ]).then(() => {
+      if (subscriptionTier === 'pro') void refreshViralRanking(viralSourceRef.current);
+    });
+  }, [refreshCommunity, refreshMonitoringAndHistory, refreshViralRanking, subscriptionTier]);
 
   useFocusEffect(
     useCallback(() => {
@@ -633,56 +573,14 @@ export default function DashboardScreen() {
           <View style={styles.viralCard}>
             <View style={styles.matrixHeader}>
               <Ionicons name="flame-outline" size={22} color={colors.danger} />
-              <Text style={styles.matrixTitle}>Most Reported Phishing Messages</Text>
-              <Pressable
-                onPress={() =>
-                  Alert.alert(
-                    'Most reported phishing messages',
-                    'When someone reports a dangerous message, its exact text is shared here so other NotiCare users can recognize it.\n\nManual scans: reported with Report & Block after a Manual Scan.\nReal-time: reported with Block & Report on a real-time warning.\n\nThe score on the right is the risk score NotiCare gave the message (the highest from any report). Messages reported by more people rank higher.',
-                  )
-                }
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Explain the viral phishing ranking"
-              >
-                <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-              </Pressable>
+              <Text style={styles.matrixTitle}>Viral Phishing</Text>
             </View>
             <View style={styles.matrixBody}>
-              {subscriptionTier === 'pro' ? (
-                <View style={styles.viralTabs} accessibilityRole="tablist">
-                  {(
-                    [
-                      ['manual', 'Manual scans', 'scan-outline'],
-                      ['realtime', 'Real-time', 'flash-outline'],
-                    ] as const
-                  ).map(([key, label, icon]) => {
-                    const active = viralSource === key;
-                    return (
-                      <Pressable
-                        key={key}
-                        onPress={() => {
-                          if (active) return;
-                          viralSourceRef.current = key;
-                          setViralSource(key);
-                          void syncReportsAndRanking(key);
-                        }}
-                        style={[styles.viralTab, active && styles.viralTabActive]}
-                        accessibilityRole="tab"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Ionicons name={icon} size={14} color={active ? colors.textPrimary : colors.textSecondary} />
-                        <Text style={[styles.viralTabText, active && styles.viralTabTextActive]}>{label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
               {subscriptionTier !== 'pro' ? (
                 <View>
                   <Text style={styles.muted}>
-                    Viral phishing ranking is a Pro feature. Upgrade to see which scam messages are spreading most
-                    widely. Reporting phishing with Block & Report is free for everyone.
+                    Viral phishing rankings are a Pro feature. See reported message previews and which app detected
+                    them.
                   </Text>
                   <Pressable
                     onPress={() => router.push('/paywall')}
@@ -692,45 +590,93 @@ export default function DashboardScreen() {
                     <Text style={styles.retryText}>Upgrade to Pro</Text>
                   </Pressable>
                 </View>
-              ) : viral.loading ? (
-                <Text style={styles.muted}>Loading reported messages…</Text>
-              ) : viral.error ? (
-                <View>
-                  <Text style={styles.errorText}>{viral.error}</Text>
-                  <Pressable
-                    onPress={() => void refreshViralRanking(viralSource)}
-                    style={styles.retryButton}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.retryText}>Retry</Text>
-                  </Pressable>
-                </View>
-              ) : viral.notice ? (
-                <Text style={styles.muted}>{viral.notice}</Text>
-              ) : viral.entries.length ? (
-                <>
-                  {viral.source === 'cache' ? (
-                    <Text style={styles.aggregateNotice}>Showing cached data (offline).</Text>
-                  ) : null}
-                  {viral.entries.map((entry, index) => (
-                    <ViralEntryRow
-                      key={entry.reportId}
-                      entry={entry}
-                      rank={index + 1}
-                      first={index === 0}
-                      colors={colors}
-                    />
-                  ))}
-                </>
               ) : (
-                <Text style={styles.muted}>
-                  {viralSource === 'manual'
-                    ? 'No Manual Scan reports yet. Messages reported with Report & Block after a Manual Scan appear here.'
-                    : 'No real-time reports yet. Messages reported with Block & Report on a real-time warning appear here.'}
-                </Text>
+                <>
+                  <View style={styles.viralTabs} accessibilityRole="tablist">
+                    {(
+                      [
+                        ['manual', 'Manual Scan'],
+                        ['realtime', 'Real-time'],
+                      ] as const
+                    ).map(([source, label]) => {
+                      const selected = viralSource === source;
+                      return (
+                        <Pressable
+                          key={source}
+                          onPress={() => {
+                            if (selected) return;
+                            viralSourceRef.current = source;
+                            setViralSource(source);
+                            void refreshViralRanking(source);
+                          }}
+                          style={[styles.viralTab, selected && styles.viralTabActive]}
+                          accessibilityRole="tab"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text style={[styles.viralTabText, selected && styles.viralTabTextActive]}>{label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.aggregateNotice}>
+                    Ranked by unique reports. Links and contact details are redacted from message previews.
+                  </Text>
+                  {viral.loading ? (
+                    <Text style={styles.muted}>Loading viral phishing reports…</Text>
+                  ) : viral.error ? (
+                    <View>
+                      <Text style={styles.errorText}>{viral.error}</Text>
+                      <Pressable
+                        onPress={() => void refreshViralRanking(viralSource)}
+                        style={styles.retryButton}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.retryText}>Retry</Text>
+                      </Pressable>
+                    </View>
+                  ) : viral.entries.length ? (
+                    viral.entries.map((entry, index) => (
+                      <View key={entry.reportId} style={[styles.viralRow, index === 0 && styles.viralRowFirst]}>
+                        <View style={styles.viralRank}>
+                          <Text style={styles.viralRankText}>#{index + 1}</Text>
+                        </View>
+                        <View style={styles.flex}>
+                          <Text numberOfLines={5} style={styles.viralMessage}>
+                            {entry.messagePreview}
+                          </Text>
+                          <Text style={styles.viralMeta}>
+                            Detected in {entry.detectedIn.map(detectedInLabel).join(', ')} · Reported by{' '}
+                            {entry.reportCount} {entry.reportCount === 1 ? 'user' : 'users'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.muted}>No reported phishing messages in this category yet.</Text>
+                  )}
+                </>
               )}
             </View>
           </View>
+
+          <Pressable
+            style={styles.matrixCard}
+            onPress={() => router.push('/community')}
+            accessibilityRole="button"
+            accessibilityLabel="Open anonymous community alerts"
+          >
+            <View style={styles.matrixHeader}>
+              <Ionicons name="notifications-outline" size={22} color={colors.accent} />
+              <Text style={styles.matrixTitle}>Community Alerts</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </View>
+            <View style={styles.matrixBody}>
+              <Text style={styles.aggregateNotice}>
+                Reported messages appear with links and contact details redacted. Sender names are never shown; the
+                detecting app is identified when known.
+              </Text>
+            </View>
+          </Pressable>
 
           <View style={styles.localTitleRow}>
             <Text style={styles.localTitle}>On this device</Text>
@@ -858,6 +804,55 @@ function createStyles(colors: ThemeColors) {
     matrixTitle: { fontWeight: '700', fontSize: 17, color: colors.textPrimary, flex: 1 },
     matrixBody: { padding: 16 },
     aggregateNotice: { color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
+    viralCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOpacity: 0.07,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    viralTabs: {
+      flexDirection: 'row',
+      padding: 3,
+      marginBottom: 12,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceAlt,
+    },
+    viralTab: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 8 },
+    viralTabActive: {
+      backgroundColor: colors.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    viralTabText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    viralTabTextActive: { color: colors.textPrimary, fontWeight: '800' },
+    viralRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 11,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    viralRowFirst: { borderTopWidth: 0 },
+    viralRank: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viralRankText: { color: colors.textSecondary, fontWeight: '800', fontSize: 11 },
+    viralMessage: { color: colors.textPrimary, fontSize: 13, lineHeight: 18 },
+    viralMeta: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
     summaryCards: { flexDirection: 'row', gap: 8, marginTop: 13 },
     summaryCard: { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, minHeight: 112 },
     dangerSummary: { backgroundColor: colors.dangerSoft, borderColor: colors.danger + '33' },
@@ -877,68 +872,6 @@ function createStyles(colors: ThemeColors) {
       marginTop: 10,
     },
     retryText: { color: colors.link, fontWeight: '800', fontSize: 12 },
-    viralCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 14,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      shadowColor: '#000',
-      shadowOpacity: 0.07,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    viralRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingVertical: 11,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-    },
-    viralRowFirst: { borderTopWidth: 0 },
-    viralTabs: {
-      flexDirection: 'row',
-      padding: 3,
-      marginBottom: 12,
-      borderRadius: 10,
-      backgroundColor: colors.surfaceAlt,
-    },
-    viralTab: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    viralTabActive: {
-      backgroundColor: colors.surface,
-      shadowColor: '#000',
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-      shadowOffset: { width: 0, height: 1 },
-      elevation: 1,
-    },
-    viralTabText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
-    viralTabTextActive: { color: colors.textPrimary, fontWeight: '800' },
-    viralRank: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: colors.surfaceAlt,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    viralRankText: { color: colors.textSecondary, fontWeight: '800', fontSize: 11 },
-    viralMessage: { color: colors.textPrimary, fontSize: 13, lineHeight: 18 },
-    viralMetaRow: { flexDirection: 'row', marginTop: 4 },
-    viralMeta: { color: colors.textMuted, fontSize: 11 },
-    viralScoreBox: { flexDirection: 'row', alignItems: 'flex-end' },
-    viralScoreValue: { color: colors.danger, fontWeight: '800', fontSize: 18 },
-    viralScoreMax: { color: colors.textMuted, fontSize: 11, marginBottom: 2 },
-    viralScoreMissing: { color: colors.textMuted, fontWeight: '800', fontSize: 18 },
     localTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
     localTitle: { color: colors.textPrimary, fontWeight: '800', fontSize: 16 },
     historyLink: { color: colors.link, fontWeight: '700', fontSize: 12 },

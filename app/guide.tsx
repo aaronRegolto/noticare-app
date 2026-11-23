@@ -33,7 +33,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Choose Block & Report or Ignore',
-    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), marks the protected alert in History as blocked, and shares the message text so other NotiCare users can spot it. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
+    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), marks the protected alert in History as blocked, and shares the message text so other NotiCare users can spot it. Once the report syncs, users who enabled Community Alerts receive a generic notification; the Community tab shows a redacted message preview and where it was detected, never sender details or received time. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
   },
   {
     title: 'Manual Scan',
@@ -49,7 +49,11 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Most Reported Phishing Messages',
-    body: 'When you tap Block & Report, NotiCare saves the message on this device and, once online, shares its exact text and risk score so other NotiCare users can be warned about the same scam. The Dashboard’s "Most Reported Phishing Messages" list ranks the scams reported by the most people, with separate tabs for Manual scans and Real-time. This is the only action in NotiCare that uploads message text; Ignore never uploads anything.',
+    body: 'When you tap Block & Report, NotiCare saves the message on this device and, once online, shares its exact text and risk score so duplicate reports can be grouped. Users who opted in receive a generic push alert. Community Alerts and Viral Phishing show a redacted message preview and where it was detected, never sender details, received time, or reporter identity. This is the only action in NotiCare that uploads message text; Ignore never uploads anything.',
+  },
+  {
+    title: 'Label a Safe result as spam',
+    body: 'If Manual Scan marks a message Safe but you believe it is spam, tap Label as spam. This stores your label on this phone only; it does not change the detector result, block the sender, or upload the message.',
   },
   {
     title: 'Messages inbox',
@@ -57,7 +61,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Privacy',
-    body: 'Full SMS content, sender numbers, notification titles, and raw links stay on your device. Community reporting contains only anonymous classification metadata, except the text of messages you Block & Report. You can permanently delete your account from Settings & Privacy. The full Privacy Policy is at admin.noticare.site/privacy.',
+    body: 'Messages are checked on-device. If you choose Block & Report, the reported text and detecting app are shared; real-time reports may also include sender and received-time details for report handling. Other users see a redacted message preview and the detecting app, never sender details. Push notifications contain no message text or sender. You can permanently delete your account from Settings & Privacy. The full Privacy Policy is at admin.noticare.site/privacy.',
   },
   {
     title: 'Notification permission troubleshooting',

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
-import { evaluateThreat, finalizeRiskScore, finalizeThreatResult, type ThreatResult } from '@/src/features/detection';
+import { finalizeRiskScore, finalizeThreatResult, type ThreatResult } from '@/src/features/detection';
 import { activeUserId, registerDevice } from '@/src/services/eventSync';
 import { logDiagnostic, logError } from '@/src/services/logger';
 import {
@@ -9,19 +9,16 @@ import {
   getPendingCommunityReports,
   isNativeMonitoringAvailable,
   notifyCommunityReportResult,
-  scanTextLocally,
   type PendingCommunityReport,
 } from '@/src/services/notificationListener';
 import { isSupabaseConfigured, supabase } from '@/src/services/supabase';
 
 const REPORT_QUEUE_KEY = 'noticare.phishing-report-queue.v1';
-const RANKING_CACHE_KEY = 'noticare.viral-phishing-ranking.v3';
-const LEGACY_RANKING_CACHE_KEYS = ['noticare.viral-phishing-ranking.v2', 'noticare.viral-phishing-ranking.v1'];
 const FEEDBACK_RECORD_KEY = 'noticare.manual-feedback-record.v1';
 const MAX_QUEUED_REPORTS = 50;
 const MAX_FEEDBACK_RECORDS = 500;
 
-export type ManualFeedbackKind = 'safe' | 'dangerous';
+export type ManualFeedbackKind = 'safe' | 'spam' | 'dangerous';
 type FeedbackRecordEntry = { hash: string; kind: ManualFeedbackKind };
 
 function normalizeMessageText(text: string) {
@@ -35,7 +32,9 @@ async function hashMessageText(text: string) {
 function isFeedbackRecordEntry(value: unknown): value is FeedbackRecordEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Record<string, unknown>;
-  return typeof entry.hash === 'string' && (entry.kind === 'safe' || entry.kind === 'dangerous');
+  return (
+    typeof entry.hash === 'string' && (entry.kind === 'safe' || entry.kind === 'spam' || entry.kind === 'dangerous')
+  );
 }
 
 async function readFeedbackRecords(): Promise<FeedbackRecordEntry[]> {
@@ -51,8 +50,8 @@ async function readFeedbackRecords(): Promise<FeedbackRecordEntry[]> {
 
 /**
  * Lets a repeat scan of the same text show what you already did about it —
- * "Marked as safe" or "Reported and blocked" — instead of showing the Mark
- * as safe / Report & Block buttons again as if it were a fresh result.
+ * "Marked as safe", "Labeled as spam", or "Reported and blocked" — instead of
+ * showing the feedback buttons again as if it were a fresh result.
  */
 export async function getMessageFeedbackRecord(messageText: string): Promise<ManualFeedbackKind | null> {
   const hash = await hashMessageText(messageText);
@@ -71,29 +70,16 @@ export async function markMessageFeedback(messageText: string, kind: ManualFeedb
 
 /** Where a report came from: Manual Scan's Report & Block, or a real-time warning's Block & Report. */
 export type ReportSource = 'manual' | 'realtime';
-export type CommunityReportSource = ReportSource | 'all';
+export type CommunityDetectedIn = 'manual' | 'messages' | 'messenger' | 'unknown';
 
 export type PhishingVirality = { viralScore: number; reportCount: number; isFirstReporter: boolean };
-
-export type ViralPhishingEntry = {
-  reportId: string;
-  messageText: string;
-  sampleSender: string | null;
-  viralScore: number;
-  reportCount: number;
-  firstReportedAt: string;
-  lastReportedAt: string;
-  /**
-   * The detector's risk score (Safe is always 0, otherwise 1–100); null for reports filed before
-   * it was stored.
-   */
-  riskScore: number | null;
-};
 
 type QueuedReport = {
   id: string;
   messageText: string;
   sampleSender: string | null;
+  messageReceivedAt?: string;
+  detectedIn?: CommunityDetectedIn;
   indicatorCodes: string[];
   ruleVersion: string;
   riskScore?: number | null;
@@ -115,11 +101,17 @@ function isQueuedReport(value: unknown): value is QueuedReport {
     typeof report.id === 'string' &&
     typeof report.messageText === 'string' &&
     (report.sampleSender === null || typeof report.sampleSender === 'string') &&
+    (report.messageReceivedAt === undefined || typeof report.messageReceivedAt === 'string') &&
+    (report.detectedIn === undefined || isCommunityDetectedIn(report.detectedIn)) &&
     Array.isArray(report.indicatorCodes) &&
     typeof report.ruleVersion === 'string' &&
     typeof report.createdAt === 'string' &&
     typeof report.attempts === 'number'
   );
+}
+
+function isCommunityDetectedIn(value: unknown): value is CommunityDetectedIn {
+  return value === 'manual' || value === 'messages' || value === 'messenger' || value === 'unknown';
 }
 
 async function readQueue(userId: string): Promise<QueuedReport[]> {
@@ -142,10 +134,10 @@ async function writeQueue(queue: QueuedReport[], userId: string) {
 }
 
 /**
- * PostgREST's "no function matches these arguments" error: the database hasn't applied the
- * migration that added p_source (20260928000100_phishing_report_source.sql) yet.
+ * PostgREST's "no function matches these arguments" error when the database has not applied
+ * the migration adding a report RPC argument yet.
  */
-function isMissingSourceParameter(error: { code?: string } | null) {
+function isMissingReportParameter(error: { code?: string } | null) {
   return error?.code === 'PGRST202';
 }
 
@@ -169,19 +161,43 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
     p_rule_version: report.ruleVersion,
   };
   const riskScore = publicRiskScore(report.riskScore, report.ruleVersion);
+  if (riskScore === 0) throw new Error('Safe messages cannot be submitted as community reports.');
   let { data, error } = await supabase.rpc('record_phishing_report', {
     ...args,
     p_source: source,
     p_risk_score: riskScore,
+    p_message_received_at: report.messageReceivedAt ?? null,
+    p_detected_in: report.detectedIn ?? (source === 'manual' ? 'manual' : 'unknown'),
   });
-  // Older databases: drop the parameters they don't know yet rather than leaving the report queued.
-  if (isMissingSourceParameter(error)) {
+  // Older databases: drop only the parameters they do not know yet.
+  if (isMissingReportParameter(error)) {
+    ({ data, error } = await supabase.rpc('record_phishing_report', {
+      ...args,
+      p_source: source,
+      p_risk_score: riskScore,
+      p_message_received_at: report.messageReceivedAt ?? null,
+    }));
+  }
+  if (isMissingReportParameter(error)) {
+    ({ data, error } = await supabase.rpc('record_phishing_report', {
+      ...args,
+      p_source: source,
+      p_risk_score: riskScore,
+    }));
+  }
+  if (isMissingReportParameter(error)) {
     ({ data, error } = await supabase.rpc('record_phishing_report', { ...args, p_source: source }));
   }
-  if (isMissingSourceParameter(error)) ({ data, error } = await supabase.rpc('record_phishing_report', args));
+  if (isMissingReportParameter(error)) ({ data, error } = await supabase.rpc('record_phishing_report', args));
   if (error) throw error;
   const row = data?.[0];
   if (!row) throw new Error('The community report service returned no result.');
+  if (typeof row.notification_event_id === 'string') {
+    const { error: dispatchError } = await supabase.functions.invoke('send-community-report-alert', {
+      body: { eventId: row.notification_event_id },
+    });
+    if (dispatchError) logError('community-notification-dispatch-failed', dispatchError);
+  }
   return { viralScore: row.viral_score, reportCount: row.report_count, isFirstReporter: row.is_first_reporter };
 }
 
@@ -189,7 +205,7 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
  * Saves a "Report & Block" tap to the on-device queue immediately (this always
  * succeeds, online or off), then tries to sync it right away. It queues the
  * exact text of a message the user chose to report — Block & Report on a
- * warning, or Report on a Manual Scan result of any level. This is the one path
+ * warning, or Report on a Suspicious or Dangerous Manual Scan result. This is the one path
  * in the app that intentionally uploads message content, and only on explicit
  * user action.
  */
@@ -198,11 +214,13 @@ export async function reportAndBlockMessage(
   sampleSender: string | null,
   result: ThreatResult,
 ): Promise<PhishingVirality | null> {
+  if (result.level === 'safe') throw new Error('Safe messages cannot be submitted as community reports.');
   const userId = await activeUserId();
   const report: QueuedReport = {
     id: Crypto.randomUUID(),
     messageText: messageText.slice(0, 4000),
     sampleSender,
+    detectedIn: 'manual',
     indicatorCodes: result.reasons.map((reason) => reason.code).slice(0, 32),
     ruleVersion: result.ruleVersion,
     riskScore: finalizeThreatResult(result).score,
@@ -246,6 +264,10 @@ async function flushUserQueue() {
   const remaining: QueuedReport[] = [];
   let synced = 0;
   for (const report of queued) {
+    if (publicRiskScore(report.riskScore, report.ruleVersion) === 0) {
+      logDiagnostic('safe-community-report-discarded', { reportId: report.id });
+      continue;
+    }
     try {
       await syncReport(report, 'manual');
       synced += 1;
@@ -279,13 +301,23 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
   }
 
   const acknowledged: string[] = [];
+  let synced = 0;
   for (const report of pending) {
+    if (publicRiskScore(report.riskScore, report.ruleVersion) === 0) {
+      logDiagnostic('safe-native-community-report-discarded', { reportId: report.id });
+      acknowledged.push(report.id);
+      continue;
+    }
     try {
       const virality = await syncReport(
         {
           id: report.id,
           messageText: report.messageText,
           sampleSender: report.sampleSender,
+          detectedIn: report.detectedIn ?? 'unknown',
+          ...(report.messageReceivedAt == null
+            ? {}
+            : { messageReceivedAt: new Date(report.messageReceivedAt).toISOString() }),
           indicatorCodes: report.indicatorCodes,
           ruleVersion: report.ruleVersion,
           riskScore: report.riskScore ?? null,
@@ -297,6 +329,7 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
       await markMessageFeedback(report.messageText, 'dangerous');
       await notifyCommunityReportResult(virality.reportCount <= 1, virality.reportCount);
       acknowledged.push(report.id);
+      synced += 1;
     } catch (error) {
       logError('native-community-report-sync-failed', error);
     }
@@ -312,125 +345,74 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
   }
   logDiagnostic('native-community-reports-flushed', {
     claimed: pending.length,
-    synced: acknowledged.length,
+    synced,
   });
-  return { synced: acknowledged.length, pending: pending.length - acknowledged.length };
+  return { synced, pending: pending.length - acknowledged.length };
 }
 
-function isViralPhishingRow(value: unknown): value is ViralPhishingEntry {
-  if (!value || typeof value !== 'object') return false;
-  const entry = value as Record<string, unknown>;
-  return (
-    typeof entry.reportId === 'string' &&
-    typeof entry.messageText === 'string' &&
-    (entry.sampleSender === null || typeof entry.sampleSender === 'string') &&
-    typeof entry.viralScore === 'number' &&
-    typeof entry.reportCount === 'number' &&
-    typeof entry.firstReportedAt === 'string' &&
-    typeof entry.lastReportedAt === 'string' &&
-    (entry.riskScore === undefined || entry.riskScore === null || typeof entry.riskScore === 'number')
-  );
-}
+export type CommunityReportFeedEntry = {
+  reportEventId: string;
+  messagePreview: string;
+  detectedIn: CommunityDetectedIn;
+};
 
-async function readRankingCache(source: ReportSource): Promise<ViralPhishingEntry[]> {
-  let raw = await AsyncStorage.getItem(`${RANKING_CACHE_KEY}.${source}`);
-  let isLegacyCache = false;
-  if (!raw) {
-    for (const key of LEGACY_RANKING_CACHE_KEYS) {
-      if (key.endsWith('.v1') && source !== 'manual') continue;
-      raw = await AsyncStorage.getItem(key.endsWith('.v1') ? key : `${key}.${source}`);
-      if (raw) {
-        isLegacyCache = true;
-        break;
-      }
-    }
-  }
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter(isViralPhishingRow).map((entry) => ({
-          ...entry,
-          riskScore:
-            isLegacyCache && entry.riskScore !== null && entry.riskScore > 0 && entry.riskScore < 30
-              ? 0
-              : publicRiskScore(entry.riskScore),
-        }))
-      : [];
-  } catch {
-    return [];
-  }
-}
+export type ViralPhishingEntry = {
+  reportId: string;
+  messagePreview: string;
+  detectedIn: CommunityDetectedIn[];
+  reportCount: number;
+};
 
-/**
- * The Dashboard's "Most reported phishing messages" ranking for one report source, cached per
- * source for offline viewing. Counts and scores cover that source's reporters only. Older cached
- * score bands are normalized to Safe 0 before they're shown under the current 1–59 Suspicious band.
- */
-export async function getViralPhishingRanking(
-  reportSource: CommunityReportSource,
-  limit = 20,
-): Promise<{ entries: ViralPhishingEntry[]; source: 'network' | 'cache' }> {
-  if (!isSupabaseConfigured) {
-    const cacheSource = reportSource === 'all' ? 'manual' : reportSource;
-    return { entries: await fillMissingRiskScores(await readRankingCache(cacheSource)), source: 'cache' };
+export class ViralPhishingRankingUnavailableError extends Error {}
+
+export async function getViralPhishingRanking(source: ReportSource, limit = 10): Promise<ViralPhishingEntry[]> {
+  if (!isSupabaseConfigured) throw new Error('Viral phishing rankings require a configured account.');
+  const { data, error } = await supabase.rpc('get_viral_phishing_message_ranking', {
+    p_limit: limit,
+    p_source: source,
+  });
+  if (error?.code === 'PGRST202') {
+    throw new ViralPhishingRankingUnavailableError(
+      'Viral Phishing is restored, but message previews need the latest server update before reports can load.',
+    );
   }
-  try {
-    let { data, error } = reportSource === 'all'
-      ? await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit })
-      : await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit, p_source: reportSource });
-    if (isMissingSourceParameter(error)) {
-      // Older database: reports have no source yet, so its combined ranking is the Manual list.
-      if (reportSource === 'realtime') {
-        throw new RankingUnavailableError('Real-time reports appear here once the latest database update is applied.');
-      }
-      ({ data, error } = await supabase.rpc('get_viral_phishing_ranking', { p_limit: limit }));
-    }
-    if (error) throw error;
-    const entries: ViralPhishingEntry[] = (data ?? []).map((row) => ({
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const detectedIn = row.detected_in.filter(isCommunityDetectedIn);
+    return {
       reportId: row.report_id,
-      messageText: row.message_text,
-      sampleSender: row.sample_sender,
-      viralScore: row.viral_score,
+      messagePreview: row.message_preview,
+      detectedIn: detectedIn.length ? detectedIn : ['unknown'],
       reportCount: row.report_count,
-      firstReportedAt: row.first_reported_at,
-      lastReportedAt: row.last_reported_at,
-      // Absent until the risk-score migration is applied.
-      riskScore: publicRiskScore(row.risk_score),
-    }));
-    const scored = await fillMissingRiskScores(entries);
-    await AsyncStorage.setItem(`${RANKING_CACHE_KEY}.${reportSource === 'all' ? 'manual' : reportSource}`, JSON.stringify(scored));
-    return { entries: scored, source: 'network' };
-  } catch (error) {
-    logError('viral-phishing-ranking-load-failed', error);
-    const cached = await readRankingCache(reportSource === 'all' ? 'manual' : reportSource);
-    // Without a saved copy, surface the failure instead of an empty list that looks like no data.
-    if (!cached.length) throw error;
-    return { entries: await fillMissingRiskScores(cached), source: 'cache' };
+    };
+  });
+}
+
+export async function getCommunityReportFeed(limit = 100, offset = 0): Promise<CommunityReportFeedEntry[]> {
+  if (!isSupabaseConfigured) throw new Error('Community alerts require a configured account.');
+  const { data, error } = await supabase.rpc('get_community_report_message_feed', { p_limit: limit, p_offset: offset });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    reportEventId: row.report_event_id,
+    messagePreview: row.message_preview,
+    detectedIn: isCommunityDetectedIn(row.detected_in) ? row.detected_in : 'unknown',
+  }));
+}
+
+export async function flushPendingCommunityNotifications() {
+  if (!isSupabaseConfigured) return { attempted: 0 };
+  const { data, error } = await supabase.rpc('get_pending_community_notification_events');
+  if (error) {
+    logError('community-notification-outbox-read-failed', error);
+    return { attempted: 0 };
   }
+  let attempted = 0;
+  for (const event of data ?? []) {
+    const { error: dispatchError } = await supabase.functions.invoke('send-community-report-alert', {
+      body: { eventId: event.event_id },
+    });
+    attempted += 1;
+    if (dispatchError) logError('community-notification-retry-failed', dispatchError);
+  }
+  return { attempted };
 }
-
-/**
- * Reports filed before risk scores were stored come back without one. The score depends only on
- * the message text, so re-running the same detector Manual Scan and real-time scanning use
- * reproduces it exactly: the native Kotlin evaluator on Android, else the parity-tested TS one.
- */
-async function fillMissingRiskScores(entries: ViralPhishingEntry[]): Promise<ViralPhishingEntry[]> {
-  return Promise.all(
-    entries.map(async (entry) => {
-      if (entry.riskScore !== null) return entry;
-      try {
-        const result = isNativeMonitoringAvailable()
-          ? await scanTextLocally(entry.messageText)
-          : evaluateThreat(entry.messageText);
-        return { ...entry, riskScore: result.score };
-      } catch (error) {
-        logError('viral-risk-score-fill-failed', error);
-        return entry;
-      }
-    }),
-  );
-}
-
-/** A ranking failure whose message is safe and useful to show the user as-is. */
-export class RankingUnavailableError extends Error {}

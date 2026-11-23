@@ -71,6 +71,13 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="community"
+        options={{
+          title: 'Community',
+          tabBarIcon: ({ color }) => <Ionicons size={22} name="notifications-outline" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

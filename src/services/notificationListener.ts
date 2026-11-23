@@ -129,6 +129,8 @@ export type PendingCommunityReport = {
   id: string;
   messageText: string;
   sampleSender: string | null;
+  messageReceivedAt?: number | null;
+  detectedIn?: 'messages' | 'messenger' | 'unknown';
   indicatorCodes: string[];
   ruleVersion: string;
   /**

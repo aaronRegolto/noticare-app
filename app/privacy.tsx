@@ -11,11 +11,11 @@ const sections = [
   ],
   [
     'What can be shared anonymously',
-    'Community reporting can include a random event ID, threat level, score bucket, warning-sign codes, URL count, rule version, time, and whether a realtime notification was suppressed.',
+    'Routine community statistics contain anonymous threat levels and time buckets. If you explicitly report a message, its text and risk score are shared with NotiCare; real-time reports also include the detecting app and may include the sender label and received time. Other users see only a redacted message preview and the detecting app, never sender details, receive time, or your identity.',
   ],
   [
     'What is never uploaded',
-    'Notification titles, clipboard contents, OTPs, complete sender numbers, raw URLs, encryption keys, and hardware/advertising IDs are never uploaded. Message text is never uploaded either — with one exception below.',
+    'Outside an explicit report, notification titles, clipboard contents, sender numbers, raw URLs, encryption keys, and hardware/advertising IDs are never uploaded. Message text is never uploaded automatically — reporting is the exception below.',
   ],
   [
     'Scanning text from a photo',
@@ -27,11 +27,11 @@ const sections = [
   ],
   [
     'Reporting a message: the one exception',
-    'Tapping Block & Report on a warning, or Report on a Manual Scan result, shares that exact message’s text and risk score so other NotiCare users can recognize the same scam. Reported messages appear on the Dashboard’s "Most Reported Phishing Messages" list without any information about who reported them. This only happens when you choose to report a message — never automatically.',
+    'Tapping Block & Report on a warning, or Report on a Suspicious or Dangerous Manual Scan result, shares that exact message’s text and risk score with NotiCare so duplicate reports can be grouped. Real-time reports also include the detecting app and may include the sender label and received time. Community Alerts and Viral Phishing show only a preview with links and contact details redacted, plus the detecting app; sender details and received times are never shown. Push alerts do not include message text or sender. This upload only happens when you choose to report a message — never automatically.',
   ],
   [
     'Your controls',
-    'You can turn scanning off, delete one captured message, clear your History, choose Ignore so nothing is shared, sign out, or permanently delete your account from Settings & Privacy at any time.',
+    'You can turn scanning off, disable community push alerts, delete one captured message, clear your History, choose Ignore so nothing is shared, sign out, or permanently delete your account from Settings & Privacy at any time.',
   ],
 ];
 

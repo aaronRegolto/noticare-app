@@ -20,6 +20,7 @@ data class PendingThreat(
   val sender: String?,
   val message: String,
   val sourcePackage: String,
+  val detectedIn: String,
   val postedAt: Long,
   val result: ThreatResult,
   val ownerScope: String,
@@ -108,6 +109,11 @@ class SmsNotificationListener : NotificationListenerService() {
       Log.d(logTag, "drop: source not enabled or unsupported: $sourcePackage")
       return
     }
+    val detectedIn = when (sourceId) {
+      "sms" -> "messages"
+      "messenger" -> "messenger"
+      else -> "unknown"
+    }
 
     val notification = sbn.notification ?: return
     if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
@@ -161,6 +167,7 @@ class SmsNotificationListener : NotificationListenerService() {
         sender = sender,
         message = text,
         sourcePackage = sourcePackage,
+        detectedIn = detectedIn,
         postedAt = sbn.postTime,
         result = V3RiskEvaluator.evaluate(applicationContext, text),
         ownerScope = ownerScope,
@@ -236,9 +243,18 @@ class SmsNotificationListener : NotificationListenerService() {
     when (result.level) {
       ThreatLevel.SAFE -> Unit
       ThreatLevel.SUSPICIOUS -> {
-        handleActionableNotification(sbn, sender, text, sourcePackage, result, ownerScope, recordId)
+        handleActionableNotification(sbn, sender, text, sourcePackage, detectedIn, result, ownerScope, recordId)
       }
-      ThreatLevel.DANGEROUS -> handleActionableNotification(sbn, sender, text, sourcePackage, result, ownerScope, recordId)
+      ThreatLevel.DANGEROUS -> handleActionableNotification(
+        sbn,
+        sender,
+        text,
+        sourcePackage,
+        detectedIn,
+        result,
+        ownerScope,
+        recordId,
+      )
     }
   }
 
@@ -247,6 +263,7 @@ class SmsNotificationListener : NotificationListenerService() {
     sender: String?,
     text: String,
     sourcePackage: String,
+    detectedIn: String,
     result: ThreatResult,
     ownerScope: String,
     recordId: String?,
@@ -257,6 +274,7 @@ class SmsNotificationListener : NotificationListenerService() {
       sender = sender,
       message = text,
       sourcePackage = sourcePackage,
+      detectedIn = detectedIn,
       postedAt = sbn.postTime,
       result = result,
       ownerScope = ownerScope,
@@ -313,6 +331,8 @@ class SmsNotificationListener : NotificationListenerService() {
         applicationContext,
         pending.message,
         pending.sender,
+        pending.postedAt,
+        pending.detectedIn,
         pending.result.reasons.map(ThreatReason::code),
         pending.result.ruleVersion,
         pending.result.score,

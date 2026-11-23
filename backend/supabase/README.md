@@ -1,17 +1,19 @@
 # NotiCare Supabase backend
 
-This directory is the Supabase source of truth for NotiCare. Ordinary scan telemetry contains anonymous classification metadata only; it does not send message bodies, sender numbers, notification titles, raw URLs, clipboard data, OTP contents, Android/hardware identifiers, or encryption keys. Explicitly reporting a message is the exception (**Block & Report** on a warning, or **Report** on a Manual Scan result of any level): it shares that exact message text, including any links it contains, in `viral_phishing_reports` so other users can recognize the same scam. This upload never happens automatically.
+This directory is the Supabase source of truth for NotiCare. Ordinary scan telemetry contains anonymous classification metadata only; it does not send message bodies, sender numbers, notification titles, raw URLs, clipboard data, OTP contents, Android/hardware identifiers, or encryption keys. Explicitly reporting a Suspicious or Dangerous message is the exception (**Block & Report** on a warning, or **Report** after Manual Scan): it shares that exact message text in `viral_phishing_reports`. Real-time reports also include the detecting app and may include the sender label and received time for report handling. The authenticated community feed and Viral Phishing ranking expose only a redacted message preview and detection source, never sender details, receive time, or reporter identity. This upload never happens automatically.
 
 ## Files
 
-| Path                                                 | Purpose                                                             |
-| ---------------------------------------------------- | ------------------------------------------------------------------- |
-| `migrations/20260811000100_noticare_schema.sql`      | Tables, constraints, masked-profile trigger, and aggregate trigger. |
-| `migrations/20260811000200_noticare_rls_and_rpc.sql` | RLS, grants, and authenticated RPCs.                                |
-| `migrations/20260811000300_seed_rule_set.sql`        | Initial versioned rule bundle.                                      |
-| `migrations/20261026000100_seed_rule_set_2026_10_26.sql` | Active scoring thresholds and bonus-promotion indicator.             |
-| `migrations/20261026000200_preserve_suspicious_report_scores.sql` | Preserves new nonzero Suspicious report scores.                       |
-| `types/database.types.ts`                            | TypeScript database contract generated from the migration schema.   |
+| Path                                                              | Purpose                                                                                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `migrations/20260811000100_noticare_schema.sql`                   | Tables, constraints, masked-profile trigger, and aggregate trigger.                                        |
+| `migrations/20260811000200_noticare_rls_and_rpc.sql`              | RLS, grants, and authenticated RPCs.                                                                       |
+| `migrations/20260811000300_seed_rule_set.sql`                     | Initial versioned rule bundle.                                                                             |
+| `migrations/20261026000100_seed_rule_set_2026_10_26.sql`          | Active scoring thresholds and bonus-promotion indicator.                                                   |
+| `migrations/20261026000200_preserve_suspicious_report_scores.sql` | Preserves new nonzero Suspicious report scores.                                                            |
+| `migrations/20261124000100_community_push_alerts.sql`             | Anonymous community feed, privacy-safe Pro phishing ranking, opted-in Expo push tokens, and report outbox. |
+| `migrations/20261125000100_community_message_previews.sql`        | Redacted community message previews and detection-source metadata; retires public sender/time RPC results. |
+| `types/database.types.ts`                                         | TypeScript database contract generated from the migration schema.                                          |
 
 The older `backend/api` PHP endpoints and MySQL schema are not part of this Supabase design. Do not send production mobile data to those placeholder endpoints.
 
@@ -19,11 +21,11 @@ The older `backend/api` PHP endpoints and MySQL schema are not part of this Supa
 
 QRPh has no recurring/subscription concept in PayMongo (confirmed against their docs — only card vaulting and Maya support Subscriptions, and this account only has QRPh active). Pro is granted as a fixed-term one-time payment: `profiles.plan='pro'` plus `profiles.pro_expires_at` pushed forward by the interval's length. Nothing auto-charges again — the user pays again to renew, and every Pro check (client and RPC) treats `plan='pro'` as active only while `pro_expires_at` is still in the future (see `20260926000100_pro_expiry.sql`).
 
-| Function                       | Purpose                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `paymongo-create-qrph-payment`  | Creates a one-time QRPh Payment Intent for the chosen interval; returns a QR image to display.   |
-| `paymongo-check-payment`        | Client-side "I've already paid" fallback — re-checks the Payment Intent and grants Pro if paid.  |
-| `paymongo-webhook`              | Verifies PayMongo's `Paymongo-Signature` header; on `payment.paid`, grants Pro for the interval — the primary path (paymongo-check-payment is only a fallback for when this is slow). |
+| Function                       | Purpose                                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paymongo-create-qrph-payment` | Creates a one-time QRPh Payment Intent for the chosen interval; returns a QR image to display.                                                                                        |
+| `paymongo-check-payment`       | Client-side "I've already paid" fallback — re-checks the Payment Intent and grants Pro if paid.                                                                                       |
+| `paymongo-webhook`             | Verifies PayMongo's `Paymongo-Signature` header; on `payment.paid`, grants Pro for the interval — the primary path (paymongo-check-payment is only a fallback for when this is slow). |
 
 Required secrets (`supabase secrets set --workdir backend NAME=value`):
 
@@ -37,6 +39,12 @@ The app side needs `EXPO_PUBLIC_PAYMONGO_PRICE_MONTHLY` / `_ANNUAL` (display-onl
 `paymongo-webhook` must be deployed without JWT verification (set in `config.toml`; PayMongo can't send a Supabase JWT), and the live webhook registered in PayMongo must subscribe to `payment.paid` — not `checkout_session.payment.paid`, which QRPh payment intents never send. The webhook reads the Payment Intent's metadata at `data.attributes.data.attributes.metadata`, confirmed against a live `payment.paid` payload on 2026-10-04.
 
 Both `paymongo-webhook` and `paymongo-check-payment` grant Pro through the `grant_pro_for_payment` RPC (`20261004000100_pro_payment_grants.sql`, service role only). It records each Payment Intent once in `pro_payment_grants`, so webhook retries, the in-app check, or replaying an old Payment Intent id never grant a second term, and it extends from the current expiry while Pro is still active instead of resetting to a fresh term. Apply that migration before deploying either function.
+
+## Community push alerts
+
+`send-community-report-alert` uses the Expo Push Service to notify devices that explicitly opted in from the Community tab. Its payload contains a generic alert and a route identifier only; it never includes message text, sender, phone number, or reporter identity. The authenticated `record_phishing_report` RPC creates an outbox event, and the Edge Function validates that the caller owns that event before claiming delivery. Delivery is limited to 20 alerts per reporter per hour; failures remain retryable from the reporting account's next app sync.
+
+Apply `20261124000100_community_push_alerts.sql`, deploy the function with JWT verification enabled, and configure the EAS/FCM credentials required by the Android development or production build before expecting remote alerts. The client must be rebuilt after adding `expo-notifications` and its app config plugin. Expo push delivery requires an installable development/release build; it does not work through Expo Go on Android.
 
 ## Apply migrations
 
@@ -68,12 +76,14 @@ npx supabase --workdir backend gen types typescript --linked --schema public > b
 
 The app uses authenticated Supabase RPC calls rather than direct inserts. This keeps metadata validation and ownership checks inside PostgreSQL.
 
-| RPC                    | Input                                                        | Result            | Privacy/security behavior                                                              |
-| ---------------------- | ------------------------------------------------------------ | ----------------- | -------------------------------------------------------------------------------------- |
-| `register_device`      | installation UUID, app version, rule version                 | device row        | Binds an anonymous installation UUID to the current user.                              |
-| `record_threat_event`  | UUID, device ID, classification metadata                     | event UUID        | Idempotent on `client_event_id`; only realtime Dangerous events can be marked blocked. |
-| `submit_scan_feedback` | optional owned event ID, expected level, codes, rule version | feedback UUID     | Rejects raw/unstructured indicator values and cross-user events.                       |
-| `get_community_stats`  | `today`, `last_7_days`, `last_30_days`, or `last_6_months`   | aggregate buckets | Returns only UTC time buckets and aggregate counts.                                    |
+| RPC                                  | Input                                                        | Result                                                        | Privacy/security behavior                                                                      |
+| ------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `register_device`                    | installation UUID, app version, rule version                 | device row                                                    | Binds an anonymous installation UUID to the current user.                                      |
+| `record_threat_event`                | UUID, device ID, classification metadata                     | event UUID                                                    | Idempotent on `client_event_id`; only realtime Dangerous events can be marked blocked.         |
+| `submit_scan_feedback`               | optional owned event ID, expected level, codes, rule version | feedback UUID                                                 | Rejects raw/unstructured indicator values and cross-user events.                               |
+| `get_community_stats`                | `today`, `last_7_days`, `last_30_days`, or `last_6_months`   | aggregate buckets                                             | Returns only UTC time buckets and aggregate counts.                                            |
+| `get_community_report_message_feed`  | limit and offset                                             | redacted message preview and detection source                 | Authenticated; never returns sender details or received time.                                  |
+| `get_viral_phishing_message_ranking` | limit and optional report source                             | redacted preview, detection source, and distinct report count | Pro-only; never returns sender details, received time, raw message text, or reporter identity. |
 
 `get_community_stats` returns objects shaped as:
 

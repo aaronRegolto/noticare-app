@@ -83,11 +83,7 @@ function Header() {
  * shown separately as a badge, never as the score, so the number here matches the real-time
  * warning for the same message.
  */
-function scoreDisplay(
-  result: ThreatResult,
-  virality: PhishingVirality | null,
-  copy: WarningCopy,
-) {
+function scoreDisplay(result: ThreatResult, virality: PhishingVirality | null, copy: WarningCopy) {
   const reportBadge = virality && virality.reportCount > 0 ? copy.reportBadge(virality.reportCount) : null;
   const communityLine =
     virality && virality.reportCount > 0 ? copy.reportedBy(virality.reportCount) : copy.notReportedYet;
@@ -120,10 +116,11 @@ function ResultCard({
 }: {
   message: string;
   result: ThreatResult;
-  onFeedback: (kind: 'safe' | 'dangerous') => void;
-  feedbackState: 'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported';
-  /** The button tapped: Report uploads the message text at any level, Mark as safe never does. */
-  feedbackKind: 'safe' | 'dangerous';
+  onFeedback: (kind: 'safe' | 'spam' | 'dangerous') => void;
+  feedbackState:
+    'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_labeled_spam' | 'already_reported';
+  /** The button tapped: a report shares only Suspicious or Dangerous text; Safe feedback stays local/metadata-only. */
+  feedbackKind: 'safe' | 'spam' | 'dangerous';
   virality: PhishingVirality | null;
 }) {
   const { colors } = useAppTheme();
@@ -190,15 +187,19 @@ function ResultCard({
           <Text style={styles.feedbackSentText}>
             {feedbackState === 'already_marked_safe'
               ? copy.alreadyMarkedSafe
-              : feedbackState === 'already_reported'
-                ? copy.alreadyReported
-                : feedbackState === 'saved_locally'
-                  ? feedbackKind === 'dangerous'
-                    ? copy.done
-                    : copy.savedOnDeviceOnly
-                  : feedbackKind === 'dangerous'
-                    ? copy.reportedAndShared
-                    : copy.markedSafeNotUploaded}
+              : feedbackState === 'already_labeled_spam'
+                ? 'Labeled as spam on this device.'
+                : feedbackState === 'already_reported'
+                  ? copy.alreadyReported
+                  : feedbackState === 'saved_locally'
+                    ? feedbackKind === 'spam'
+                      ? 'Labeled as spam on this device.'
+                      : feedbackKind === 'dangerous'
+                        ? copy.done
+                        : copy.savedOnDeviceOnly
+                    : feedbackKind === 'dangerous'
+                      ? copy.reportedAndShared
+                      : copy.markedSafeNotUploaded}
           </Text>
         </View>
       ) : (
@@ -206,7 +207,7 @@ function ResultCard({
           {result.level === 'safe' ? (
             <Pressable
               disabled={feedbackState === 'sending'}
-              onPress={() => onFeedback('safe')}
+              onPress={() => onFeedback('spam')}
               style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
               accessibilityRole="button"
               accessibilityLabel="Label this message as spam"
@@ -224,16 +225,18 @@ function ResultCard({
           >
             <Text style={styles.feedbackText}>{feedbackState === 'sending' ? copy.savingReport : copy.markAsSafe}</Text>
           </Pressable>
-          <Pressable
-            disabled={feedbackState === 'sending'}
-            onPress={() => onFeedback('dangerous')}
-            style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel="Report this message"
-            accessibilityState={{ disabled: feedbackState === 'sending' }}
-          >
-            <Text style={styles.feedbackText}>{feedbackState === 'sending' ? copy.reporting : copy.report}</Text>
-          </Pressable>
+          {result.level !== 'safe' ? (
+            <Pressable
+              disabled={feedbackState === 'sending'}
+              onPress={() => onFeedback('dangerous')}
+              style={[styles.feedbackButton, feedbackState === 'sending' && styles.feedbackButtonDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Report this message"
+              accessibilityState={{ disabled: feedbackState === 'sending' }}
+            >
+              <Text style={styles.feedbackText}>{feedbackState === 'sending' ? copy.reporting : copy.report}</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>
@@ -248,9 +251,9 @@ export default function ScanScreen() {
   const [result, setResult] = useState<ThreatResult | null>(null);
   const [scanning, setScanning] = useState(false);
   const [feedbackState, setFeedbackState] = useState<
-    'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_reported'
+    'idle' | 'sending' | 'sent' | 'saved_locally' | 'already_marked_safe' | 'already_labeled_spam' | 'already_reported'
   >('idle');
-  const [feedbackKind, setFeedbackKind] = useState<'safe' | 'dangerous'>('safe');
+  const [feedbackKind, setFeedbackKind] = useState<'safe' | 'spam' | 'dangerous'>('safe');
   const [virality, setVirality] = useState<PhishingVirality | null>(null);
   const feedbackBusy = useRef(false);
   const scanVersion = useRef(0);
@@ -374,8 +377,10 @@ export default function ScanScreen() {
       // Re-scanning text you already gave feedback on shows that status
       // instead of the buttons again, so it can't look like a fresh result.
       void getMessageFeedbackRecord(trimmed).then((record) => {
-        if (!record || version !== scanVersion.current) return;
-        setFeedbackState(record === 'safe' ? 'already_marked_safe' : 'already_reported');
+        if (!record || version !== scanVersion.current || (record === 'spam' && assessment.level !== 'safe')) return;
+        setFeedbackState(
+          record === 'safe' ? 'already_marked_safe' : record === 'spam' ? 'already_labeled_spam' : 'already_reported',
+        );
       });
     } catch (error) {
       logError('manual-scan-failed', error);
@@ -389,12 +394,22 @@ export default function ScanScreen() {
   }, [message, scanning]);
 
   const handleFeedback = useCallback(
-    async (kind: 'safe' | 'dangerous') => {
-      if (!result || feedbackState !== 'idle' || feedbackBusy.current) return;
+    async (kind: 'safe' | 'spam' | 'dangerous') => {
+      if (!result || (kind === 'spam' && result.level !== 'safe') || feedbackState !== 'idle' || feedbackBusy.current) {
+        return;
+      }
       feedbackBusy.current = true;
       const version = scanVersion.current;
       setFeedbackState('sending');
       try {
+        if (kind === 'spam') {
+          await markMessageFeedback(message.trim(), 'spam');
+          if (version === scanVersion.current) {
+            setFeedbackKind('spam');
+            setFeedbackState('saved_locally');
+          }
+          return;
+        }
         const status = await sendScanFeedback(kind, result);
         await markMessageFeedback(message.trim(), kind);
         if (kind === 'dangerous') {
@@ -609,8 +624,8 @@ export default function ScanScreen() {
             <Ionicons name="lock-closed-outline" size={13} color={colors.textMuted} />
             <Text style={styles.privacyText}>
               {canReadPhotos ? 'Photos and messages are' : 'Messages are'} checked on this phone and never uploaded.
-              Only a message you choose to Report is shared, to warn other NotiCare users. Manual Scan sees only
-              the text you provide, not the source app&apos;s spam/block label.
+              Only a message you choose to Report is shared, to warn other NotiCare users. Manual Scan sees only the
+              text you provide, not the source app&apos;s spam/block label.
             </Text>
           </View>
         </View>
