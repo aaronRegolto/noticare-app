@@ -46,6 +46,8 @@ Both `paymongo-webhook` and `paymongo-check-payment` grant Pro through the `gran
 
 Apply `20261124000100_community_push_alerts.sql`, deploy the function with JWT verification enabled, and configure the EAS/FCM credentials required by the Android development or production build before expecting remote alerts. The client must be rebuilt after adding `expo-notifications` and its app config plugin. Expo push delivery requires an installable development/release build; it does not work through Expo Go on Android.
 
+For local Android builds (`npm run android`), add the Firebase Android configuration file at the repository root as `google-services.json`. In Firebase Console, register the Android app with package name `com.aaronnkie12.noticareapp`, then download its `google-services.json`. This file is git-ignored and must not be committed. Rebuild and reinstall the app after adding or changing it. The Firebase service-account JSON used to configure FCM v1 credentials for EAS push delivery is a separate file and must also be configured for the Expo project.
+
 ## Apply migrations
 
 `backend` is the Supabase CLI work directory; it contains this `supabase/` directory and its `config.toml`. Install and authenticate the CLI, then link it to the intended project:

@@ -25,9 +25,14 @@ export type WarningCopy = {
   scannedAt: (time: string, ruleVersion: string) => string;
   alreadyMarkedSafe: string;
   alreadyReported: string;
+  reportConsentTitle: string;
+  reportConsentMessage: (message: string) => string;
+  reportConsentCancel: string;
+  reportConsentConfirm: string;
   done: string;
   savedOnDeviceOnly: string;
   reportedAndShared: string;
+  reportQueued: string;
   markedSafeNotUploaded: string;
   markAsSafe: string;
   savingReport: string;
@@ -77,16 +82,23 @@ export const ENGLISH_WARNING_COPY: WarningCopy = {
   reportedBy: (count) =>
     `${count === 1 ? '1 NotiCare user has' : `${count} NotiCare users have`} reported this exact message.`,
   notReportedYet:
-    'Community reports are not checked during scans. Tap Report to share this message and see its report count.',
+    'Community reports are not checked during scans. Tap Report to review this message and choose whether to share it.',
   howScoreCalculated: 'How the score was calculated',
   linksFound: 'Links found',
   recommendedAction: 'Recommended action',
   scannedAt: (time, ruleVersion) => `Scanned ${time} · Rule set ${ruleVersion}`,
   alreadyMarkedSafe: 'You already marked this exact message as safe.',
   alreadyReported: 'You already reported this exact message.',
+  reportConsentTitle: 'Share this message with the community?',
+  reportConsentMessage: (message) =>
+    `The full message text will be sent to NotiCare. Other users can see a redacted version in Community; redaction may miss personal information. Users who enabled Community Alerts may receive a generic notification. Review the message carefully before sharing.\n\nMessage:\n${message}`,
+  reportConsentCancel: 'Not now',
+  reportConsentConfirm: 'Report to community',
   done: 'Done',
   savedOnDeviceOnly: 'Saved on this device only — it was not submitted to NotiCare’s servers.',
-  reportedAndShared: 'Reported. This exact message text was shared so other NotiCare users can be warned.',
+  reportedAndShared:
+    'Reported. A redacted version is now available in Community; users with alerts enabled may receive a notification.',
+  reportQueued: 'Report saved on this device. It will sync to Community when you are online.',
   markedSafeNotUploaded: 'Report sent. Your message text was not uploaded.',
   markAsSafe: 'Mark as safe',
   savingReport: 'Saving report…',
@@ -144,17 +156,23 @@ export const TAGALOG_WARNING_COPY: WarningCopy = {
     `Mapanganib ang score na 60 pataas. Ang ${score}/100 ay nangangahulugang may nakitang malalakas na palatandaan ng phishing.`,
   reportedBy: (count) => `${count} gumagamit ng NotiCare ang nag-report ng mismong mensaheng ito.`,
   notReportedYet:
-    'Hindi tinitingnan ang mga community report habang nag-i-scan. Pindutin ang Report para ibahagi ang mensaheng ito at makita ang bilang ng report.',
+    'Hindi tinitingnan ang mga community report habang nag-i-scan. Pindutin ang Report para suriin ang mensahe at piliing ibahagi ito o hindi.',
   howScoreCalculated: 'Paano nakuha ang score',
   linksFound: 'Mga link na nakita',
   recommendedAction: 'Inirerekomendang gawin',
   scannedAt: (time, ruleVersion) => `Na-scan ${time} · Rule set ${ruleVersion}`,
   alreadyMarkedSafe: 'Minarkahan mo nang ligtas ang mismong mensaheng ito.',
   alreadyReported: 'Nai-report mo na ang mismong mensaheng ito.',
+  reportConsentTitle: 'Ibahagi ang mensaheng ito sa komunidad?',
+  reportConsentMessage: (message) =>
+    `Ipapadala sa NotiCare ang buong mensahe sa ibaba. Makikita ng ibang gumagamit ang binurang sensitibong detalye sa Community; maaaring may personal na impormasyong hindi matukoy. Makakatanggap ng pangkalahatang notification ang mga nag-enable ng Community Alerts. Suriin muna ang mensahe bago ibahagi.\n\n${message}`,
+  reportConsentCancel: 'Huwag muna',
+  reportConsentConfirm: 'I-report sa komunidad',
   done: 'Tapos na',
   savedOnDeviceOnly: 'Sa phone na ito lang naka-save — hindi ito ipinadala sa mga server ng NotiCare.',
   reportedAndShared:
-    'Nai-report na. Naibahagi ang mismong teksto ng mensaheng ito para mababalaan ang ibang gumagamit ng NotiCare.',
+    'Nai-report na. Makikita sa Community ang binurang sensitibong detalye; maaaring makatanggap ng notification ang mga nag-enable ng alerts.',
+  reportQueued: 'Naka-save sa phone ang report. Isi-sync ito sa Community kapag online ka na.',
   markedSafeNotUploaded: 'Naipadala ang report. Hindi in-upload ang teksto ng iyong mensahe.',
   markAsSafe: 'Markahang ligtas',
   savingReport: 'Sine-save ang report…',

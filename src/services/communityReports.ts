@@ -17,6 +17,7 @@ const REPORT_QUEUE_KEY = 'noticare.phishing-report-queue.v1';
 const FEEDBACK_RECORD_KEY = 'noticare.manual-feedback-record.v1';
 const MAX_QUEUED_REPORTS = 50;
 const MAX_FEEDBACK_RECORDS = 500;
+export const COMMUNITY_REPORT_DAILY_LIMIT = 10;
 
 export type ManualFeedbackKind = 'safe' | 'spam' | 'dangerous';
 type FeedbackRecordEntry = { hash: string; kind: ManualFeedbackKind };
@@ -73,6 +74,13 @@ export type ReportSource = 'manual' | 'realtime';
 export type CommunityDetectedIn = 'manual' | 'messages' | 'messenger' | 'unknown';
 
 export type PhishingVirality = { viralScore: number; reportCount: number; isFirstReporter: boolean };
+
+export class CommunityReportDailyLimitError extends Error {
+  constructor() {
+    super('The account has reached the daily community report limit.');
+    this.name = 'CommunityReportDailyLimitError';
+  }
+}
 
 type QueuedReport = {
   id: string;
@@ -133,12 +141,26 @@ async function writeQueue(queue: QueuedReport[], userId: string) {
   await AsyncStorage.setItem(`${REPORT_QUEUE_KEY}.${userId}`, JSON.stringify(queue.slice(-MAX_QUEUED_REPORTS)));
 }
 
+async function removeQueuedReport(reportId: string, userId: string) {
+  await serializeQueue(async () => {
+    const queue = await readQueue(userId);
+    await writeQueue(
+      queue.filter((item) => item.id !== reportId),
+      userId,
+    );
+  });
+}
+
 /**
  * PostgREST's "no function matches these arguments" error when the database has not applied
  * the migration adding a report RPC argument yet.
  */
 function isMissingReportParameter(error: { code?: string } | null) {
   return error?.code === 'PGRST202';
+}
+
+function isDailyReportLimitError(error: { code?: string; message?: string } | null) {
+  return error?.code === 'P0001' && error.message?.includes('community_report_daily_limit_reached');
 }
 
 /**
@@ -162,13 +184,16 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
   };
   const riskScore = publicRiskScore(report.riskScore, report.ruleVersion);
   if (riskScore === 0) throw new Error('Safe messages cannot be submitted as community reports.');
+  const detectedIn = report.detectedIn ?? (source === 'manual' ? 'manual' : 'unknown');
   let { data, error } = await supabase.rpc('record_phishing_report', {
     ...args,
     p_source: source,
     p_risk_score: riskScore,
     p_message_received_at: report.messageReceivedAt ?? null,
-    p_detected_in: report.detectedIn ?? (source === 'manual' ? 'manual' : 'unknown'),
+    p_detected_in: detectedIn,
   });
+  // Keep the report queued rather than letting an older RPC silently store a known source as unknown.
+  if (isMissingReportParameter(error) && detectedIn !== 'unknown') throw error;
   // Older databases: drop only the parameters they do not know yet.
   if (isMissingReportParameter(error)) {
     ({ data, error } = await supabase.rpc('record_phishing_report', {
@@ -189,6 +214,7 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
     ({ data, error } = await supabase.rpc('record_phishing_report', { ...args, p_source: source }));
   }
   if (isMissingReportParameter(error)) ({ data, error } = await supabase.rpc('record_phishing_report', args));
+  if (isDailyReportLimitError(error)) throw new CommunityReportDailyLimitError();
   if (error) throw error;
   const row = data?.[0];
   if (!row) throw new Error('The community report service returned no result.');
@@ -202,8 +228,8 @@ async function syncReport(report: QueuedReport, source: ReportSource): Promise<P
 }
 
 /**
- * Saves a "Report & Block" tap to the on-device queue immediately (this always
- * succeeds, online or off), then tries to sync it right away. It queues the
+ * Saves a message the user explicitly confirmed for community sharing to the
+ * on-device queue immediately (this always succeeds, online or off), then tries to sync it right away. It queues the
  * exact text of a message the user chose to report — Block & Report on a
  * warning, or Report on a Suspicious or Dangerous Manual Scan result. This is the one path
  * in the app that intentionally uploads message content, and only on explicit
@@ -245,6 +271,10 @@ export async function reportAndBlockMessage(
     });
     return virality;
   } catch (error) {
+    if (error instanceof CommunityReportDailyLimitError) {
+      await removeQueuedReport(report.id, userId);
+      throw error;
+    }
     logError('phishing-report-sync-failed', error);
     return null;
   }
@@ -255,14 +285,15 @@ export async function flushQueuedPhishingReports() {
   return serializeQueue(flushUserQueue);
 }
 async function flushUserQueue() {
-  if (!isSupabaseConfigured) return { synced: 0, pending: 0 };
+  if (!isSupabaseConfigured) return { synced: 0, pending: 0, rateLimited: 0 };
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return { synced: 0, pending: 0 };
+  if (!sessionData.session) return { synced: 0, pending: 0, rateLimited: 0 };
   const userId = sessionData.session.user.id;
 
   const queued = await readQueue(userId);
   const remaining: QueuedReport[] = [];
   let synced = 0;
+  let rateLimited = 0;
   for (const report of queued) {
     if (publicRiskScore(report.riskScore, report.ruleVersion) === 0) {
       logDiagnostic('safe-community-report-discarded', { reportId: report.id });
@@ -272,36 +303,42 @@ async function flushUserQueue() {
       await syncReport(report, 'manual');
       synced += 1;
     } catch (error) {
+      if (error instanceof CommunityReportDailyLimitError) {
+        rateLimited += 1;
+        logDiagnostic('community-report-daily-limit-reached', { reportId: report.id });
+        continue;
+      }
       logError('phishing-report-retry-failed', error);
       remaining.push({ ...report, attempts: report.attempts + 1 });
     }
   }
   await writeQueue(remaining, userId);
-  return { synced, pending: remaining.length };
+  return { synced, pending: remaining.length, rateLimited };
 }
 
 /**
- * Uploads "Block & Report" taps queued natively by the real-time listener
+ * Uploads "Block & Report" taps explicitly confirmed and queued natively by the real-time listener
  * while the app was closed or offline (see EncryptedCommunityReportQueue).
  * Once each one syncs, this shows the same "New" / report-count follow-up
  * Manual Scan shows instantly — delayed here since a background notification
  * tap has no UI to show it in until the app is next opened.
  */
-export async function flushNativeCommunityReports(): Promise<{ synced: number; pending: number }> {
-  if (!isSupabaseConfigured || !isNativeMonitoringAvailable()) return { synced: 0, pending: 0 };
+export async function flushNativeCommunityReports(): Promise<{ synced: number; pending: number; rateLimited: number }> {
+  if (!isSupabaseConfigured || !isNativeMonitoringAvailable()) return { synced: 0, pending: 0, rateLimited: 0 };
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return { synced: 0, pending: 0 };
+  if (!sessionData.session) return { synced: 0, pending: 0, rateLimited: 0 };
 
   let pending: PendingCommunityReport[];
   try {
     pending = await getPendingCommunityReports();
   } catch (error) {
     logError('native-community-report-read-failed', error);
-    return { synced: 0, pending: 0 };
+    return { synced: 0, pending: 0, rateLimited: 0 };
   }
 
   const acknowledged: string[] = [];
   let synced = 0;
+  let rateLimited = 0;
   for (const report of pending) {
     if (publicRiskScore(report.riskScore, report.ruleVersion) === 0) {
       logDiagnostic('safe-native-community-report-discarded', { reportId: report.id });
@@ -331,6 +368,12 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
       acknowledged.push(report.id);
       synced += 1;
     } catch (error) {
+      if (error instanceof CommunityReportDailyLimitError) {
+        acknowledged.push(report.id);
+        rateLimited += 1;
+        logDiagnostic('native-community-report-daily-limit-reached', { reportId: report.id });
+        continue;
+      }
       logError('native-community-report-sync-failed', error);
     }
   }
@@ -347,14 +390,17 @@ export async function flushNativeCommunityReports(): Promise<{ synced: number; p
     claimed: pending.length,
     synced,
   });
-  return { synced, pending: pending.length - acknowledged.length };
+  return { synced, pending: pending.length - acknowledged.length, rateLimited };
 }
 
 export type CommunityReportFeedEntry = {
   reportEventId: string;
   messagePreview: string;
   detectedIn: CommunityDetectedIn;
+  reportType: CommunityReportType;
 };
+
+export type CommunityReportType = 'phishing' | 'spam' | 'threat' | 'unknown';
 
 export type ViralPhishingEntry = {
   reportId: string;
@@ -396,6 +442,10 @@ export async function getCommunityReportFeed(limit = 100, offset = 0): Promise<C
     reportEventId: row.report_event_id,
     messagePreview: row.message_preview,
     detectedIn: isCommunityDetectedIn(row.detected_in) ? row.detected_in : 'unknown',
+    reportType:
+      row.report_type === 'phishing' || row.report_type === 'spam' || row.report_type === 'threat'
+        ? row.report_type
+        : 'unknown',
   }));
 }
 

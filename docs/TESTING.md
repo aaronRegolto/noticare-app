@@ -24,6 +24,22 @@ npm run format:check
 
 Do not treat a successful TypeScript build as proof that the NotificationListenerService works. `test:android` needs an Android SDK/JDK and a generated Android project.
 
+## Local admin dashboard load test
+
+Install Grafana k6, then start the admin dashboard in one PowerShell terminal:
+
+```powershell
+npm run admin
+```
+
+In another terminal at the repository root, run:
+
+```powershell
+k6 run scripts/k6/admin-dashboard.js
+```
+
+The script is restricted to `localhost` or `127.0.0.1` and runs a low-load, five-virtual-user test against the dashboard page, static assets, configuration endpoint, and local model metadata endpoint. It does not sign in, access live Supabase records, or create database data. Its thresholds require at least 99% successful checks, fewer than 1% failed HTTP requests, and a 95th-percentile response time below one second. This checks local HTTP responsiveness only; it is not a test of authenticated dashboard workflows, Supabase performance, or Android device behavior.
+
 ## Detection corpus requirements
 
 Maintain a versioned, non-production corpus with at least 50 synthetic messages. It must include:

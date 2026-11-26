@@ -11,7 +11,7 @@ const sections = [
   ],
   [
     'What can be shared anonymously',
-    'Routine community statistics contain anonymous threat levels and time buckets. If you explicitly report a message, its text and risk score are shared with NotiCare; real-time reports also include the detecting app and may include the sender label and received time. Other users see only a redacted message preview and the detecting app, never sender details, receive time, or your identity.',
+    'Routine community statistics contain anonymous threat levels and time buckets. Before any message text is shared, NotiCare shows it and asks you to confirm. If you confirm, its text and risk score are shared with NotiCare; real-time reports also include the detecting app and may include the sender label and received time. Accounts can share up to 10 distinct reports in any rolling 24-hour period. Other users see a redacted message, a Phishing or Threat label, and the detecting app; redaction may miss personal information. Spam labels stay on this device. Users who enable Community Alerts may receive a generic notification.',
   ],
   [
     'What is never uploaded',
@@ -27,7 +27,7 @@ const sections = [
   ],
   [
     'Reporting a message: the one exception',
-    'Tapping Block & Report on a warning, or Report on a Suspicious or Dangerous Manual Scan result, shares that exact message’s text and risk score with NotiCare so duplicate reports can be grouped. Real-time reports also include the detecting app and may include the sender label and received time. Community Alerts and Viral Phishing show only a preview with links and contact details redacted, plus the detecting app; sender details and received times are never shown. Push alerts do not include message text or sender. This upload only happens when you choose to report a message — never automatically.',
+    'Tapping Block & Report on a warning, or Report on a Suspicious or Dangerous Manual Scan result, first shows the message text and asks whether you want to share it. If you confirm, the full text and risk score are sent to NotiCare so duplicate reports can be grouped; real-time reports also include the detecting app and may include the sender label and received time. Each account can share up to 10 distinct reports in any rolling 24-hour period. Community shows a redacted version with detected links and contact details masked, a Phishing or Threat label, and the detecting app, but redaction may miss personal information. Spam labels are stored on this device only. Users who enable Community Alerts may receive a generic push alert with no message text or sender. Declining keeps the message text private.',
   ],
   [
     'Your controls',

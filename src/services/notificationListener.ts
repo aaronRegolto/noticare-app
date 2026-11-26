@@ -121,7 +121,7 @@ export type PendingTelemetryEvent = {
 };
 
 /**
- * A "Block & Report" tap queued by the real-time listener. Unlike
+ * A "Block & Report" choice confirmed and queued by the real-time listener. Unlike
  * PendingTelemetryEvent, this intentionally carries the message text and
  * sender — see EncryptedCommunityReportQueue for why that's safe here.
  */

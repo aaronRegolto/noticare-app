@@ -19,7 +19,8 @@ object LinkWarningCopy {
     open val intro = "NotiCare checked this link before opening it."
     open val titleSafe = "No known warning signs"
     open val safeIntro = "NotiCare checked this link on your phone."
-    open val safeCaveat = "No known risk signs were found. This is not a guarantee that the website is safe."
+    open val safeCaveat =
+      "No known warning signs were found, but harmful links can still be marked safe. Be cautious and continue only if you trust this website."
     open val website = "Website"
     open val why = "Why NotiCare stopped it"
     open val advice = "Never enter your password, PIN, or OTP on a website you reached from a message."
@@ -63,7 +64,8 @@ object LinkWarningCopy {
     override val intro = "Sinuri ng NotiCare ang link na ito bago ito buksan."
     override val titleSafe = "Walang nakitang babala"
     override val safeIntro = "Sinuri ng NotiCare ang link na ito sa iyong telepono."
-    override val safeCaveat = "Walang nakitang kilalang panganib. Hindi ito garantiya na ligtas ang website."
+    override val safeCaveat =
+      "Walang nakitang kilalang babala, pero maaari pa ring mamarkahang ligtas ang mapanganib na link. Mag-ingat at magpatuloy lang kung pinagkakatiwalaan mo ang website na ito."
     override val website = "Website"
     override val why = "Bakit ito pinigilan ng NotiCare"
     override val advice =

@@ -47,21 +47,21 @@ object ThreatWarningOverlay {
     mainHandler.post {
       if (shown.containsKey(threat.token)) return@post
       val windowManager = appContext.getSystemService(WindowManager::class.java) ?: return@post onFailed()
-      val onDecide = { block: Boolean ->
-        ThreatDecisionCoordinator.decide(threat.token, block)
+      val onDecide = { block: Boolean, reportToCommunity: Boolean ->
+        ThreatDecisionCoordinator.decide(threat.token, block, reportToCommunity)
         NotiCareNotifications.dismissDangerChoice(appContext, threat.token)
       }
       val container = object : FrameLayout(appContext) {
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
           // Back is equivalent to Ignore, matching ThreatWarningActivity.
           if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            onDecide(false)
+            onDecide(false, false)
             return true
           }
           return super.dispatchKeyEvent(event)
         }
       }
-      container.addView(ThreatWarningView.build(appContext, threat, onDecide))
+      container.addView(ThreatWarningView.build(appContext, threat, onDecide, isOverlay = true))
       container.setOnApplyWindowInsetsListener { view, insets ->
         val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
         view.setPadding(bars.left, bars.top, bars.right, bars.bottom)

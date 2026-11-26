@@ -9,6 +9,18 @@ const registeredTokenKey = 'noticare.community-push-token.v1';
 
 export class CommunityNotificationPermissionError extends Error {}
 
+export type CommunityNotificationSetupStage = 'project-config' | 'push-token' | 'server-registration';
+
+export class CommunityNotificationSetupError extends Error {
+  constructor(
+    readonly stage: CommunityNotificationSetupStage,
+    readonly cause: unknown,
+  ) {
+    super(`Community notification setup failed at ${stage}.`);
+    this.name = 'CommunityNotificationSetupError';
+  }
+}
+
 export async function isCommunityNotificationsEnabled() {
   return Boolean(await AsyncStorage.getItem(registeredTokenKey));
 }
@@ -36,16 +48,23 @@ export async function enableCommunityNotifications() {
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
   if (typeof projectId !== 'string' || !projectId) {
-    throw new Error('The Expo project ID is missing from this build.');
+    throw new CommunityNotificationSetupError('project-config', new Error('Expo project ID is missing.'));
   }
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  let token: string;
+  try {
+    token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  } catch (cause) {
+    throw new CommunityNotificationSetupError('push-token', cause);
+  }
   await AsyncStorage.setItem(registeredTokenKey, token);
-  const { error } = await supabase.rpc('register_community_push_token', {
-    p_expo_push_token: token,
-  });
-  if (error) {
+  try {
+    const { error } = await supabase.rpc('register_community_push_token', {
+      p_expo_push_token: token,
+    });
+    if (error) throw error;
+  } catch (cause) {
     await AsyncStorage.removeItem(registeredTokenKey);
-    throw error;
+    throw new CommunityNotificationSetupError('server-registration', cause);
   }
 }
 

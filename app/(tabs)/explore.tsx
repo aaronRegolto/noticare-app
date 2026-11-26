@@ -21,11 +21,14 @@ import { BrandLogo } from '@/src/components/brand-logo';
 import { evaluateThreat, type ThreatLevel, type ThreatResult } from '@/src/features/detection';
 import { localizeReason, type WarningCopy } from '@/src/features/translation';
 import {
+  COMMUNITY_REPORT_DAILY_LIMIT,
+  CommunityReportDailyLimitError,
   getMessageFeedbackRecord,
   markMessageFeedback,
   reportAndBlockMessage,
   type PhishingVirality,
 } from '@/src/services/communityReports';
+import { confirmCommunityReport } from '@/src/services/communityReportConsent';
 import { flushQueuedThreatEvents, queueThreatEvent } from '@/src/services/eventSync';
 import {
   readMessageFromImage,
@@ -195,7 +198,7 @@ function ResultCard({
                     ? feedbackKind === 'spam'
                       ? 'Labeled as spam on this device.'
                       : feedbackKind === 'dangerous'
-                        ? copy.done
+                        ? copy.reportQueued
                         : copy.savedOnDeviceOnly
                     : feedbackKind === 'dangerous'
                       ? copy.reportedAndShared
@@ -246,6 +249,7 @@ function ResultCard({
 export default function ScanScreen() {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(colors);
+  const warningCopy = useWarningCopy();
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<ThreatResult | null>(null);
@@ -400,44 +404,56 @@ export default function ScanScreen() {
       }
       feedbackBusy.current = true;
       const version = scanVersion.current;
-      setFeedbackState('sending');
+      let communityReportAccepted = false;
       try {
-        if (kind === 'spam') {
-          await markMessageFeedback(message.trim(), 'spam');
+        const submitFeedback = async () => {
+          setFeedbackState('sending');
+          if (kind === 'spam') {
+            await markMessageFeedback(message.trim(), 'spam');
+            if (version === scanVersion.current) {
+              setFeedbackKind('spam');
+              setFeedbackState('saved_locally');
+            }
+            return;
+          }
+          const status = await sendScanFeedback(kind, result);
+          let communityReport: PhishingVirality | null = null;
+          if (kind === 'dangerous') {
+            communityReport = await reportAndBlockMessage(message.trim(), null, result);
+            communityReportAccepted = true;
+            if (communityReport && version === scanVersion.current) setVirality(communityReport);
+          }
+          await markMessageFeedback(message.trim(), kind);
           if (version === scanVersion.current) {
-            setFeedbackKind('spam');
-            setFeedbackState('saved_locally');
+            setFeedbackKind(kind);
+            setFeedbackState(kind === 'dangerous' ? (communityReport ? 'sent' : 'saved_locally') : status);
           }
-          return;
-        }
-        const status = await sendScanFeedback(kind, result);
-        await markMessageFeedback(message.trim(), kind);
-        if (kind === 'dangerous') {
-          try {
-            const updated = await reportAndBlockMessage(message.trim(), null, result);
-            if (updated && version === scanVersion.current) setVirality(updated);
-          } catch (error) {
-            logError('manual-report-and-block-failed', error);
-          }
-        }
-        if (version === scanVersion.current) {
-          setFeedbackKind(kind);
-          setFeedbackState(status);
-        }
+        };
+        if (kind === 'dangerous') await confirmCommunityReport(message.trim(), submitFeedback, warningCopy);
+        else await submitFeedback();
       } catch (error) {
         logError('manual-feedback-failed', error);
         if (version === scanVersion.current) {
-          Alert.alert(
-            'Report not saved',
-            'Check your connection and sign-in status, then try again. Your message text was not uploaded.',
-          );
+          if (error instanceof CommunityReportDailyLimitError) {
+            Alert.alert(
+              'Daily community report limit reached',
+              `You can report up to ${COMMUNITY_REPORT_DAILY_LIMIT} distinct messages in a rolling 24-hour period. This message was not shared.`,
+            );
+          } else {
+            Alert.alert(
+              communityReportAccepted ? 'Report status not saved' : 'Report not saved',
+              communityReportAccepted
+                ? 'Your community report may already be queued or shared. Check Community before trying again; the scan status could not be saved on this device.'
+                : 'Check your connection and sign-in status, then try again. Your message text was not uploaded.',
+            );
+          }
           setFeedbackState('idle');
         }
       } finally {
         feedbackBusy.current = false;
       }
     },
-    [feedbackState, message, result],
+    [feedbackState, message, result, warningCopy],
   );
 
   return (

@@ -36,7 +36,7 @@ const pages = [
   {
     icon: 'lock-closed-outline' as const,
     title: 'Your privacy comes first',
-    body: 'Messages are checked on this phone. When you tap Block & Report, the reported text and detecting app are shared; real-time alerts may also include sender and received-time details for report handling. Other users see a redacted message preview and the detecting app, never sender details. Push notifications never contain message text.',
+    body: 'Messages are checked on this phone. Before sharing a message from Block & Report or Manual Scan, NotiCare shows its text and asks you to confirm; you can decline to keep it private. Confirmed reports share the text and detecting app; real-time reports may also include sender and received-time details. Other users see a redacted message and the detecting app, though redaction may miss personal information. Users with Community Alerts enabled receive only a generic notification.',
     note: 'You can turn scanning off, delete your saved History, or read the User Guide anytime from Settings.',
   },
 ];

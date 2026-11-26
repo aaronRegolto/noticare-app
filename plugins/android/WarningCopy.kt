@@ -59,8 +59,13 @@ object WarningCopy {
       "Nothing else to do. It isn't reported or counted again, and the original SMS stays in your Messages app."
     open val close = "Close"
     open val actionsExplained =
-      "Block & Report hides this notification, saves a protected copy in History, and shares the message text so other NotiCare users can spot it. Ignore leaves the notification visible."
+      "Block & Report hides this notification and saves a protected copy in History. NotiCare asks before sharing the message with the community. Ignore leaves the notification visible."
     open val blockAndReport = "Block & Report"
+    open val reportConsentTitle = "Share this message with the community?"
+    open fun reportConsentMessage(message: String) =
+      "The full text below will be sent to NotiCare. Other users can see a redacted version in Community; redaction may miss personal information. Users who enabled Community Alerts may receive a generic notification. Review the message carefully before sharing.\n\n$message"
+    open val blockOnly = "Block only"
+    open val reportConsentCancel = "Cancel"
     open val ignoreAndKeepVisible = "Ignore and keep visible"
     open val ignore = "Ignore"
 
@@ -134,8 +139,13 @@ object WarningCopy {
       "Wala ka nang kailangang gawin. Hindi na ito ire-report o bibilangin ulit, at nasa Messages app mo pa rin ang orihinal na SMS."
     override val close = "Isara"
     override val actionsExplained =
-      "Ang Block & Report ay nagtatago sa notification na ito, nagse-save ng protektadong kopya sa History, at nagbabahagi ng teksto ng mensahe para makilala ito ng ibang gumagamit ng NotiCare. Ang Ignore ay hinahayaang nakikita ang notification."
+      "Itinatago ng Block & Report ang notification na ito at nagse-save ng protektadong kopya sa History. Magtatanong muna ang NotiCare bago ibahagi ang mensahe sa komunidad. Ang Ignore ay hinahayaang nakikita ang notification."
     override val blockAndReport = "Block & Report"
+    override val reportConsentTitle = "Ibahagi ang mensaheng ito sa komunidad?"
+    override fun reportConsentMessage(message: String) =
+      "Ipapadala sa NotiCare ang buong mensahe sa ibaba. Makikita ng ibang gumagamit ang binurang sensitibong detalye sa Community; maaaring may personal na impormasyong hindi matukoy. Makakatanggap ng pangkalahatang notification ang mga nag-enable ng Community Alerts. Suriin muna ang mensahe bago ibahagi.\n\n$message"
+    override val blockOnly = "I-block lang"
+    override val reportConsentCancel = "Kanselahin"
     override val ignoreAndKeepVisible = "I-ignore at hayaang nakikita"
     override val ignore = "Ignore"
 

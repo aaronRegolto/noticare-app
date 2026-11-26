@@ -8,7 +8,7 @@ class ThreatDecisionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != NotiCareNotifications.actionDecision) return
     val token = intent.getStringExtra(NotiCareNotifications.extraToken) ?: return
-    ThreatDecisionCoordinator.decide(token, intent.getBooleanExtra(NotiCareNotifications.extraBlock, false))
+    ThreatDecisionCoordinator.decide(token, intent.getBooleanExtra(NotiCareNotifications.extraBlock, false), false)
     NotiCareNotifications.dismissDangerChoice(context, token)
   }
 }

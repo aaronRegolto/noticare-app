@@ -1,5 +1,6 @@
 package __NOTICARE_PACKAGE__.bridge
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -8,6 +9,7 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.UnderlineSpan
 import android.view.Gravity
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -23,7 +25,12 @@ object ThreatWarningView {
   // Matches the Safe badge in the History screen.
   val safe = Color.rgb(8, 118, 83)
 
-  fun build(context: Context, threat: PendingThreat, onDecide: (block: Boolean) -> Unit): ScrollView {
+  fun build(
+    context: Context,
+    threat: PendingThreat,
+    onDecide: (block: Boolean, reportToCommunity: Boolean) -> Unit,
+    isOverlay: Boolean = false,
+  ): ScrollView {
     val copy = WarningCopy.forContext(context)
     val dangerous = threat.result.level == ThreatLevel.DANGEROUS
     // Only reachable for a view-only re-scan of a message the user already blocked, which can now
@@ -196,7 +203,7 @@ object ThreatWarningView {
         typeface = Typeface.DEFAULT_BOLD
         isAllCaps = false
         background = context.rounded(accent, 14f)
-        setOnClickListener { onDecide(false) }
+        setOnClickListener { onDecide(false, false) }
       }, context.matchWidth(height = 56, top = 24))
       scroll.addView(root)
       return scroll
@@ -210,7 +217,17 @@ object ThreatWarningView {
       typeface = Typeface.DEFAULT_BOLD
       isAllCaps = false
       background = context.rounded(accent, 14f)
-      setOnClickListener { onDecide(true) }
+      setOnClickListener {
+        val dialog = AlertDialog.Builder(context)
+          .setTitle(copy.reportConsentTitle)
+          .setMessage(copy.reportConsentMessage(threat.message))
+          .setPositiveButton(copy.blockAndReport) { _, _ -> onDecide(true, true) }
+          .setNegativeButton(copy.blockOnly) { _, _ -> onDecide(true, false) }
+          .setNeutralButton(copy.reportConsentCancel, null)
+          .create()
+        if (isOverlay) dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        dialog.show()
+      }
     }, context.matchWidth(height = 56, top = 24))
     root.addView(Button(context).apply {
       text = copy.ignoreAndKeepVisible
@@ -219,7 +236,7 @@ object ThreatWarningView {
       typeface = Typeface.DEFAULT_BOLD
       isAllCaps = false
       background = context.rounded(Color.WHITE, 14f, Color.rgb(205, 214, 225))
-      setOnClickListener { onDecide(false) }
+      setOnClickListener { onDecide(false, false) }
     }, context.matchWidth(height = 56, top = 12))
     scroll.addView(root)
     return scroll

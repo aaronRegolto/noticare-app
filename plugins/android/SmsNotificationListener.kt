@@ -43,12 +43,12 @@ object ThreatDecisionCoordinator {
   }
   @Synchronized fun get(token: String): PendingThreat? = pending[token]
   @Synchronized fun dismiss(token: String) { pending.remove(token) }
-  @Synchronized fun decide(token: String, block: Boolean): Boolean {
+  @Synchronized fun decide(token: String, block: Boolean, reportToCommunity: Boolean): Boolean {
     val threat = pending.remove(token) ?: return false
     // Already blocked and reported once; never block, report, or count it again.
     if (threat.reviewOnly) return false
     val service = listener ?: return false
-    service.applyDecision(threat, block)
+    service.applyDecision(threat, block, reportToCommunity)
     return true
   }
 }
@@ -66,7 +66,16 @@ class SmsNotificationListener : NotificationListenerService() {
     super.onCreate()
     NotiCareNotifications.ensureChannels(this)
     ThreatDecisionCoordinator.attach(this)
-    // Re-request the system binding whenever Android recreates this lightweight process.
+  }
+
+  override fun onListenerConnected() {
+    super.onListenerConnected()
+    Log.i(logTag, "notification listener connected")
+  }
+
+  override fun onListenerDisconnected() {
+    super.onListenerDisconnected()
+    Log.w(logTag, "notification listener disconnected; requesting rebind")
     requestRebind(ComponentName(this, SmsNotificationListener::class.java))
   }
 
@@ -295,7 +304,7 @@ class SmsNotificationListener : NotificationListenerService() {
     NotiCareNotifications.showDangerChoice(applicationContext, pending, fullScreen && !overlayShown)
   }
 
-  fun applyDecision(pending: PendingThreat, block: Boolean) {
+  fun applyDecision(pending: PendingThreat, block: Boolean, reportToCommunity: Boolean) {
     scanScope.launch {
       NotiCareNotifications.dismissDangerChoice(applicationContext, pending.token)
       if (RealtimeScanPreferences.historyOwnerScope(applicationContext) != pending.ownerScope) return@launch
@@ -303,6 +312,7 @@ class SmsNotificationListener : NotificationListenerService() {
         EncryptedTelemetryQueue.enqueue(applicationContext, pending.result, false, pending.postedAt)
         return@launch
       }
+      val shouldReportToCommunity = block && reportToCommunity
 
       val suppressionAccepted = runCatching {
         cancelNotification(pending.notificationKey)
@@ -324,26 +334,25 @@ class SmsNotificationListener : NotificationListenerService() {
         runCatching { EncryptedHistoryStore.markBlocked(applicationContext, id, pending.ownerScope) }
           .getOrDefault(false)
       } ?: false
-      // "Block & Report" always saves locally first (works fully offline) and is
-      // uploaded later by the JS bridge once the app is online — see
-      // EncryptedCommunityReportQueue and flushNativeCommunityReports().
-      EncryptedCommunityReportQueue.enqueue(
-        applicationContext,
-        pending.message,
-        pending.sender,
-        pending.postedAt,
-        pending.detectedIn,
-        pending.result.reasons.map(ThreatReason::code),
-        pending.result.ruleVersion,
-        pending.result.score,
-      )
+      if (shouldReportToCommunity) {
+        EncryptedCommunityReportQueue.enqueue(
+          applicationContext,
+          pending.message,
+          pending.sender,
+          pending.postedAt,
+          pending.detectedIn,
+          pending.result.reasons.map(ThreatReason::code),
+          pending.result.ruleVersion,
+          pending.result.score,
+        )
+      }
       NotiCareNotifications.showBlocked(
         applicationContext,
         pending.recordId.takeIf { historySaved },
         pending.result.score,
         historySaved,
         pending.result.level.wireValue,
-        reported = true,
+        reported = shouldReportToCommunity,
       )
     }
   }

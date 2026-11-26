@@ -51,7 +51,9 @@ class RuleBasedUrlCheckerTest {
     assertEquals("Open in Chrome", LinkWarningCopy.English.openInBrowser("Chrome"))
     assertEquals("Pumili ng browser", LinkWarningCopy.Tagalog.chooseBrowser)
     assertEquals("Buksan sa Chrome", LinkWarningCopy.Tagalog.openInBrowser("Chrome"))
-    assertTrue(LinkWarningCopy.English.safeCaveat.contains("not a guarantee"))
-    assertTrue(LinkWarningCopy.Tagalog.safeCaveat.contains("Hindi ito garantiya"))
+    assertTrue(LinkWarningCopy.English.safeCaveat.contains("harmful links can still be marked safe"))
+    assertTrue(LinkWarningCopy.English.safeCaveat.contains("continue only if you trust"))
+    assertTrue(LinkWarningCopy.Tagalog.safeCaveat.contains("mamarkahang ligtas"))
+    assertTrue(LinkWarningCopy.Tagalog.safeCaveat.contains("Mag-ingat"))
   }
 }

@@ -19,6 +19,7 @@ import {
   type CommunityPoint,
 } from '@/src/services/community';
 import {
+  COMMUNITY_REPORT_DAILY_LIMIT,
   flushPendingCommunityNotifications,
   flushNativeCommunityReports,
   flushQueuedPhishingReports,
@@ -266,7 +267,17 @@ export default function DashboardScreen() {
       flushQueuedPhishingReports(),
       flushNativeCommunityReports(),
       flushPendingCommunityNotifications(),
-    ]).then(() => {
+    ]).then(([manualReports, realtimeReports]) => {
+      const rateLimited = [manualReports, realtimeReports].reduce(
+        (total, result) => total + (result.status === 'fulfilled' ? result.value.rateLimited : 0),
+        0,
+      );
+      if (rateLimited > 0) {
+        Alert.alert(
+          'Daily community report limit reached',
+          `You can report up to ${COMMUNITY_REPORT_DAILY_LIMIT} distinct messages in a rolling 24-hour period. ${rateLimited} queued report${rateLimited === 1 ? ' was' : 's were'} not shared.`,
+        );
+      }
       if (subscriptionTier === 'pro') void refreshViralRanking(viralSourceRef.current);
     });
   }, [refreshCommunity, refreshMonitoringAndHistory, refreshViralRanking, subscriptionTier]);

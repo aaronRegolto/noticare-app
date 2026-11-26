@@ -33,6 +33,7 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+/google-services.json
 
 # local Supabase and test output
 backend/supabase/.temp/

@@ -111,7 +111,7 @@ object NotiCareNotifications {
       .setStyle(Notification.BigTextStyle().bigText(body))
       .setContentIntent(warningIntent(context, pending.token))
       .addAction(Notification.Action.Builder(null, copy.ignore, decisionIntent(context, pending.token, false)).build())
-      .addAction(Notification.Action.Builder(null, copy.blockAndReport, decisionIntent(context, pending.token, true)).build())
+      .addAction(Notification.Action.Builder(null, copy.blockAndReport, warningIntent(context, pending.token)).build())
       .setAutoCancel(false)
       .setOngoing(true)
       .setCategory(Notification.CATEGORY_ERROR)

@@ -34,6 +34,7 @@
     "newArchEnabled": true,
     "android": {
       "versionCode": 8,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

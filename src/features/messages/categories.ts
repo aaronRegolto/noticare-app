@@ -4,6 +4,7 @@ const spamCodes = new Set([
   'v3-model-risk',
   'repeat-sender-escalation',
   'prize-or-reward-bait',
+  'high-value-bonus-offer',
   'refund-bait',
   'parcel-delivery-bait',
   'unpaid-bill-pressure',

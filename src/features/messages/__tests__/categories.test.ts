@@ -9,4 +9,8 @@ describe('categoriesForCodes', () => {
     expect(categoriesForCodes(['urgency-pressure'])).toEqual(['spam']);
     expect(categoriesForCodes(['unknown-rule'])).toEqual([]);
   });
+
+  test('classifies an unusually large bonus offer as spam', () => {
+    expect(categoriesForCodes(['high-value-bonus-offer'])).toEqual(['spam']);
+  });
 });

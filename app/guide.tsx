@@ -33,7 +33,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Choose Block & Report or Ignore',
-    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report hides the notification (Android may not always allow this), marks the protected alert in History as blocked, and shares the message text so other NotiCare users can spot it. Once the report syncs, users who enabled Community Alerts receive a generic notification; the Community tab shows a redacted message preview and where it was detected, never sender details or received time. Ignore leaves it visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
+    body: 'For a Suspicious or Dangerous message, NotiCare shows the warning signs, how many points each added to the risk score, and asks you to choose. Block & Report asks you to confirm before sharing the message text; you can choose Block only to keep it private. You can share up to 10 distinct reports per account in any rolling 24-hour period. If confirmed, a redacted version appears in Community with a Phishing or Threat label and the detecting app, though redaction may miss personal information. Spam labels stay on this device. Users who enabled Community Alerts may receive a generic notification. Ignore leaves the message visible. If the same message arrives again after you blocked it, NotiCare hides it automatically and only shows a short "Already blocked" notice. Neither choice deletes the original SMS from your Messages app.',
   },
   {
     title: 'Manual Scan',
@@ -41,7 +41,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Safe Link Protection',
-    body: 'When NotiCare is your default browser, it checks links that Android sends to a browser before opening them. You see the on-device result first: safe links have no known warning signs (this is not a guarantee), while risky links show a warning. Continue opens your saved browser; Choose another browser uses Android’s Open with menu. Facebook and Messenger may open links in an in-app browser that NotiCare cannot transparently inspect. Use Share → NotiCare to check a shared link, or enable the source app’s “open links externally” option where available. The check happens on your phone; NotiCare never opens or loads the link to check it.',
+    body: 'When NotiCare is your default browser, it checks links that Android sends to a browser before opening them. You see the on-device result first: a Safe result means no known warning signs were found, but harmful links can still be marked safe. Be cautious and continue only if you trust the website. Risky links show a warning. Continue opens your saved browser; Choose another browser uses Android’s Open with menu. Facebook and Messenger may open links in an in-app browser that NotiCare cannot transparently inspect. Use Share → NotiCare to check a shared link, or enable the source app’s “open links externally” option where available. The check happens on your phone; NotiCare never opens or loads the link to check it.',
   },
   {
     title: 'Turn on Safe Link Protection',
@@ -49,7 +49,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Most Reported Phishing Messages',
-    body: 'When you tap Block & Report, NotiCare saves the message on this device and, once online, shares its exact text and risk score so duplicate reports can be grouped. Users who opted in receive a generic push alert. Community Alerts and Viral Phishing show a redacted message preview and where it was detected, never sender details, received time, or reporter identity. This is the only action in NotiCare that uploads message text; Ignore never uploads anything.',
+    body: 'When you choose Report on a Suspicious or Dangerous Manual Scan result or Block & Report on a real-time warning, NotiCare shows the message text and asks before sharing it. Only after you confirm does NotiCare save it on this device and, once online, share its text and risk score so duplicate reports can be grouped. You can share up to 10 distinct reports per account in any rolling 24-hour period. Community shows a redacted version, a Phishing or Threat label, and where it was detected; redaction may miss personal information. Spam labels stay on this device. Users who enabled Community Alerts may receive a generic push alert. Block only and Ignore never upload message text.',
   },
   {
     title: 'Label a Safe result as spam',
@@ -61,7 +61,7 @@ const topics: GuideTopic[] = [
   },
   {
     title: 'Privacy',
-    body: 'Messages are checked on-device. If you choose Block & Report, the reported text and detecting app are shared; real-time reports may also include sender and received-time details for report handling. Other users see a redacted message preview and the detecting app, never sender details. Push notifications contain no message text or sender. You can permanently delete your account from Settings & Privacy. The full Privacy Policy is at admin.noticare.site/privacy.',
+    body: 'Messages are checked on-device. Before sharing a reported message, NotiCare shows its text and asks you to confirm. If you confirm, the reported text and detecting app are shared; real-time reports may also include sender and received-time details for report handling. Other users see a redacted message and the detecting app; redaction may miss personal information. Sender details and received times are not shown, and push notifications contain no message text or sender. You can permanently delete your account from Settings & Privacy. The full Privacy Policy is at admin.noticare.site/privacy.',
   },
   {
     title: 'Notification permission troubleshooting',

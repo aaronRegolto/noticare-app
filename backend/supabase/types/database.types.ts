@@ -488,6 +488,7 @@ export type Database = {
           detected_in: string;
           message_preview: string;
           report_event_id: string;
+          report_type: string;
         }[];
       };
       get_viral_phishing_message_ranking: {

@@ -11,6 +11,8 @@ const {
 
 const DEFAULT_ANDROID_PACKAGE = 'com.noticare.noticareapp';
 const DATASTORE_DEPENDENCY = 'androidx.datastore:datastore-preferences:1.1.7';
+const NOTIFICATION_FILTER_TYPES_META = 'android.service.notification.default_filter_types';
+const DEFAULT_NOTIFICATION_FILTER_TYPES = 'conversations|alerting|ongoing|silent';
 const LITERT_DEPENDENCY = 'com.google.ai.edge.litert:litert:2.1.1';
 // On-device text recognition for Manual Scan's photo option. The bundled Latin model works offline
 // from first launch, with no Google Play services download.
@@ -181,7 +183,24 @@ function updateManifest(manifest) {
       'android:process': ':notification_listener',
     };
   }
-
+  const listenerMetadata = asArray(existingListener, 'meta-data');
+  const defaultFilterTypes = listenerMetadata.find(
+    (entry) => entry?.$?.['android:name'] === NOTIFICATION_FILTER_TYPES_META,
+  );
+  if (defaultFilterTypes) {
+    defaultFilterTypes.$ = {
+      ...defaultFilterTypes.$,
+      'android:value': DEFAULT_NOTIFICATION_FILTER_TYPES,
+    };
+  } else {
+    listenerMetadata.push({
+      $: {
+        'android:name': NOTIFICATION_FILTER_TYPES_META,
+        'android:value': DEFAULT_NOTIFICATION_FILTER_TYPES,
+      },
+    });
+  }
+  existingListener['meta-data'] = listenerMetadata;
   application.service = uniqueByAndroidName(services);
   const warningActivityName = '.bridge.ThreatWarningActivity';
   const warningActivity = activities.find((entry) => entry?.$?.['android:name'] === warningActivityName);

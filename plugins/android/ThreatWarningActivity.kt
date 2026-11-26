@@ -28,6 +28,7 @@ class ThreatWarningActivity : Activity() {
       finish()
       return
     }
+    ThreatWarningOverlay.dismiss(this, token)
     reviewOnly = threat.reviewOnly
     // A view-only re-scan of an already-blocked message can come back Safe: no alarming red bar.
     if (threat.result.level == ThreatLevel.SAFE) window.statusBarColor = ThreatWarningView.safe
@@ -37,16 +38,16 @@ class ThreatWarningActivity : Activity() {
   override fun onBackPressed() {
     // Back is equivalent to Ignore (or Close, for an already-blocked message): the original
     // Messages notification remains.
-    decide(false)
+    decide(false, false)
   }
 
-  private fun decide(block: Boolean) {
+  private fun decide(block: Boolean, reportToCommunity: Boolean) {
     if (reviewOnly) {
       ThreatDecisionCoordinator.dismiss(token)
       finishAndRemoveTask()
       return
     }
-    ThreatDecisionCoordinator.decide(token, block)
+    ThreatDecisionCoordinator.decide(token, block, reportToCommunity)
     NotiCareNotifications.dismissDangerChoice(this, token)
     finishAndRemoveTask()
   }

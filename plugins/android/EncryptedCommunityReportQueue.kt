@@ -14,7 +14,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Offline queue for "Block & Report" taps on a real-time Dangerous notification.
+ * Offline queue for real-time reports after the user confirms "Block & Report".
  * Unlike EncryptedTelemetryQueue, this intentionally does carry the message
  * text and sender: it exists only because the user explicitly chose to warn
  * other NotiCare users about this exact message. It stays encrypted at rest

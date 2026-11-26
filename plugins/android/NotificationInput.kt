@@ -14,6 +14,10 @@ internal object NotificationInput {
     """(?:otp|password|pin|verify|update your account|click here|link|bit\.ly|http|https|urgent|suspended|locked|reward|prize|refund|cash|bonus|unpaid|payment|bank|wallet|account|security code)""",
     RegexOption.IGNORE_CASE,
   )
+  private val messengerGroupMediaEventPattern = Regex(
+    """(?:click here to see|view|look at).{0,40}\b(?:group\s+)?(?:photo|picture|video|story)\b""",
+    RegexOption.IGNORE_CASE,
+  )
 
   private fun isLegacyMentionOnlySocialText(value: String): Boolean =
     legacySocialEventPattern.containsMatchIn(value) &&
@@ -35,13 +39,12 @@ internal object NotificationInput {
     }
     if (sourceId != "messenger" && selected != null && isLegacyMentionOnlySocialText(selected)) return null
     // Messenger group notifications often contain names and ordinary chat-event
-    // wording. Use the same detector categories as the warning UI instead of
-    // keyword fragments, so only recognized phishing evidence reaches triage.
-    if (
-      sourceId == "messenger" &&
-      selected != null &&
-      "phishing" !in MessageCategories.fromReasons(SmishingEvaluator.evaluate(selected).reasons)
-    ) return null
+    // wording. Only pass messages with a recognized risk category to triage.
+    if (sourceId == "messenger" && selected != null) {
+      val categories = MessageCategories.fromReasons(SmishingEvaluator.evaluate(selected).reasons)
+      if (categories.isEmpty()) return null
+      if ("phishing" !in categories && messengerGroupMediaEventPattern.containsMatchIn(selected)) return null
+    }
     return selected
   }
 }

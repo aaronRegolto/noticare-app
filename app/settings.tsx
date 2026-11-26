@@ -187,7 +187,7 @@ export default function SettingsScreen() {
         setDefaultBrowserActive(true);
         Alert.alert(
           'Safe Link Protection is on',
-          'Links you tap in any app are now checked first. Risky links show a warning; safe links open in your usual browser.',
+          'Links you tap in any app are checked first. Risky links show a warning. Safe results are not a guarantee, so be cautious and continue only if you trust the website.',
         );
       } else if (result === 'declined') {
         Alert.alert(

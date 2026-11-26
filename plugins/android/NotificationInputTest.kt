@@ -62,6 +62,29 @@ class NotificationInputTest {
     )
   }
 
+  @Test fun messengerAcceptsRecognizedSpamAndThreatCategories() {
+    val spam = "You are a lucky winner. Claim now to receive your reward."
+    val threat = "I will hack your account."
+
+    assertTrue("spam" in MessageCategories.fromReasons(SmishingEvaluator.evaluate(spam).reasons))
+    assertTrue("threats" in MessageCategories.fromReasons(SmishingEvaluator.evaluate(threat).reasons))
+    assertEquals(spam, NotificationInput.select(true, spam, null, null, emptyList(), "messenger"))
+    assertEquals(threat, NotificationInput.select(true, threat, null, null, emptyList(), "messenger"))
+  }
+
+  @Test fun messengerIgnoresSafeDirectMessages() {
+    assertNull(
+      NotificationInput.select(
+        true,
+        "Had fun today. See you tomorrow.",
+        null,
+        null,
+        emptyList(),
+        "messenger",
+      ),
+    )
+  }
+
   @Test fun newContentOnTheSameNotificationStillGetsScanned() {
     assertFalse(NotificationDeduplicator.isDuplicate("test-conversation", "greeting", 1000))
     assertTrue(NotificationDeduplicator.isDuplicate("test-conversation", "greeting", 1001))

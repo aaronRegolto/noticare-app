@@ -6,6 +6,7 @@ import {
   flushQueuedPhishingReports,
   getCommunityReportFeed,
   getViralPhishingRanking,
+  CommunityReportDailyLimitError,
   getMessageFeedbackRecord,
   markMessageFeedback,
   reportAndBlockMessage,
@@ -88,6 +89,7 @@ test('community feed returns only redacted message previews and detection source
         report_event_id: 'event-1',
         message_preview: 'Your account needs verification at [link].',
         detected_in: 'messages',
+        report_type: 'phishing',
         sample_sender: 'Sender',
         message_received_at: '2026-11-24T10:00:00.000Z',
       },
@@ -99,9 +101,46 @@ test('community feed returns only redacted message previews and detection source
       reportEventId: 'event-1',
       messagePreview: 'Your account needs verification at [link].',
       detectedIn: 'messages',
+      reportType: 'phishing',
     },
   ]);
   expect(rpc).toHaveBeenCalledWith('get_community_report_message_feed', { p_limit: 100, p_offset: 0 });
+});
+
+test('community feed preserves a spam category from scanner indicators', async () => {
+  rpc.mockResolvedValueOnce({
+    data: [
+      {
+        report_event_id: 'event-spam',
+        message_preview: 'A bonus offer expires tonight at [link].',
+        detected_in: 'manual',
+        report_type: 'spam',
+      },
+    ],
+    error: null,
+  });
+
+  const [entry] = await getCommunityReportFeed();
+  expect(entry.reportType).toBe('spam');
+});
+
+test('community feed preserves the full redacted message content', async () => {
+  const fullPreview = '[email] needs verification. '.repeat(24).trim();
+  rpc.mockResolvedValueOnce({
+    data: [
+      {
+        report_event_id: 'event-long',
+        message_preview: fullPreview,
+        detected_in: 'messages',
+        report_type: 'threat',
+      },
+    ],
+    error: null,
+  });
+
+  const [entry] = await getCommunityReportFeed();
+  expect(entry.messagePreview).toBe(fullPreview);
+  expect(entry.reportType).toBe('threat');
 });
 
 test('viral phishing ranking returns message previews and detection sources without sender metadata', async () => {
@@ -149,14 +188,25 @@ test('a synced report dispatches a push using its event ID, not message content'
   expect(rpc.mock.calls[0][1].p_detected_in).toBe('manual');
 });
 
-test('report sync retries without the detected-app argument on older databases', async () => {
+test('report sync does not discard a known source when the database RPC is outdated', async () => {
   rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
-  rpc.mockResolvedValueOnce({ data: [reportRow], error: null });
   await reportAndBlockMessage('private reported text', null, DANGEROUS_RESULT);
-  expect(rpc).toHaveBeenCalledTimes(2);
+  expect(rpc).toHaveBeenCalledTimes(1);
   expect(rpc.mock.calls[0][1].p_detected_in).toBe('manual');
-  expect(rpc.mock.calls[1][1]).not.toHaveProperty('p_detected_in');
-  expect(rpc.mock.calls[1][1].p_message_received_at).toBeNull();
+  expect(JSON.parse(storage.get(QUEUE_KEY) ?? '[]')).toHaveLength(1);
+});
+
+test('a report rejected by the daily limit is not left in the manual retry queue', async () => {
+  rpc.mockResolvedValueOnce({
+    data: null,
+    error: { code: 'P0001', message: 'community_report_daily_limit_reached' },
+  });
+
+  await expect(reportAndBlockMessage('limited report', null, DANGEROUS_RESULT)).rejects.toBeInstanceOf(
+    CommunityReportDailyLimitError,
+  );
+  expect(JSON.parse(storage.get(QUEUE_KEY) ?? '[]')).toEqual([]);
+  expect(invoke).not.toHaveBeenCalled();
 });
 
 test('Safe results cannot be uploaded through the community report path', async () => {
@@ -185,10 +235,35 @@ test('legacy Safe reports are discarded while non-Safe queued reports still retr
     JSON.stringify([queued('a', 18), queued('b', 29), queued('c', 45), queued('d', null), queued('e', undefined)]),
   );
   rpc.mockResolvedValueOnce({ data: null, error: new Error('offline') });
-  expect(await flushQueuedPhishingReports()).toEqual({ synced: 2, pending: 1 });
+  expect(await flushQueuedPhishingReports()).toEqual({ synced: 2, pending: 1, rateLimited: 0 });
   expect(sentRiskScores()).toEqual([45, null, null]);
   const requeued = JSON.parse(storage.get(QUEUE_KEY) ?? '[]');
   expect(requeued).toEqual([{ ...queued('c', 45), attempts: 1 }]);
+});
+
+test('queued manual reports rejected by the daily limit are discarded and counted', async () => {
+  storage.set(
+    QUEUE_KEY,
+    JSON.stringify([
+      {
+        id: 'limited',
+        messageText: 'queued report',
+        sampleSender: null,
+        indicatorCodes: [],
+        ruleVersion: 'test',
+        riskScore: 85,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+      },
+    ]),
+  );
+  rpc.mockResolvedValueOnce({
+    data: null,
+    error: { code: 'P0001', message: 'community_report_daily_limit_reached' },
+  });
+
+  expect(await flushQueuedPhishingReports()).toEqual({ synced: 0, pending: 0, rateLimited: 1 });
+  expect(JSON.parse(storage.get(QUEUE_KEY) ?? '[]')).toEqual([]);
 });
 
 test('legacy Safe native reports are discarded while Dangerous alerts retain receive time', async () => {
@@ -206,8 +281,55 @@ test('legacy Safe native reports are discarded while Dangerous alerts retain rec
   });
   (getPendingCommunityReports as jest.Mock).mockResolvedValue([pending('safe', 12), pending('danger', 85)]);
   (ackCommunityReports as jest.Mock).mockResolvedValue(2);
-  expect(await flushNativeCommunityReports()).toEqual({ synced: 1, pending: 0 });
+  expect(await flushNativeCommunityReports()).toEqual({ synced: 1, pending: 0, rateLimited: 0 });
   expect(sentRiskScores()).toEqual([85]);
   expect(rpc.mock.calls[0][1].p_message_received_at).toBe(new Date(1795521600000).toISOString());
   expect(rpc.mock.calls[0][1].p_detected_in).toBe('messages');
+});
+
+test('native reports stay queued instead of losing their detected app on an outdated RPC', async () => {
+  (isNativeMonitoringAvailable as jest.Mock).mockReturnValue(true);
+  (getPendingCommunityReports as jest.Mock).mockResolvedValue([
+    {
+      id: 'native-source',
+      messageText: 'native report',
+      sampleSender: null,
+      detectedIn: 'messenger',
+      indicatorCodes: [],
+      ruleVersion: 'test',
+      riskScore: 85,
+      createdAt: Date.now(),
+    },
+  ]);
+  rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
+
+  expect(await flushNativeCommunityReports()).toEqual({ synced: 0, pending: 1, rateLimited: 0 });
+  expect(rpc).toHaveBeenCalledTimes(1);
+  expect(rpc.mock.calls[0][1].p_detected_in).toBe('messenger');
+  expect(ackCommunityReports).not.toHaveBeenCalled();
+});
+
+test('native reports rejected by the daily limit are acknowledged instead of retried forever', async () => {
+  (isNativeMonitoringAvailable as jest.Mock).mockReturnValue(true);
+  (getPendingCommunityReports as jest.Mock).mockResolvedValue([
+    {
+      id: 'native-limited',
+      messageText: 'native limited report',
+      sampleSender: null,
+      detectedIn: 'messages',
+      indicatorCodes: [],
+      ruleVersion: 'test',
+      riskScore: 85,
+      createdAt: Date.now(),
+    },
+  ]);
+  (ackCommunityReports as jest.Mock).mockResolvedValue(1);
+  rpc.mockResolvedValueOnce({
+    data: null,
+    error: { code: 'P0001', message: 'community_report_daily_limit_reached' },
+  });
+
+  expect(await flushNativeCommunityReports()).toEqual({ synced: 0, pending: 0, rateLimited: 1 });
+  expect(ackCommunityReports).toHaveBeenCalledWith(['native-limited']);
+  expect(invoke).not.toHaveBeenCalled();
 });

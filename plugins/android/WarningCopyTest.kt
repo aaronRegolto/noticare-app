@@ -34,4 +34,17 @@ class WarningCopyTest {
     assertEquals(true, WarningCopy.Tagalog.suspiciousDomains(listOf("gcash-verify.xyz")).endsWith("gcash-verify.xyz"))
     assertEquals(true, WarningCopy.Tagalog.cappedNote(130).contains("130"))
   }
+
+  @Test
+  fun communityReportRequiresAnInformedChoiceInBothLanguages() {
+    val message = "Your account PIN is 1234."
+    val english = WarningCopy.English.reportConsentMessage(message)
+    val tagalog = WarningCopy.Tagalog.reportConsentMessage(message)
+
+    assertEquals(true, english.contains(message))
+    assertEquals(true, english.contains("redaction may miss personal information"))
+    assertEquals(true, english.contains("Users who enabled Community Alerts"))
+    assertEquals(true, tagalog.contains(message))
+    assertEquals(true, tagalog.contains("maaaring may personal na impormasyon"))
+  }
 }

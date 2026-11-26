@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Notifications from 'expo-notifications';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLogo } from '@/src/components/brand-logo';
 import {
   CommunityNotificationPermissionError,
+  CommunityNotificationSetupError,
   disableCommunityNotifications,
   enableCommunityNotifications,
   isCommunityNotificationsEnabled,
@@ -28,6 +29,7 @@ import {
   getCommunityReportFeed,
   type CommunityDetectedIn,
   type CommunityReportFeedEntry,
+  type CommunityReportType,
 } from '@/src/services/communityReports';
 import { logError } from '@/src/services/logger';
 import { useAppTheme } from '@/src/theme/ThemeProvider';
@@ -44,11 +46,25 @@ function detectedInLabel(source: CommunityDetectedIn) {
     case 'messenger':
       return 'Messenger';
     case 'unknown':
-      return 'Unknown app';
+      return 'Source not recorded';
+  }
+}
+
+function reportTypeLabel(type: CommunityReportType) {
+  switch (type) {
+    case 'phishing':
+      return 'Phishing';
+    case 'spam':
+      return 'Spam';
+    case 'threat':
+      return 'Threat';
+    case 'unknown':
+      return 'Unknown type';
   }
 }
 
 export default function CommunityNotificationsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [entries, setEntries] = useState<CommunityReportFeedEntry[]>([]);
@@ -129,7 +145,26 @@ export default function CommunityNotificationsScreen() {
             { text: 'Not now', style: 'cancel' },
             { text: 'Open settings', onPress: () => void Linking.openSettings() },
           ]);
+        } else if (toggleError instanceof CommunityNotificationSetupError) {
+          logError('community-notification-enable-failed', toggleError);
+          if (toggleError.stage === 'project-config') {
+            Alert.alert(
+              'App setup required',
+              'This build is missing the Expo project ID. Rebuild the app with its current Expo configuration.',
+            );
+          } else if (toggleError.stage === 'push-token') {
+            Alert.alert(
+              'Push setup required',
+              'Could not create a push token. Use an installed development or release build on a physical Android device (not Expo Go), check your internet connection, and make sure FCM v1 credentials are configured for the Expo project. Rebuild after changing credentials.',
+            );
+          } else {
+            Alert.alert(
+              'Could not register alerts',
+              'The device could not be registered with NotiCare. Check your internet connection and sign-in, then try again. If it persists, the community push-token database migration may not be applied.',
+            );
+          }
         } else {
+          logError('community-notification-enable-failed', toggleError);
           Alert.alert(
             enabled ? 'Could not enable alerts' : 'Could not turn off alerts',
             'Please check your connection and try again.',
@@ -143,13 +178,25 @@ export default function CommunityNotificationsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar style="light" />
       <View style={styles.appBar}>
-        <BrandLogo size={38} />
-        <Text style={styles.title}>Community alerts</Text>
+        <BrandLogo size={44} />
+        <View style={styles.brandCopy}>
+          <Text style={styles.brand}>NotiCare</Text>
+        </View>
+        <Pressable
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+          hitSlop={12}
+          style={styles.menuButton}
+        >
+          <Ionicons name="menu" color="#fff" size={29} />
+        </Pressable>
       </View>
       <ScrollView
+        style={styles.contentArea}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
@@ -179,8 +226,9 @@ export default function CommunityNotificationsScreen() {
         <View style={styles.notice}>
           <Ionicons name="shield-checkmark-outline" size={20} color={colors.accent} />
           <Text style={styles.noticeText}>
-            Message previews redact links and contact details. Sender names are never shown; the detecting app is
-            identified when known.
+            Reported messages appear below with links and contact details redacted where detected. Redaction may miss
+            personal information. Sender names are never shown; the detecting app is identified when known. Categories
+            use recorded scanner indicators; Safe-message spam labels stay on this device.
           </Text>
         </View>
         {loading ? <ActivityIndicator size="large" color={colors.accent} /> : null}
@@ -195,12 +243,37 @@ export default function CommunityNotificationsScreen() {
         {entries.map((entry) => (
           <View key={entry.reportEventId} style={styles.card}>
             <View style={styles.cardHeader}>
-              <Ionicons name="alert-circle-outline" size={20} color="#B42318" />
+              <Ionicons
+                name="alert-circle-outline"
+                size={20}
+                color={
+                  entry.reportType === 'phishing'
+                    ? '#B42318'
+                    : entry.reportType === 'threat'
+                      ? '#A75C00'
+                      : entry.reportType === 'spam'
+                        ? '#6941C6'
+                        : colors.textMuted
+                }
+              />
+              <Text
+                style={[
+                  styles.typeBadge,
+                  entry.reportType === 'phishing'
+                    ? styles.phishingBadge
+                    : entry.reportType === 'threat'
+                      ? styles.threatBadge
+                      : entry.reportType === 'spam'
+                        ? styles.spamBadge
+                        : styles.unknownBadge,
+                ]}
+              >
+                {reportTypeLabel(entry.reportType)}
+              </Text>
               <Text style={styles.source}>Detected in {detectedInLabel(entry.detectedIn)}</Text>
             </View>
-            <Text style={styles.message} numberOfLines={6}>
-              {entry.messagePreview}
-            </Text>
+            <Text style={styles.messageLabel}>Reported message (redacted)</Text>
+            <Text style={styles.message}>{entry.messagePreview}</Text>
           </View>
         ))}
         {loadMoreError ? <Text style={styles.error}>Could not load older reports. Try again.</Text> : null}
@@ -225,16 +298,23 @@ export default function CommunityNotificationsScreen() {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    page: { flex: 1, backgroundColor: colors.background },
+    safeArea: { flex: 1, backgroundColor: colors.headerBg },
+    contentArea: { flex: 1, backgroundColor: colors.background },
     appBar: {
       height: 66,
       backgroundColor: colors.headerBg,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 16,
+      paddingHorizontal: 10,
+      shadowColor: '#0E1726',
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 8,
     },
-    title: { flex: 1, color: '#fff', fontSize: 18, fontWeight: '800' },
+    brandCopy: { marginLeft: 10 },
+    brand: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+    menuButton: { marginLeft: 'auto', padding: 4 },
     content: { padding: 16, gap: 12 },
     notificationPreference: {
       flexDirection: 'row',
@@ -270,8 +350,21 @@ function createStyles(colors: ThemeColors) {
       padding: 14,
       gap: 7,
     },
-    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+    typeBadge: {
+      borderRadius: 999,
+      overflow: 'hidden',
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    phishingBadge: { backgroundColor: '#FEE4E2', color: '#B42318' },
+    threatBadge: { backgroundColor: '#FEF0C7', color: '#A75C00' },
+    spamBadge: { backgroundColor: '#F4EBFF', color: '#6941C6' },
+    unknownBadge: { backgroundColor: colors.border, color: colors.textSecondary },
     source: { flex: 1, color: colors.textPrimary, fontWeight: '800' },
+    messageLabel: { color: colors.textPrimary, fontWeight: '700', fontSize: 12 },
     message: { color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
     loadMoreButton: {
       alignItems: 'center',

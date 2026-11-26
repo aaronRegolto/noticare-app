@@ -46,7 +46,7 @@ const featureLibrary = {
   communityReport: {
     title: 'Report phishing to the community',
     description:
-      'When NotiCare flags a message as Dangerous, you can tap Block & Report to suppress it and share that exact scam text so other NotiCare users can recognize it too. This is free for every plan.',
+      'When NotiCare flags a message as Suspicious or Dangerous, choose Block & Report and confirm before sharing its text. Other users see a redacted version in Community; you can choose Block only to keep it private. This is free for every plan.',
   },
   viralRanking: {
     title: 'Viral phishing ranking & stats',
